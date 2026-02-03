@@ -1,0 +1,11 @@
+{
+  "name": "saaf-baat-skills",
+  "displayName": "Saaf Baat Development Skills",
+  "version": "1.0.0",
+  "description": "Project-specific coding guidelines and skills for Saaf Baat news intelligence platform",
+  "author": "saqlain",
+  "license": "MIT",
+  "skills": [
+    "skills/karpathy-guidelines/SKILL.md"
+  ]
+}
