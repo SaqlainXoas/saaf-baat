@@ -16,7 +16,7 @@ class TestDirectoryStructure:
         required_dirs = [
             "src",
             "src/scrapers",
-            "src/processing",
+            "src/agents",
             "src/db",
             "src/utils",
         ]
@@ -32,7 +32,7 @@ class TestDirectoryStructure:
         required_dirs = [
             "tests",
             "tests/test_scrapers",
-            "tests/test_processing",
+            "tests/test_agents",
             "tests/test_db",
             "tests/test_utils",
         ]
@@ -55,7 +55,7 @@ class TestDirectoryStructure:
         required_init_files = [
             "src/__init__.py",
             "src/scrapers/__init__.py",
-            "src/processing/__init__.py",
+            "src/agents/__init__.py",
             "src/db/__init__.py",
             "src/utils/__init__.py",
             "tests/__init__.py",
