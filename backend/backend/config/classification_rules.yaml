@@ -1,0 +1,136 @@
+categories:
+  economy:
+    keywords:
+      - "rupee"
+      - "dollar"
+      - "inflation"
+      - "budget"
+      - "psx"
+      - "imf"
+      - "gdp"
+      - "interest rate"
+      - "tax"
+      - "revenue"
+    weight: 1.0
+
+  politics:
+    keywords:
+      - "election"
+      - "assembly"
+      - "minister"
+      - "pti"
+      - "pmln"
+      - "ppp"
+      - "parliament"
+      - "senate"
+      - "government"
+      - "opposition"
+    weight: 1.0
+
+  city:
+    keywords:
+      - "karachi"
+      - "lahore"
+      - "islamabad"
+      - "municipal"
+      - "metro"
+      - "transport"
+      - "infrastructure"
+      - "utilities"
+    weight: 1.0
+
+  security:
+    keywords:
+      - "police"
+      - "security"
+      - "terrorism"
+      - "attack"
+      - "incident"
+      - "crime"
+      - "law enforcement"
+    weight: 1.0
+
+  international:
+    keywords:
+      - "foreign"
+      - "diplomatic"
+      - "embassy"
+      - "trade"
+      - "border"
+      - "relations"
+    weight: 1.0
+
+impact_labels:
+  "💳 WALLET":
+    keywords:
+      - "price"
+      - "increase"
+      - "tax"
+      - "salary"
+      - "petrol"
+      - "bill"
+      - "cost"
+      - "inflation"
+      - "fee"
+      - "charge"
+    weight: 1.0
+
+  "🚦 COMMUTE":
+    keywords:
+      - "road"
+      - "closed"
+      - "accident"
+      - "metro"
+      - "traffic"
+      - "transport"
+      - "route"
+      - "highway"
+    weight: 1.0
+
+  "🛡️ SAFETY":
+    keywords:
+      - "crime"
+      - "police"
+      - "security"
+      - "incident"
+      - "alert"
+      - "warning"
+      - "danger"
+    weight: 1.0
+
+  "🏢 WORK":
+    keywords:
+      - "office"
+      - "employment"
+      - "job"
+      - "layoff"
+      - "hiring"
+      - "workplace"
+      - "business hours"
+    weight: 1.0
+
+  "⚡ UTILITIES":
+    keywords:
+      - "electricity"
+      - "power"
+      - "gas"
+      - "water"
+      - "outage"
+      - "supply"
+      - "load shedding"
+    weight: 1.0
+
+  "🏛️ GOVERNANCE":
+    keywords:
+      - "policy"
+      - "law"
+      - "regulation"
+      - "government"
+      - "ministry"
+      - "legislation"
+    weight: 1.0
+
+classification_config:
+  min_confidence: 0.6
+  max_categories_per_article: 2
+  max_impact_labels_per_article: 3

@@ -1,5 +1,8 @@
 # Python
 backend/venv/
+backend/backend/venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -9,6 +12,8 @@ __pycache__/
 dist/
 build/
 *.egg
+.mypy_cache/
+.ruff_cache/
 
 # Environment variables
 .env
@@ -44,6 +49,9 @@ yarn-error.log*
 htmlcov/
 .pytest_cache/
 .tox/
+coverage.xml
+*.cover
+.hypothesis/
 
 # Database
 *.db

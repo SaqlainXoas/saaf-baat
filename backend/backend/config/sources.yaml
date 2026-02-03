@@ -1,0 +1,41 @@
+sources:
+  dawn:
+    url: "https://www.dawn.com"
+    method: "newspaper4k"
+    sections:
+      - "latest-news"
+      - "pakistan"
+      - "business"
+    rate_limit: 1  # seconds between requests
+    timeout: 30
+    enabled: true
+
+  tribune:
+    url: "https://tribune.com.pk"
+    method: "newspaper4k"
+    sections:
+      - "latest"
+      - "pakistan"
+      - "business"
+    rate_limit: 1
+    timeout: 30
+    enabled: true
+
+  express_tribune:
+    url: "https://tribune.com.pk"
+    method: "newspaper4k"
+    sections:
+      - "story"
+      - "pakistan"
+    rate_limit: 1
+    timeout: 30
+    enabled: true
+
+scraping_config:
+  max_articles_per_source: 50
+  max_concurrent_sources: 3
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+  fallback_chain:
+    - "newspaper4k"
+    - "news-please"
+    - "playwright"
