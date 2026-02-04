@@ -344,7 +344,7 @@ class SupabaseClient:
                 .execute()
             )
             
-            return [RawArticle(**item) for item in response.data]
+            return [RawArticle(**self._parse_embedding(item)) for item in response.data]
             
         except Exception as e:
             raise DatabaseError(f"Failed to get articles without clusters: {e}")

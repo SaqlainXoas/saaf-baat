@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS raw_articles (
     author VARCHAR(255),
     publish_date TIMESTAMPTZ,
     scraped_at TIMESTAMPTZ DEFAULT NOW(),
-    content_hash VARCHAR(64) NOT NULL,
+    content_hash VARCHAR(64) NOT NULL UNIQUE,
     cluster_id UUID,
     embedding VECTOR(768),
     metadata JSONB DEFAULT '{}',
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS analyzed_feed (
     metadata JSONB DEFAULT '{}',
     
     -- Constraints
-    CONSTRAINT valid_category CHECK (category IN ('economy', 'politics', 'city', 'education', 'health', 'sports', 'technology', 'entertainment', 'other')),
+    CONSTRAINT valid_category CHECK (category IN ('economy', 'politics', 'city', 'education', 'health', 'sports', 'technology', 'entertainment', 'security', 'international', 'other')),
     CONSTRAINT valid_headline_length CHECK (LENGTH(headline) > 0),
     CONSTRAINT valid_confidence CHECK (classification_confidence IS NULL OR (classification_confidence >= 0 AND classification_confidence <= 1))
 );

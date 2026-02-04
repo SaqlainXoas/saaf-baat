@@ -8,7 +8,7 @@ Implements the "Smart Waterfall" parsing strategy:
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -286,18 +286,31 @@ class ContentParser:
 
         for fmt in formats:
             try:
-                return datetime.strptime(date_str.strip(), fmt)
+                parsed = datetime.strptime(date_str.strip(), fmt)
+                return self._normalize_to_utc(parsed)
             except ValueError:
                 continue
 
         # Try dateutil as fallback
         try:
             from dateutil import parser as dateutil_parser
-            return dateutil_parser.parse(date_str)
+            parsed = dateutil_parser.parse(date_str)
+            return self._normalize_to_utc(parsed)
         except Exception:
             pass
 
         return None
+
+    def _normalize_to_utc(self, dt: datetime) -> datetime:
+        """
+        Normalize datetime to UTC.
+
+        If datetime is naive, assume PKT (UTC+5) before converting to UTC.
+        """
+        if dt.tzinfo is None:
+            pkt = timezone(timedelta(hours=5))
+            dt = dt.replace(tzinfo=pkt)
+        return dt.astimezone(timezone.utc)
 
     def _parse_authors(self, author_str: str) -> List[str]:
         """
