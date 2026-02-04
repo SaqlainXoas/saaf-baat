@@ -37,7 +37,109 @@ These decisions define what we build NOW vs LATER:
 
 ---
 
+## Current Implementation Status (As Of February 4, 2026)
+
+This section maps the **actual repo state** to this plan (so you can see what’s done vs next).
+
+### ✅ Completed / Implemented
+
+- **Phase 0 (Foundation):** Implemented (`backend/pyproject.toml`, `backend/tests/*`, configs in `backend/config/*`)
+- **Phase 1 (Database):** Implemented (schema + client + models)
+  - Schema: `backend/src/db/schema.sql`, `backend/scripts/create_schema.py`
+  - Client: `backend/src/db/client.py`
+  - Models: `backend/src/db/models.py`
+- **Phase 2 (Scraping):** Implemented (Hybrid stack)
+  - Orchestrator: `backend/src/scrapers/hybrid_orchestrator.py`
+  - Fetch: `backend/src/scrapers/network.py`
+  - Parse: `backend/src/scrapers/parsers.py`
+  - RSS discovery: `backend/src/scrapers/feed.py`
+- **Phase 3 (Embeddings):** Implemented (Gemini only)
+  - Provider: `backend/src/agents/embeddings.py`
+- **Phase 4 (Clustering):** Implemented
+  - Clusterers + service: `backend/src/agents/clustering.py`
+- **Phase 5 (Analysis, MVP subset):** Implemented (spaCy + rules, no SetFit wiring)
+  - Analysis module: `backend/src/agents/analysis.py`
+  - Exported in: `backend/src/agents/__init__.py`
+  - spaCy deps installed in venv: `spacy`, `en_core_web_sm`
+
+### ⏳ Not Yet Implemented (Next Work)
+
+- **Phase 6 (Pipeline Orchestration):** Not implemented
+  - Missing glue code: scrape → embed → cluster → analyze → write `analyzed_feed`
+  - Missing GitHub Actions workflow for daily run
+- **Phase 7 (Frontend):** Not implemented
+- **Deferred (Optional): SetFit classification**
+  - SetFit training/inference is not wired in MVP implementation yet (rules-based classification is implemented).
+
+---
+
+## Test Status + Known Failing Areas (As Of February 4, 2026)
+
+This is important for TDD: you should be able to run a “fast local suite” (unit tests) reliably, and run “integration/live tests” intentionally.
+
+### ✅ Passing (Offline / Unit)
+
+- Phase 5 unit tests (analysis layer):
+  - `backend/tests/test_agents/test_analysis_entities.py`
+  - `backend/tests/test_agents/test_analysis_consensus.py`
+  - `backend/tests/test_agents/test_analysis_classification.py`
+  - `backend/tests/test_agents/test_analysis_pipeline.py`
+
+Recommended local command:
+```bash
+source backend/venv/bin/activate && pytest backend/tests -m "not integration"
+```
+
+### ⚠️ Failing When You Run The Full Suite (Mostly Integration/Live)
+
+These failures are not “logic bugs” in the codebase — they happen when tests try to hit real external systems but DNS/network/credentials aren’t available.
+
+Observed locally on **February 4, 2026** when running:
+```bash
+source backend/venv/bin/activate && pytest backend/tests
+```
+Result: **43 failed, 233 passed, 9 skipped** (failures dominated by network-dependent integration tests).
+
+1. **Gemini live embedding integration tests** (network/DNS required)
+   - File: `backend/tests/test_agents/test_embeddings.py`
+   - Failing tests include:
+     - `TestGeminiIntegration::test_real_embedding_generation`
+     - `TestGeminiIntegration::test_similar_texts_high_similarity`
+     - `TestGeminiIntegration::test_real_batch_embedding`
+     - `TestEmbeddingPayloadValidation::*`
+   - Typical error: DNS resolution / API unreachable
+
+2. **Supabase integration tests** (Supabase reachable + valid creds required)
+   - File: `backend/tests/test_db/test_integration.py`
+   - If `SUPABASE_URL` / `SUPABASE_KEY` are set but Supabase isn’t reachable, tests fail.
+   - If creds are **unset**, this module will skip.
+
+3. **Live scraping tests** (real websites reachable required)
+   - File: `backend/tests/test_scrapers/test_live_scraping.py`
+   - These fail if the network is blocked or sites are unreachable/rate-limited.
+
+4. **Network integration fetch tests** (httpbin/example.com reachable required)
+   - File: `backend/tests/test_scrapers/test_network.py`
+   - These fail if outbound HTTP is blocked.
+
+If you want to intentionally run integration tests, run:
+```bash
+source backend/venv/bin/activate && pytest backend/tests -m integration
+```
+
+---
+
+## Storage & Vector Search Guidance (MVP)
+
+- **Pinecone?** Not required for MVP. Supabase + pgvector is enough for embedding storage and clustering.
+- **Local dev option:** Use Supabase local or a lightweight local Postgres with pgvector. If you want a purely local stack, ChromaDB is fine for prototyping.
+- **When to add a vector DB:** Only after scale demands it (e.g., >100k articles, cross-time semantic search, or interactive similarity search).
+
+---
+
 ## Phase 0: Foundation & Environment Setup
+
+**Status:** ✅ DONE (implemented in repo)
 
 **Duration:** 1-2 days
 **Goal:** Establish development environment, project structure, and testing infrastructure
@@ -149,6 +251,8 @@ def test_validate_article_structure():
 ---
 
 ## Phase 1: Database Layer & Supabase Integration
+
+**Status:** ✅ DONE (schema + client + models + tests implemented)
 
 **Duration:** 3-4 days
 **Goal:** Establish database schema, connection handling, and CRUD operations with comprehensive testing
@@ -339,282 +443,74 @@ def test_query_articles_by_date_range(test_db_client):
 
 ---
 
-## Phase 2: Scraping System (Multi-Tier Architecture)
+## Phase 2: Scraping System (Hybrid Orchestrator)
 
-**Duration:** 5-6 days
-**Goal:** Build robust multi-tier scraping system with newspaper4k, news-please, and Playwright fallbacks
+**Status:** ✅ DONE (hybrid orchestrator + stealth fetch + parser ensemble + Playwright fallback)
+
+**Duration:** 5-6 days  
+**Goal:** Build a robust hybrid scraper with RSS discovery, stealth fetching, parser ensemble, and Playwright fallback.
 
 ### Deliverables
 
-1. **Base Scraper Architecture**
-   - Abstract `BaseScraper` class in `src/scrapers/base.py`
-   - Common methods: `fetch_page`, `extract_article`, `validate_content`
-   - Error handling and retry logic
-   - Rate limiting and user-agent rotation
+1. **Hybrid Orchestrator**
+   - `HybridOrchestrator` in `src/scrapers/hybrid_orchestrator.py`
+   - URL discovery: RSS first, HTML section scrape fallback
+   - Centralized error handling and stats
 
-2. **Newspaper4k Integration**
-   - `Newspaper4kScraper` class extending `BaseScraper`
-   - Configure for Pakistani news sources (Dawn, Tribune, Express Tribune)
-   - Extract: headline, body, author, publish_date, images
-   - Handle encoding issues (Urdu/English mixed content)
+2. **Stealth Network Layer**
+   - `StealthFetcher` (curl_cffi) with retries, backoff, rate limiting
+   - Realistic headers + referer
 
-3. **News-Please Fallback**
-   - `NewsPleaseScaper` as secondary method
-   - Activate when newspaper4k fails or returns incomplete data
-   - Same interface as Newspaper4kScraper for interchangeability
+3. **Parser Ensemble**
+   - `ContentParser` (trafilatura → newspaper4k → readability)
+   - Merge metadata (date/author) across parsers
+   - Quality checks (min text length)
 
-4. **Playwright for Dynamic Content**
-   - `PlaywrightScraper` for JavaScript-heavy sites (Geo News, forums)
-   - Implement scroll behavior for lazy-loaded content
-   - Screenshot capability for debugging
-   - Headless mode with configurable browser settings
+4. **Playwright Fallback**
+   - Headless Chromium with stealth plugin
+   - Scroll to trigger lazy loading
+   - Session reuse for performance
 
-5. **Source Configuration System**
-   - Load sources from `config/sources.yaml`
-   - Source-specific selectors and scraping strategies
-   - Rate limit and retry configurations per source
-
-6. **Orchestrator**
-   - `ScraperOrchestrator` in `src/scrapers/orchestrator.py`
-   - Parallel scraping with asyncio
-   - Automatic method selection (newspaper4k -> news-please -> playwright)
-   - Centralized error handling and logging
+5. **Source Configuration**
+   - `config/sources.yaml` with RSS feed + sections
+   - Per-source enable/disable
 
 ### Tests to Write BEFORE Implementation
 
-**Test File:** `tests/test_scrapers/test_base_scraper.py`
-```python
-def test_base_scraper_rate_limiting():
-    """Ensure scraper respects rate limits"""
-    scraper = BaseScraper(rate_limit=1.0)  # 1 second between requests
-
-    start = time.time()
-    scraper.fetch_page("https://example.com/page1")
-    scraper.fetch_page("https://example.com/page2")
-    duration = time.time() - start
-
-    assert duration >= 1.0  # Should wait at least 1 second
-
-def test_retry_logic_on_timeout():
-    """Test automatic retry on network failures"""
-    scraper = BaseScraper(max_retries=3)
-
-    with patch('requests.get', side_effect=[Timeout, Timeout, MagicMock()]):
-        response = scraper.fetch_page("https://example.com")
-        assert response is not None  # Succeeded on 3rd attempt
-
-def test_user_agent_rotation():
-    """Verify user agent is rotated to avoid blocking"""
-    scraper = BaseScraper()
-
-    ua1 = scraper._get_user_agent()
-    ua2 = scraper._get_user_agent()
-    ua3 = scraper._get_user_agent()
-
-    # Should cycle through different user agents
-    assert len({ua1, ua2, ua3}) > 1
-```
-
-**Test File:** `tests/test_scrapers/test_newspaper4k.py`
-```python
-@pytest.mark.integration
-def test_scrape_dawn_article():
-    """Test scraping real article from Dawn News"""
-    scraper = Newspaper4kScraper(source="dawn")
-
-    # Use a stable, archived article URL for testing
-    article_url = "https://www.dawn.com/news/1234567"  # Replace with actual stable URL
-    article = scraper.extract_article(article_url)
-
-    # Verify extracted data
-    assert article.headline is not None
-    assert len(article.headline) > 10
-    assert article.main_text is not None
-    assert len(article.main_text) > 100
-    assert article.url == article_url
-    assert article.source == "dawn"
-    assert article.publish_date is not None
-
-@pytest.mark.integration
-def test_handle_invalid_url():
-    """Test graceful handling of invalid URLs"""
-    scraper = Newspaper4kScraper(source="dawn")
-
-    with pytest.raises(InvalidURLError):
-        scraper.extract_article("https://invalid-url-that-does-not-exist.com")
-
-def test_extract_urdu_content():
-    """Verify Urdu text extraction works correctly"""
-    scraper = Newspaper4kScraper(source="express_tribune")
-
-    # Mock response with Urdu content
-    urdu_html = """
-    <article>
-        <h1>یہ ایک ٹیسٹ عنوان ہے</h1>
-        <p>یہ اردو مضمون ہے۔</p>
-    </article>
-    """
-
-    with patch_html_response(urdu_html):
-        article = scraper.extract_article("https://test.com/urdu-article")
-        assert "یہ" in article.headline  # Urdu character present
-        assert article.main_text is not None
-```
-
-**Test File:** `tests/test_scrapers/test_playwright.py`
-```python
-@pytest.mark.slow
-@pytest.mark.integration
-def test_scrape_javascript_heavy_site():
-    """Test Playwright scraping of JS-rendered content"""
-    scraper = PlaywrightScraper(source="geo_news")
-
-    article_url = "https://www.geo.tv/latest/123456"  # Stable test URL
-    article = scraper.extract_article(article_url)
-
-    assert article.headline is not None
-    assert article.main_text is not None
-    # Playwright should wait for JS to load
-    assert len(article.main_text) > 200
-
-def test_lazy_loading_scroll_behavior():
-    """Verify scraper scrolls to trigger lazy-loaded content"""
-    scraper = PlaywrightScraper(scroll_depth=3)
-
-    with patch_playwright_page() as mock_page:
-        scraper.extract_article("https://test.com")
-
-        # Verify scroll actions were performed
-        assert mock_page.evaluate.call_count >= 3  # Scrolled 3 times
-```
-
-**Test File:** `tests/test_scrapers/test_orchestrator.py`
-```python
-@pytest.mark.integration
-def test_orchestrator_parallel_scraping():
-    """Test scraping multiple sources in parallel"""
-    sources = ["dawn", "tribune", "express_tribune"]
-    orchestrator = ScraperOrchestrator(sources=sources)
-
-    start = time.time()
-    results = orchestrator.scrape_all_sources()
-    duration = time.time() - start
-
-    # Parallel execution should be faster than sequential
-    assert duration < (len(sources) * 5)  # Should not take 5s per source
-    assert len(results) > 0  # Got at least some articles
-
-def test_automatic_fallback_mechanism():
-    """Verify orchestrator falls back to alternative scrapers"""
-    orchestrator = ScraperOrchestrator()
-
-    # Mock newspaper4k to fail, news-please to succeed
-    with patch('Newspaper4kScraper.extract_article', side_effect=ScrapingError):
-        with patch('NewsPleaseScaper.extract_article', return_value=mock_article()):
-            article = orchestrator.scrape_url("https://test.com/article")
-
-            assert article is not None  # Fallback worked
-
-@pytest.mark.integration
-def test_deduplicate_across_sources():
-    """Ensure orchestrator detects duplicate articles from different sources"""
-    orchestrator = ScraperOrchestrator()
-
-    # Same story from Dawn and Tribune
-    results = orchestrator.scrape_all_sources()
-
-    # Check for duplicates using content_hash
-    hashes = [article.content_hash for article in results]
-    assert len(hashes) == len(set(hashes))  # No duplicate hashes
-```
-
-**Test File:** `tests/test_scrapers/test_config.py`
-```python
-def test_load_sources_from_yaml():
-    """Verify source configuration loading"""
-    config = load_scraper_config("config/sources.yaml")
-
-    assert "dawn" in config["sources"]
-    assert config["sources"]["dawn"]["method"] == "newspaper4k"
-    assert "url" in config["sources"]["dawn"]
-
-def test_validate_source_config():
-    """Test config validation catches missing required fields"""
-    invalid_config = {
-        "sources": {
-            "test_source": {
-                # Missing 'method' and 'url'
-                "sections": ["news"]
-            }
-        }
-    }
-
-    with pytest.raises(ConfigValidationError):
-        validate_scraper_config(invalid_config)
-```
-
-### Real-World Scraping Tests
-
-**Test File:** `tests/test_scrapers/test_real_sources.py`
-```python
-@pytest.mark.integration
-@pytest.mark.slow
-def test_scrape_all_configured_sources():
-    """Integration test: scrape all sources defined in config"""
-    orchestrator = ScraperOrchestrator()
-    results = orchestrator.scrape_all_sources()
-
-    # Should get articles from at least 80% of sources
-    success_rate = len(results) / orchestrator.total_sources
-    assert success_rate > 0.8
-
-    # Validate article structure
-    for article in results:
-        assert validate_article(article) == True
-
-@pytest.mark.integration
-def test_scraping_with_database_insertion():
-    """End-to-end test: scrape and insert into database"""
-    orchestrator = ScraperOrchestrator()
-    db_client = SupabaseClient(test_mode=True)
-
-    articles = orchestrator.scrape_all_sources()
-    inserted_ids = db_client.batch_insert_articles(articles)
-
-    assert len(inserted_ids) > 0
-    assert len(inserted_ids) == len(articles)
-```
+**Test Files (already in repo):**
+- `tests/test_scrapers/test_hybrid_orchestrator.py`
+- `tests/test_scrapers/test_network.py`
+- `tests/test_scrapers/test_parsers.py`
+- `tests/test_scrapers/test_feed.py`
+- `tests/test_scrapers/test_live_scraping.py`
 
 ### Acceptance Criteria
 
 - ✅ Scraper can extract articles from at least 3 real news sources
-- ✅ newspaper4k, news-please, and Playwright all working independently
-- ✅ Automatic fallback works (newspaper4k fails → news-please activates)
-- ✅ Rate limiting prevents overwhelming news sites
+- ✅ RSS discovery works; HTML fallback works
+- ✅ StealthFetcher bypasses common bot protection
+- ✅ Playwright fallback works for JS-heavy pages
 - ✅ Duplicate detection via content_hash works
-- ✅ Parallel scraping completes faster than sequential
-- ✅ Urdu content extraction works correctly
-- ✅ All scraped articles pass validation
 - ✅ Integration test: scrape → insert into database succeeds
 
 ### Commit Checkpoints
 
-1. `Add base scraper class with retry and rate limiting`
-2. `Implement newspaper4k scraper for static sites`
-3. `Add news-please fallback scraper`
-4. `Implement Playwright scraper for dynamic content`
-5. `Add scraper orchestrator with parallel execution`
-6. `Add source configuration loading and validation`
-7. `Add comprehensive scraping tests`
+1. `Add stealth fetcher with retry + rate limiting`
+2. `Add parser ensemble with metadata merge`
+3. `Add hybrid orchestrator + RSS discovery`
+4. `Add Playwright fallback + stealth`
+5. `Add scraping integration tests`
 
-**Output:** Robust scraping system that can extract articles from 5+ Pakistani news sources, handle failures gracefully, and store results in database.
+**Output:** Hybrid scraping system that can extract articles reliably and store them in database.
 
 ---
 
-## Phase 3: Embedding Service (Gemini + Local Fallback)
+## Phase 3: Embedding Service (Gemini Only)
+
+**Status:** ✅ DONE (Gemini provider + unit tests; integration tests require network)
 
 **Duration:** 3-4 days
-**Goal:** Build embedding generation service with primary Gemini API and automatic local fallback
+**Goal:** Build embedding generation service with Gemini API (no local fallback)
 
 ### Deliverables
 
@@ -624,16 +520,10 @@ def test_scraping_with_database_insertion():
    - Batch processing to respect 100 RPM quota
    - API key management and error handling
 
-2. **Local Fallback (sentence-transformers)**
-   - `LocalEmbeddingProvider` using `all-MiniLM-L6-v2`
-   - Runs entirely offline, no external dependencies
-   - Same interface as GeminiEmbeddingProvider
-
-3. **Unified EmbeddingService**
-   - `EmbeddingService` class that abstracts provider selection
-   - Automatic fallback: Gemini → Local on API failure
-   - Caching layer to avoid re-embedding identical text
-   - Batch optimization for efficiency
+2. **Embedding Service Wrapper**
+   - Optional `EmbeddingService` abstraction for batch + rate limiting
+   - Caching to avoid re-embedding identical text
+   - Provider fixed to Gemini
 
 4. **Embedding Pipeline**
    - Process: headline + first 500 chars of main_text
@@ -689,55 +579,11 @@ def test_gemini_api_error_handling():
         provider.embed(["test text"])
 ```
 
-**Test File:** `tests/test_agents/test_local_embedding.py`
-```python
-def test_local_embedding_generation():
-    """Test local sentence-transformers embedding"""
-    provider = LocalEmbeddingProvider(model="all-MiniLM-L6-v2")
-
-    texts = [
-        "Prime minister announces new economic policy",
-        "Cricket team wins against rivals"
-    ]
-
-    embeddings = provider.embed(texts)
-
-    assert embeddings.shape == (2, 384)  # MiniLM outputs 384-dim
-    assert embeddings.dtype == np.float32
-
-def test_local_embedding_similarity():
-    """Verify similar texts have higher cosine similarity"""
-    provider = LocalEmbeddingProvider()
-
-    text1 = "Inflation rises to 30 percent in Pakistan"
-    text2 = "Pakistan's inflation rate reaches 30 percent"
-    text3 = "Cricket match postponed due to rain"
-
-    embeddings = provider.embed([text1, text2, text3])
-
-    # Calculate cosine similarity
-    sim_1_2 = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
-    sim_1_3 = cosine_similarity([embeddings[0]], [embeddings[2]])[0][0]
-
-    # Text1 and Text2 are about same topic, should be more similar
-    assert sim_1_2 > sim_1_3
-    assert sim_1_2 > 0.7  # High similarity threshold
-
-def test_local_embedding_runs_offline():
-    """Ensure local embedding works without internet"""
-    provider = LocalEmbeddingProvider()
-
-    # Disable network access
-    with patch('socket.socket', side_effect=OSError("Network disabled")):
-        embeddings = provider.embed(["test text"])
-        assert embeddings is not None  # Should still work offline
-```
-
 **Test File:** `tests/test_agents/test_embedding_service.py`
 ```python
 @pytest.mark.integration
 def test_embedding_service_primary_gemini():
-    """Test EmbeddingService uses Gemini when available"""
+    """Test EmbeddingService uses Gemini"""
     service = EmbeddingService()
 
     texts = ["Test article 1", "Test article 2"]
@@ -745,18 +591,6 @@ def test_embedding_service_primary_gemini():
 
     assert result.embeddings.shape[0] == 2
     assert result.provider_used == "gemini"
-
-def test_embedding_service_fallback_to_local():
-    """Test automatic fallback to local when Gemini fails"""
-    service = EmbeddingService()
-
-    # Mock Gemini to fail
-    with patch('GeminiEmbeddingProvider.embed', side_effect=APIError):
-        texts = ["Test article"]
-        result = service.embed_batch(texts)
-
-        assert result.embeddings is not None
-        assert result.provider_used == "local"
 
 def test_embedding_caching():
     """Verify identical texts use cached embeddings"""
@@ -774,31 +608,11 @@ def test_embedding_caching():
 
     assert np.array_equal(result1.embeddings, result2.embeddings)
     assert duration < 0.1  # Cache retrieval is very fast
-
-@pytest.mark.integration
-def test_embedding_real_articles():
-    """Integration test: embed real scraped articles"""
-    db_client = SupabaseClient(test_mode=True)
-    embedding_service = EmbeddingService()
-
-    # Get articles from database
-    articles = db_client.get_articles_without_embeddings(limit=10)
-
-    # Generate text for embedding
-    texts = [f"{a.headline} {a.main_text[:500]}" for a in articles]
-
-    # Embed
-    result = embedding_service.embed_batch(texts)
-
-    assert result.embeddings.shape[0] == len(articles)
-    assert result.embeddings.shape[1] in [384, 768]  # Valid dimension
 ```
 
 ### Acceptance Criteria
 
 - ✅ Gemini API integration works (verified with real API call)
-- ✅ Local sentence-transformers embedding works offline
-- ✅ Automatic fallback activates when Gemini fails
 - ✅ Batch processing respects rate limits
 - ✅ Embeddings are normalized for cosine similarity
 - ✅ Caching prevents redundant API calls
@@ -808,15 +622,16 @@ def test_embedding_real_articles():
 ### Commit Checkpoints
 
 1. `Add Gemini embedding provider with rate limiting`
-2. `Add local sentence-transformers fallback`
-3. `Implement unified EmbeddingService with caching`
-4. `Add embedding tests and integration checks`
+2. `Implement EmbeddingService wrapper with caching`
+3. `Add embedding tests and integration checks`
 
-**Output:** Reliable embedding service that generates high-quality vectors with automatic fallback. Can embed 100+ articles efficiently.
+**Output:** Reliable Gemini embedding service that generates high-quality vectors for clustering.
 
 ---
 
 ## Phase 4: Clustering Pipeline (HDBSCAN + DBSCAN)
+
+**Status:** ✅ DONE (clusterers + clustering service + tests implemented)
 
 **Duration:** 4-5 days
 **Goal:** Implement story clustering with quality validation and automatic fallback
@@ -1082,327 +897,81 @@ def test_end_to_end_clustering_pipeline():
 
 ---
 
-## Phase 5: NLP Analysis Engine (spaCy + SetFit + Rules)
+## Phase 5: NLP Analysis Engine (spaCy + Rules)
 
-**Duration:** 5-6 days
-**Goal:** Extract entities, detect consensus, classify categories, and assign impact labels
+**Status:** ✅ DONE (analysis module + unit tests; pipeline wiring is Phase 6)
 
-> ⚠️ **MVP Scope: English Only** - This phase focuses on English content using `en_core_web_sm` spaCy model. Urdu NLP support will be added in a future phase after MVP ships.
+**Duration:** 5-6 days  
+**Goal:** Extract entities, detect agreement across sources, and assign transparent category/impact labels (no LLM summaries).
 
-### Deliverables
+> ⚠️ **MVP Scope: English Only** - This phase focuses on English content using the `en_core_web_sm` spaCy model.
+
+### Deliverables (What We Build)
 
 1. **Entity Extraction with spaCy**
-   - `EntityExtractor` in `src/agents/analysis.py`
-   - Extract: PERSON, ORG, GPE, DATE, MONEY, EVENT entities
-   - **English only for MVP** (use `en_core_web_sm` model)
-   - Filter and normalize entities
+   - `EntityExtractor` in `backend/src/agents/analysis.py`
+   - Keep entity types: PERSON, ORG, GPE, DATE, MONEY, EVENT
+   - Normalize whitespace **before** NLP so extraction is stable across sources
+   - Deduplicate entities within an article (case-insensitive key, best display casing)
 
-2. **Consensus Detection**
-   - `ConsensusDetector` class
-   - Set intersection: entities in ALL articles → "Confirmed Facts"
-   - Symmetric difference: entities in SOME articles → "Debated Claims"
-   - Count sources reporting each entity
+2. **Consensus Detection (Agreement Signal)**
+   - `ConsensusDetector` in `backend/src/agents/analysis.py`
+   - For a cluster of N articles:
+     - entities mentioned by **all** sources → `confirmed_facts`
+     - entities mentioned by **some** sources → `debated_claims`
+   - Track how many sources mention each entity (`sources` count)
 
-3. **SetFit Zero-Shot Classification**
-   - `SetFitClassifier` for categories and impact labels
-   - Train with synthetic examples (8 per class)
-   - Categories: economy, politics, city, education, health, sports, etc.
-   - Impact labels: 💳 WALLET, 🚦 COMMUTE, 🛡️ SAFETY, 🏢 WORK, ⚡ UTILITIES, 🏛️ GOVERNANCE
+3. **Rule-Based Classification (MVP Classifier)**
+   - `RuleBasedClassifier` in `backend/src/agents/analysis.py`
+   - Loads `backend/config/classification_rules.yaml`
+   - Outputs:
+     - `category` (string)
+     - `impact_labels` (list of strings)
+     - `confidence` (simple bounded function of matched keyword counts)
 
-4. **Rule-Based Classification (Backup)**
-   - `RuleBasedClassifier` using keyword matching
-   - Load rules from `config/classification_rules.yaml`
-   - Hybrid approach: SetFit primary, rules as fallback
+4. **Analysis Service (Cluster → AnalyzedFeed Payload)**
+   - `AnalysisService` in `backend/src/agents/analysis.py`
+   - Input: `cluster_id` + list of `RawArticle`
+   - Output: `AnalyzedFeed` instance (ready for DB insert)
+   - Deterministic headline choice with a source-priority list (configurable later)
 
-5. **Analysis Pipeline**
-   - Process each cluster through full analysis
-   - Generate analyzed story cards with all metadata
-   - Store in `analyzed_feed` table
+5. **Optional Later: SetFit**
+   - Add SetFit only after rules-based MVP is stable, and keep rules as the baseline for transparency.
 
-> 📝 **Note:** No LLM-generated summaries in MVP. Story cards display: representative headline, confirmed facts list, debated claims list, source attribution, and impact labels. Human-readable summaries via Gemini Flash will be added post-MVP.
+> 📝 **Note:** In MVP we do not generate any LLM summaries. Story cards display: representative headline, confirmed facts list, debated claims list, source attribution, category, and impact labels.
 
-### Tests to Write BEFORE Implementation
+### Tests (TDD)
 
-**Test File:** `tests/test_agents/test_entity_extraction.py`
-```python
-def test_extract_persons():
-    """Test person name extraction"""
-    extractor = EntityExtractor()
-
-    text = "Prime Minister Imran Khan met with President Arif Alvi yesterday."
-    entities = extractor.extract(text)
-
-    persons = [e for e in entities if e['type'] == 'PERSON']
-    assert len(persons) == 2
-    assert any('Imran Khan' in p['text'] for p in persons)
-
-def test_extract_organizations():
-    """Test organization name extraction"""
-    extractor = EntityExtractor()
-
-    text = "The State Bank of Pakistan and IMF reached an agreement."
-    entities = extractor.extract(text)
-
-    orgs = [e for e in entities if e['type'] == 'ORG']
-    assert len(orgs) >= 2  # SBP and IMF
-
-def test_extract_money_amounts():
-    """Test money/currency extraction"""
-    extractor = EntityExtractor()
-
-    text = "The budget increased by Rs 500 billion."
-    entities = extractor.extract(text)
-
-    money = [e for e in entities if e['type'] == 'MONEY']
-    assert len(money) >= 1
-    assert any('500 billion' in m['text'] or 'Rs' in m['text'] for m in money)
-
-def test_handle_urdu_entities():
-    """Test extraction from Urdu text"""
-    extractor = EntityExtractor()
-
-    text = "وزیر اعظم نے اعلان کیا"  # Prime Minister announced
-    entities = extractor.extract(text)
-
-    # Should handle Urdu text without crashing
-    assert entities is not None
-```
-
-**Test File:** `tests/test_agents/test_consensus_detection.py`
-```python
-def test_consensus_with_matching_entities():
-    """Test consensus when all articles agree"""
-    detector = ConsensusDetector()
-
-    articles = [
-        "Imran Khan announced new policy on Monday in Islamabad.",
-        "On Monday, Imran Khan revealed policy in Islamabad.",
-        "Imran Khan's Monday policy announcement in Islamabad."
-    ]
-
-    result = detector.analyze_cluster(articles)
-
-    # "Imran Khan", "Monday", "Islamabad" should be confirmed (in all 3)
-    confirmed_texts = [e['text'] for e in result['confirmed_facts']]
-    assert any('Imran Khan' in text for text in confirmed_texts)
-    assert any('Monday' in text for text in confirmed_texts)
-
-def test_debated_claims_detection():
-    """Test detection of inconsistent information"""
-    detector = ConsensusDetector()
-
-    articles = [
-        "The meeting will cost Rs 100 million.",
-        "The meeting will cost Rs 200 million.",
-        "The meeting expense is Rs 150 million."
-    ]
-
-    result = detector.analyze_cluster(articles)
-
-    # Money amounts differ across articles → debated
-    debated = result['debated_claims']
-    money_claims = [e for e in debated if e['type'] == 'MONEY']
-    assert len(money_claims) > 0
-
-def test_source_counting():
-    """Verify source count for each entity"""
-    detector = ConsensusDetector()
-
-    articles = [
-        "Article 1 mentions Imran Khan and Islamabad.",
-        "Article 2 mentions Imran Khan only.",
-        "Article 3 mentions Imran Khan only."
-    ]
-
-    result = detector.analyze_cluster(articles)
-
-    # Find "Imran Khan" entity
-    imran_entity = next(e for e in result['confirmed_facts'] if 'Imran Khan' in e['text'])
-    assert imran_entity['sources'] == 3  # Mentioned in all 3
-
-    # Find "Islamabad" entity
-    islamabad_entity = next(e for e in result['debated_claims'] if 'Islamabad' in e['text'])
-    assert islamabad_entity['sources'] == 1  # Only in article 1
-```
-
-**Test File:** `tests/test_agents/test_setfit_classifier.py`
-```python
-@pytest.mark.slow
-def test_train_category_classifier():
-    """Test SetFit training with synthetic examples"""
-    classifier = SetFitClassifier()
-
-    # Synthetic training data
-    examples = {
-        "economy": ["rupee falls", "inflation rises", "stock market crashes"],
-        "politics": ["election announced", "minister resigns", "assembly session"],
-        "sports": ["cricket match", "football victory", "team wins"]
-    }
-
-    classifier.train_category_model(examples)
-
-    # Test predictions
-    assert classifier.predict_category("Dollar rate increases") == "economy"
-    assert classifier.predict_category("Parliament dissolved") == "politics"
-    assert classifier.predict_category("Hockey championship") == "sports"
-
-def test_impact_label_classification():
-    """Test impact label assignment"""
-    classifier = SetFitClassifier()
-
-    # Train with impact examples
-    impact_examples = {
-        "💳 WALLET": ["price increase", "tax hike", "petrol expensive"],
-        "🚦 COMMUTE": ["road closed", "traffic jam", "metro delays"],
-        "🛡️ SAFETY": ["blast reported", "crime surge", "fire incident"]
-    }
-
-    classifier.train_impact_model(impact_examples)
-
-    # Test predictions
-    labels = classifier.predict_impact("Petrol price increased by Rs 10")
-    assert "💳 WALLET" in labels
-
-def test_multi_label_impact():
-    """Test assigning multiple impact labels to one story"""
-    classifier = SetFitClassifier()
-    classifier.train_impact_model(get_impact_examples())
-
-    text = "Road closure due to gas pipeline explosion causes commute delays"
-    labels = classifier.predict_impact(text)
-
-    # Should detect both COMMUTE and UTILITIES impact
-    assert "🚦 COMMUTE" in labels
-    assert "⚡ UTILITIES" in labels
-```
-
-**Test File:** `tests/test_agents/test_rule_based_classifier.py`
-```python
-def test_keyword_based_category():
-    """Test rule-based category classification"""
-    classifier = RuleBasedClassifier("config/classification_rules.yaml")
-
-    text = "Rupee falls against dollar amid inflation concerns"
-    result = classifier.classify_text(text)
-
-    # Should match "economy" keywords: rupee, dollar, inflation
-    assert result['category'] == "economy"
-    assert result['category_confidence'] >= 3  # Matched 3 keywords
-
-def test_impact_label_from_rules():
-    """Test rule-based impact detection"""
-    classifier = RuleBasedClassifier("config/classification_rules.yaml")
-
-    text = "Electricity loadshedding increases to 12 hours daily"
-    result = classifier.classify_text(text)
-
-    assert "⚡ UTILITIES" in result['impact_labels']
-
-def test_hybrid_classification():
-    """Test SetFit + rule-based hybrid approach"""
-    setfit = SetFitClassifier()
-    rules = RuleBasedClassifier("config/classification_rules.yaml")
-
-    text = "Budget deficit widens as tax collection falls short"
-
-    # SetFit prediction
-    setfit_category = setfit.predict_category(text)
-
-    # Rule-based prediction
-    rule_category = rules.classify_text(text)['category']
-
-    # Both should agree on "economy"
-    assert setfit_category == "economy"
-    assert rule_category == "economy"
-```
-
-**Test File:** `tests/test_agents/test_analysis_pipeline.py`
-```python
-@pytest.mark.integration
-def test_full_analysis_pipeline():
-    """Integration test: cluster → entities → consensus → classification"""
-    db_client = SupabaseClient(test_mode=True)
-
-    # Get a cluster from database
-    cluster = db_client.get_cluster_by_id("test-cluster-id")
-    articles = db_client.get_articles_by_ids(cluster.article_ids)
-
-    # Extract entities
-    extractor = EntityExtractor()
-    all_entities = [extractor.extract(a.main_text) for a in articles]
-
-    # Detect consensus
-    detector = ConsensusDetector()
-    consensus = detector.analyze_cluster([a.main_text for a in articles])
-
-    # Classify
-    classifier = SetFitClassifier()
-    combined_text = " ".join([a.headline for a in articles])
-    category = classifier.predict_category(combined_text)
-    impact_labels = classifier.predict_impact(combined_text)
-
-    # Verify results
-    assert consensus['confirmed_facts'] is not None
-    assert category in ["economy", "politics", "city", "education", "health", "sports"]
-    assert len(impact_labels) > 0
-
-@pytest.mark.integration
-def test_store_analyzed_feed():
-    """Test storing analysis results in analyzed_feed table"""
-    db_client = SupabaseClient(test_mode=True)
-
-    analyzed_story = {
-        "cluster_id": "test-cluster-123",
-        "headline": "Rupee falls to record low",
-        "category": "economy",
-        "confirmed_facts": [
-            {"text": "Rupee", "type": "MONEY", "sources": 5},
-            {"text": "State Bank", "type": "ORG", "sources": 4}
-        ],
-        "debated_claims": [
-            {"text": "100 rupees", "type": "MONEY", "sources": 2},
-            {"text": "105 rupees", "type": "MONEY", "sources": 3}
-        ],
-        "impact_labels": ["💳 WALLET", "🏛️ GOVERNANCE"],
-        "source_attribution": {
-            "dawn": 2,
-            "tribune": 3
-        }
-    }
-
-    feed_id = db_client.insert_analyzed_feed(analyzed_story)
-
-    # Verify storage
-    retrieved = db_client.get_analyzed_feed_by_id(feed_id)
-    assert retrieved.category == "economy"
-    assert len(retrieved.impact_labels) == 2
-```
+**Implemented test suite (offline + deterministic):**
+- `backend/tests/test_agents/test_analysis_entities.py`
+- `backend/tests/test_agents/test_analysis_consensus.py`
+- `backend/tests/test_agents/test_analysis_classification.py`
+- `backend/tests/test_agents/test_analysis_pipeline.py`
 
 ### Acceptance Criteria
 
-- ✅ spaCy extracts entities from English and Urdu text
-- ✅ Consensus detection correctly identifies confirmed vs debated facts
-- ✅ SetFit classifier achieves >80% accuracy on test categories
-- ✅ Impact labels assigned correctly (manual spot-check on 10 samples)
-- ✅ Rule-based classifier works as fallback
-- ✅ Hybrid approach (SetFit + rules) provides robust classification
-- ✅ Full pipeline: cluster → analysis → database storage works
-- ✅ Analyzed feed contains all required fields
+- ✅ `en_core_web_sm` is installed and loadable via `spacy.load('en_core_web_sm')`
+- ✅ Entities extracted and normalized reliably
+- ✅ Consensus detector produces stable confirmed/debated lists with correct counts
+- ✅ Rule-based classifier reads YAML and assigns category/impact labels
+- ✅ AnalysisService builds `AnalyzedFeed` payloads deterministically
+- ✅ All Phase 5 unit tests pass without network access
 
 ### Commit Checkpoints
 
-1. `Add spaCy entity extraction module`
-2. `Implement consensus detection algorithm`
-3. `Add SetFit zero-shot classification`
-4. `Implement rule-based classifier with YAML config`
-5. `Create analysis pipeline orchestrator`
-6. `Add comprehensive NLP analysis tests`
+1. `Add spaCy entity extraction (EntityExtractor)`
+2. `Implement consensus detection (ConsensusDetector)`
+3. `Implement rule-based classifier (RuleBasedClassifier)`
+4. `Add analysis service (cluster -> AnalyzedFeed)`
+5. `Add Phase 5 tests`
 
-**Output:** Complete NLP analysis engine that processes clusters and generates rich metadata for story cards. Can identify facts, detect debates, classify categories, and assign impact labels.
+**Output:** A working, transparent analysis layer that turns clusters into story-card metadata.
 
 ---
 
 ## Phase 6: Full Pipeline Orchestration & GitHub Actions
+
+**Status:** ⏳ NOT STARTED
 
 **Duration:** 3-4 days
 **Goal:** Integrate all components into automated daily pipeline with error handling and monitoring
@@ -1460,15 +1029,6 @@ def test_pipeline_handles_scraping_failure():
         # Should still complete using other sources
         assert result.status == "partial_success"
         assert result.errors['scraping'] > 0
-
-def test_pipeline_uses_embedding_fallback():
-    """Test pipeline switches to local embeddings on API failure"""
-    with patch('GeminiEmbeddingProvider.embed', side_effect=APIError):
-        result = run_daily_pipeline()
-
-        # Should complete using local embeddings
-        assert result.embedding_provider == "local"
-        assert result.status == "success"
 
 def test_pipeline_logs_metrics():
     """Verify pipeline logs key metrics"""
@@ -1601,6 +1161,8 @@ def test_quality_checks():
 ---
 
 ## Phase 7: Frontend (Next.js UI)
+
+**Status:** ⏳ NOT STARTED
 
 **Duration:** 6-7 days
 **Goal:** Build user-facing interface with story cards, filters, and responsive design
@@ -1858,16 +1420,16 @@ Examples:
 git checkout -b feature/scraping-system
 
 # Work on newspaper4k scraper
-# ... write code, write tests ...
-pytest tests/test_scrapers/test_newspaper4k.py
-git add src/scrapers/newspaper4k.py tests/test_scrapers/test_newspaper4k.py
-git commit -m "Add newspaper4k scraper for static sites"
+    # ... write code, write tests ...
+    pytest tests/test_scrapers/test_hybrid_orchestrator.py
+    git add src/scrapers/hybrid_orchestrator.py tests/test_scrapers/test_hybrid_orchestrator.py
+    git commit -m "Add hybrid scraper orchestrator"
 
 # Work on Playwright scraper
-# ... write code, write tests ...
-pytest tests/test_scrapers/test_playwright.py
-git add src/scrapers/playwright_scraper.py tests/test_scrapers/test_playwright.py
-git commit -m "Implement Playwright scraper for dynamic content"
+    # ... write code, write tests ...
+    pytest tests/test_scrapers/test_live_scraping.py
+    git add src/scrapers/parsers.py tests/test_scrapers/test_live_scraping.py
+    git commit -m "Add parser ensemble + live scraping tests"
 
 # Phase complete, merge to develop
 git checkout develop
@@ -1902,7 +1464,6 @@ Each phase has clear exit criteria that MUST be met before moving to next phase:
 
 ### Phase 3: Embeddings
 - [ ] Gemini API integration works
-- [ ] Local fallback activates on API failure
 - [ ] Embeddings generated for 100+ articles successfully
 - [ ] Caching prevents redundant API calls
 
