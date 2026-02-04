@@ -7,8 +7,6 @@ Contains:
 """
 from src.agents.embeddings import (
     GeminiEmbeddingProvider,
-    LocalEmbeddingProvider,
-    EmbeddingService,
     EmbeddingResult,
     EmbeddingError,
 )
@@ -28,8 +26,6 @@ from src.agents.clustering import (
 __all__ = [
     # Embeddings
     "GeminiEmbeddingProvider",
-    "LocalEmbeddingProvider",
-    "EmbeddingService",
     "EmbeddingResult",
     "EmbeddingError",
     # Clustering

@@ -6,6 +6,7 @@ Uses Google's text-embedding-004 model optimized for clustering tasks.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 
 import google.generativeai as genai
@@ -132,8 +133,6 @@ class GeminiEmbeddingProvider:
         Returns:
             EmbeddingResult with all embeddings.
         """
-        import time
-
         all_embeddings = []
 
         for i in range(0, len(texts), batch_size):

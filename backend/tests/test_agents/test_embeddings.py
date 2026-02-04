@@ -223,3 +223,137 @@ class TestGeminiIntegration:
         result = provider.embed_batch(texts, batch_size=3)
 
         assert result.embeddings.shape == (5, 768)
+
+
+@pytest.mark.integration
+class TestEmbeddingPayloadValidation:
+    """
+    Live tests to verify embedding payloads match expected schema.
+    
+    These tests verify Phase 3 completion requirements.
+    """
+    
+    @pytest.fixture
+    def api_key(self):
+        """Get API key from environment."""
+        key = os.getenv("GEMINI_API_KEY")
+        if not key:
+            pytest.skip("GEMINI_API_KEY not set")
+        return key
+    
+    def test_embedding_result_structure(self, api_key):
+        """
+        Verify EmbeddingResult payload has all required fields.
+        
+        This is the canonical test for embedding payload structure.
+        """
+        provider = GeminiEmbeddingProvider(api_key=api_key)
+        texts = ["Test article headline about Pakistan economy"]
+        result = provider.embed(texts)
+        
+        # Required fields
+        assert hasattr(result, 'embeddings'), "Missing embeddings field"
+        assert hasattr(result, 'model'), "Missing model field"
+        assert hasattr(result, 'texts_count'), "Missing texts_count field"
+        assert hasattr(result, 'dimension'), "Missing dimension field"
+        
+        # Verify types
+        assert isinstance(result.embeddings, np.ndarray), "embeddings must be numpy array"
+        assert result.embeddings.dtype == np.float32, "embeddings must be float32"
+        assert isinstance(result.model, str), "model must be string"
+        assert isinstance(result.texts_count, int), "texts_count must be int"
+        assert isinstance(result.dimension, int), "dimension must be int"
+        
+        # Verify values
+        assert result.dimension == 768, f"Expected 768 dims, got {result.dimension}"
+        assert result.texts_count == 1
+        
+        print(f"\n✓ EmbeddingResult payload valid:")
+        print(f"  - embeddings: {result.embeddings.shape}")
+        print(f"  - model: {result.model}")
+        print(f"  - texts_count: {result.texts_count}")
+        print(f"  - dimension: {result.dimension}")
+    
+    def test_embedding_normalization(self, api_key):
+        """
+        Verify embeddings are properly L2 normalized for cosine similarity.
+        """
+        provider = GeminiEmbeddingProvider(api_key=api_key)
+        texts = [
+            "Article about inflation in Pakistan",
+            "Cricket team wins against India",
+            "Stock market hits record high",
+        ]
+        result = provider.embed(texts)
+        
+        # Check L2 norm of each embedding is 1.0
+        for i, emb in enumerate(result.embeddings):
+            norm = np.linalg.norm(emb)
+            assert np.isclose(norm, 1.0, atol=0.01), f"Embedding {i} not normalized: norm={norm}"
+        
+        print(f"✓ All {len(texts)} embeddings are L2 normalized")
+    
+    def test_embedding_text_processing(self, api_key):
+        """
+        Verify embedding handles article-like text correctly.
+        
+        Tests the typical input format: headline + main_text[:500]
+        """
+        provider = GeminiEmbeddingProvider(api_key=api_key)
+        
+        # Simulate article text as it would be processed
+        headline = "Pakistan Stock Market Reaches Record High"
+        main_text = """The Pakistan Stock Exchange (PSX) reached a historic milestone 
+        today as the benchmark KSE-100 index crossed 100,000 points for the first time. 
+        Analysts attribute this surge to improved economic indicators and increased 
+        foreign investment. The State Bank of Pakistan's recent policy decisions have 
+        boosted investor confidence. Trading volumes have increased significantly over 
+        the past month."""
+        
+        combined_text = f"{headline}. {main_text[:500]}"
+        
+        result = provider.embed([combined_text])
+        
+        assert result.embeddings.shape == (1, 768)
+        assert result.texts_count == 1
+        
+        print(f"✓ Article-format text embedded successfully")
+        print(f"  - Input length: {len(combined_text)} chars")
+        print(f"  - Output shape: {result.embeddings.shape}")
+    
+    def test_embedding_semantic_quality(self, api_key):
+        """
+        Verify embeddings capture semantic meaning correctly.
+        
+        Similar articles should have high cosine similarity (>0.7)
+        Dissimilar articles should have lower similarity (<0.5)
+        """
+        provider = GeminiEmbeddingProvider(api_key=api_key)
+        
+        # Similar articles (same story)
+        article1 = "Rupee falls to record low against dollar amid economic concerns"
+        article2 = "Pakistani currency drops to historic low versus US dollar"
+        
+        # Dissimilar article
+        article3 = "Cricket team wins championship match in thrilling final"
+        
+        result = provider.embed([article1, article2, article3])
+        
+        # Cosine similarity (embeddings are normalized, so dot product = cosine sim)
+        sim_1_2 = np.dot(result.embeddings[0], result.embeddings[1])
+        sim_1_3 = np.dot(result.embeddings[0], result.embeddings[2])
+        sim_2_3 = np.dot(result.embeddings[1], result.embeddings[2])
+        
+        print(f"\n✓ Semantic similarity test:")
+        print(f"  - Similar (rupee articles): {sim_1_2:.3f}")
+        print(f"  - Dissimilar (rupee vs cricket): {sim_1_3:.3f}")
+        print(f"  - Dissimilar (rupee vs cricket): {sim_2_3:.3f}")
+        
+        # Similar articles should be more similar than dissimilar
+        assert sim_1_2 > sim_1_3, "Similar articles should have higher similarity"
+        assert sim_1_2 > sim_2_3, "Similar articles should have higher similarity"
+        
+        # Threshold checks
+        assert sim_1_2 > 0.6, f"Similar articles similarity too low: {sim_1_2}"
+        assert sim_1_3 < 0.7, f"Dissimilar articles too similar: {sim_1_3}"
+

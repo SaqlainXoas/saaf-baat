@@ -82,8 +82,9 @@ class TestConfigFiles:
 
         for source_name, source_data in sources_config["sources"].items():
             assert "url" in source_data, f"Source {source_name} missing URL"
-            assert "method" in source_data, f"Source {source_name} missing method"
+            assert "feed_url" in source_data, f"Source {source_name} missing feed_url"
             assert "sections" in source_data, f"Source {source_name} missing sections"
+            assert "enabled" in source_data, f"Source {source_name} missing enabled"
 
     def test_classification_yaml_exists(self):
         """Verify classification_rules.yaml exists."""

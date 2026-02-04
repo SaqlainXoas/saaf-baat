@@ -29,7 +29,7 @@ class DatabaseError(Exception):
     pass
 
 
-class ConnectionError(DatabaseError):
+class DBConnectionError(DatabaseError):
     """Failed to connect to database."""
     pass
 
@@ -102,7 +102,7 @@ class SupabaseClient:
         self._test_feed_ids: List[str] = []
         
         if not self.url or not self.key:
-            raise ConnectionError(
+            raise DBConnectionError(
                 "Missing Supabase credentials. Set SUPABASE_URL and SUPABASE_KEY "
                 "environment variables or pass them to the constructor."
             )
@@ -133,7 +133,7 @@ class SupabaseClient:
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delay * (attempt + 1))  # Exponential backoff
         
-        raise ConnectionError(f"Failed to connect after {self.max_retries} attempts: {last_error}")
+        raise DBConnectionError(f"Failed to connect after {self.max_retries} attempts: {last_error}")
     
     def is_connected(self) -> bool:
         """Check if client is connected and functional."""

@@ -27,6 +27,8 @@ class Category(str, Enum):
     SPORTS = "sports"
     TECHNOLOGY = "technology"
     ENTERTAINMENT = "entertainment"
+    SECURITY = "security"
+    INTERNATIONAL = "international"
     OTHER = "other"
 
 
@@ -136,40 +138,38 @@ class Cluster(BaseModel):
     article_ids: List[UUID] = Field(default_factory=list)
     centroid_embedding: Optional[List[float]] = None
     representative_article_id: Optional[UUID] = None
-    cluster_size: int = Field(default=0, ge=0)
     avg_similarity: Optional[float] = Field(default=None, ge=0, le=1)
     algorithm_used: str = "hdbscan"
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+
     model_config = ConfigDict(
         json_encoders={datetime: lambda v: v.isoformat() if v else None},
+        validate_assignment=True,
     )
-    
-    @model_validator(mode="after")
-    def update_cluster_size(self) -> Cluster:
-        """Auto-update cluster size based on article_ids."""
-        object.__setattr__(self, 'cluster_size', len(self.article_ids))
-        return self
-    
+
+    @property
+    def cluster_size(self) -> int:
+        """Derived from article_ids — always in sync."""
+        return len(self.article_ids)
+
     def add_article(self, article_id: UUID) -> None:
         """Add an article to the cluster."""
         if article_id not in self.article_ids:
             self.article_ids.append(article_id)
-            object.__setattr__(self, 'cluster_size', len(self.article_ids))
-            object.__setattr__(self, 'updated_at', datetime.utcnow())
-    
+            self.updated_at = datetime.utcnow()
+
     def remove_article(self, article_id: UUID) -> None:
         """Remove an article from the cluster."""
         if article_id in self.article_ids:
             self.article_ids.remove(article_id)
-            object.__setattr__(self, 'cluster_size', len(self.article_ids))
-            object.__setattr__(self, 'updated_at', datetime.utcnow())
+            self.updated_at = datetime.utcnow()
     
     def to_db_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
         data = self.model_dump(exclude={"centroid_embedding"})
         data["id"] = str(data["id"])
-        data["article_ids"] = [str(aid) for aid in data["article_ids"]]
+        data["article_ids"] = [str(aid) for aid in self.article_ids]
+        data["cluster_size"] = self.cluster_size
         if data["representative_article_id"]:
             data["representative_article_id"] = str(data["representative_article_id"])
         # Convert datetime to ISO string for JSON serialization

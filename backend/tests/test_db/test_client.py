@@ -22,7 +22,7 @@ from src.db.client import (
     DatabaseError,
     DuplicateArticleError,
     NotFoundError,
-    ConnectionError,
+    DBConnectionError,
 )
 from src.db.models import RawArticle, Cluster, AnalyzedFeed, Category
 
@@ -112,7 +112,7 @@ class TestClientInitialization:
         assert client.key == 'custom-key'
     
     def test_init_missing_credentials_raises_error(self):
-        """Test that missing credentials raises ConnectionError."""
+        """Test that missing credentials raises DBConnectionError."""
         with patch.dict('os.environ', {}, clear=True):
             # Clear any existing env vars
             import os
@@ -121,7 +121,7 @@ class TestClientInitialization:
             if 'SUPABASE_KEY' in os.environ:
                 del os.environ['SUPABASE_KEY']
             
-            with pytest.raises(ConnectionError) as exc_info:
+            with pytest.raises(DBConnectionError) as exc_info:
                 SupabaseClient(url=None, key=None)
             
             assert "Missing Supabase credentials" in str(exc_info.value)
@@ -162,7 +162,7 @@ class TestConnectionRetry:
                 assert mock_create.call_count == 3
     
     def test_connection_failure_after_max_retries(self):
-        """Test that ConnectionError is raised after max retries."""
+        """Test that DBConnectionError is raised after max retries."""
         with patch.dict('os.environ', {
             'SUPABASE_URL': 'https://test.supabase.co',
             'SUPABASE_KEY': 'test-key'
@@ -172,7 +172,7 @@ class TestConnectionRetry:
                 
                 client = SupabaseClient(max_retries=2, retry_delay=0.01)
                 
-                with pytest.raises(ConnectionError) as exc_info:
+                with pytest.raises(DBConnectionError) as exc_info:
                     _ = client.client
                 
                 assert "Failed to connect after 2 attempts" in str(exc_info.value)

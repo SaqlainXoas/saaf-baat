@@ -18,7 +18,7 @@ load_dotenv()
 # Add src to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.scrapers.newspaper4k_scraper import Newspaper4kScraper
+from src.scrapers.hybrid_orchestrator import HybridOrchestrator
 from src.agents.embeddings import GeminiEmbeddingProvider, EmbeddingError
 from src.db.client import SupabaseClient
 from src.db.models import RawArticle
@@ -33,32 +33,23 @@ def main():
     print("\n[STEP 1] SCRAPING ARTICLES")
     print("-" * 40)
     
-    scraper = Newspaper4kScraper(
-        source="dawn",
-        base_url="https://www.dawn.com",
-        rate_limit=1.0,
-        timeout=30,
-        max_retries=2
-    )
-    
-    # Use Dawn as test source - reliable Pakistani news site
-    test_urls = [
-        "https://www.dawn.com/news/1886337/pakistan-stock-market-hits-record-high",
-        "https://www.dawn.com/news/1886268/rupee-gains-against-dollar",
-    ]
-    
-    articles = []
-    for url in test_urls:
-        try:
-            print(f"  Scraping: {url[:60]}...")
-            article = scraper.extract_article(url)
-            if article:
-                articles.append(article)
-                print(f"  ✓ Got: {article.headline[:50]}...")
-            else:
-                print(f"  ✗ Failed to extract article")
-        except Exception as e:
-            print(f"  ✗ Error: {e}")
+    orchestrator = HybridOrchestrator()
+
+    try:
+        articles = orchestrator.scrape_source(
+            source="dawn",
+            base_url="https://www.dawn.com",
+            sections=["latest-news", "pakistan"],
+            feed_url="https://www.dawn.com/feeds/latest-news",
+            max_articles=5,
+        )
+        for article in articles:
+            print(f"  ✓ Got: {article.headline[:50]}...")
+    except Exception as e:
+        print(f"  ✗ Scraping error: {e}")
+        articles = []
+    finally:
+        orchestrator.close()
     
     if not articles:
         print("\n❌ No articles scraped. Trying alternative approach...")
@@ -72,17 +63,15 @@ def main():
                 headline="Pakistan Stock Market Reaches Record High Amid Economic Recovery",
                 main_text="The Pakistan Stock Exchange (PSX) reached a historic milestone today as the benchmark KSE-100 index crossed 100,000 points for the first time. Analysts attribute this surge to improved economic indicators and increased foreign investment. The State Bank of Pakistan's recent policy decisions have boosted investor confidence. Trading volumes have increased significantly over the past month.",
                 publish_date=datetime.now(),
-                authors=["Test Author"],
-                language="en"
+                author="Test Author",
             ),
             RawArticle(
-                url=f"https://test.example.com/article-{unique_id}-2", 
+                url=f"https://test.example.com/article-{unique_id}-2",
                 source="test_source",
                 headline="Pakistani Rupee Strengthens Against US Dollar in Interbank Trading",
                 main_text="The Pakistani rupee gained ground against the US dollar in interbank trading today, appreciating by Rs 0.50 to close at Rs 278.50. Currency dealers said the improvement came on the back of increased remittance inflows and positive market sentiment. The State Bank's foreign exchange reserves have also shown improvement. Experts predict further stability in the coming weeks.",
                 publish_date=datetime.now(),
-                authors=["Test Author"],
-                language="en"
+                author="Test Author",
             ),
         ]
         print(f"  Created {len(articles)} synthetic test articles")
