@@ -223,6 +223,34 @@ class TestContentParserMetadataMerge:
         assert "newspaper4k" in result.parser_used
 
 
+class TestDateNormalization:
+    """Tests for date normalization to UTC (assume PKT if naive)."""
+
+    def test_parse_date_naive_assumes_pkt_and_converts_to_utc(self):
+        """Naive date should be interpreted as PKT (UTC+5) and converted to UTC."""
+        from datetime import timezone
+        from src.scrapers.parsers import ContentParser
+
+        parser = ContentParser()
+
+        # 10:00 PKT should become 05:00 UTC
+        dt = parser._parse_date("2026-02-04T10:00:00")
+        assert dt is not None
+        assert dt.tzinfo == timezone.utc
+        assert dt.hour == 5
+
+    def test_parse_date_with_timezone_keeps_utc(self):
+        """Timezone-aware date should normalize to UTC."""
+        from datetime import timezone
+        from src.scrapers.parsers import ContentParser
+
+        parser = ContentParser()
+
+        dt = parser._parse_date("2026-02-04T10:00:00Z")
+        assert dt is not None
+        assert dt.tzinfo == timezone.utc
+
+
 class TestContentParserFallbackToNewspaper:
     """Tests for fallback to newspaper4k when trafilatura returns short text."""
 
@@ -491,6 +519,7 @@ class TestContentParserDateParsing:
     def test_parses_iso_date(self):
         """Parser should handle ISO 8601 date format."""
         from src.scrapers.parsers import ContentParser
+        from datetime import timedelta, timezone
 
         parser = ContentParser()
 
@@ -509,9 +538,15 @@ class TestContentParserDateParsing:
         result = parser.parse(html_with_iso_date, "https://example.com")
 
         if result.has_date:
-            assert result.date_published.year == 2026
-            assert result.date_published.month == 2
-            assert result.date_published.day == 4
+            # Parser normalizes to UTC; the UTC day can differ from the local day
+            # depending on the original offset. Verify local +05:00 date stays Feb 4.
+            assert result.date_published.tzinfo is not None
+
+            pkt = timezone(timedelta(hours=5))
+            local = result.date_published.astimezone(pkt)
+            assert local.year == 2026
+            assert local.month == 2
+            assert local.day == 4
 
 
 class TestContentParserQualityThresholds:
