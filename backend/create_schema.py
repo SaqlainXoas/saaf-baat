@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 # Load environment
-load_dotenv('../.env')
+load_dotenv()
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 

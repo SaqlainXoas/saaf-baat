@@ -6,7 +6,7 @@ import os
 import sys
 
 # Load environment
-load_dotenv('../.env')
+load_dotenv()
 
 url = os.getenv('SUPABASE_URL')
 key = os.getenv('SUPABASE_SERVICE_KEY')
