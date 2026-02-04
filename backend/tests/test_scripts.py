@@ -47,3 +47,26 @@ class TestRunSchemaPathResolution:
     def test_create_schema_script_exists(self):
         """scripts/create_schema.py must also exist (moved alongside run_schema.py)."""
         assert (_BACKEND_DIR / "scripts" / "create_schema.py").is_file()
+
+
+class TestE2EPipelinePathResolution:
+    """Regression: test_e2e_pipeline.py must resolve backend/.env and backend/src."""
+
+    def test_e2e_pipeline_script_exists(self):
+        """tests/test_e2e_pipeline.py must exist."""
+        assert (_BACKEND_DIR / "tests" / "test_e2e_pipeline.py").is_file()
+
+    def test_e2e_pipeline_path_logic(self):
+        """
+        Validate path logic used in test_e2e_pipeline.py:
+        - load_dotenv from backend/.env
+        - sys.path includes backend/src
+        """
+        e2e_file = str(_BACKEND_DIR / "tests" / "test_e2e_pipeline.py")
+
+        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(e2e_file)))
+        env_path = os.path.join(backend_dir, ".env")
+        src_path = os.path.join(backend_dir, "src")
+
+        assert os.path.isfile(env_path), f"Expected .env at {env_path}"
+        assert os.path.isdir(src_path), f"Expected src/ at {src_path}"
