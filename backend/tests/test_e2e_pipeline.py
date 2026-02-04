@@ -10,13 +10,16 @@ This script tests the complete flow:
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 # Load environment variables
 from dotenv import load_dotenv
-load_dotenv()
+
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(_BACKEND_DIR / ".env")
 
 # Add src to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, str(_BACKEND_DIR / "src"))
 
 from src.scrapers.hybrid_orchestrator import HybridOrchestrator
 from src.agents.embeddings import GeminiEmbeddingProvider, EmbeddingError
