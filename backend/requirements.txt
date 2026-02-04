@@ -12,8 +12,15 @@ mypy==1.7.1
 newspaper4k==0.9.3
 news-please==1.5.35
 playwright==1.40.0
+playwright-stealth==1.0.6
 beautifulsoup4==4.12.2
 lxml==4.9.4
+feedparser>=6.0
+
+# Stealth Network & Parser Ensemble
+curl_cffi>=0.5.10
+trafilatura>=1.6.0
+readability-lxml>=0.8.1
 
 # NLP & ML
 spacy==3.7.2

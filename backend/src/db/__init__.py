@@ -5,7 +5,7 @@ Exports:
 - SupabaseClient: Main client for database operations
 - Models: RawArticle, Cluster, AnalyzedFeed
 - Enums: Category, ImpactLabel, EntityType
-- Exceptions: DatabaseError, DuplicateArticleError, NotFoundError, ConnectionError
+- Exceptions: DatabaseError, DuplicateArticleError, NotFoundError, DBConnectionError
 """
 
 from .client import (
@@ -13,7 +13,7 @@ from .client import (
     DatabaseError,
     DuplicateArticleError,
     NotFoundError,
-    ConnectionError,
+    DBConnectionError,
 )
 from .models import (
     RawArticle,
@@ -50,5 +50,5 @@ __all__ = [
     "DatabaseError",
     "DuplicateArticleError",
     "NotFoundError",
-    "ConnectionError",
+    "DBConnectionError",
 ]

@@ -1,49 +1,22 @@
 """
 Saaf Baat scraping system.
 
-Multi-tier scraping architecture:
-1. Newspaper4k (primary) - Fast, works for most static sites
-2. News-please (fallback) - Alternative extraction algorithms
-3. Playwright (JS-heavy) - Full browser for dynamic content
+Three-tier architecture:
+  Tier 1 — URL Discovery:  FeedDiscoverer (RSS) → HTML scrape + regex
+  Tier 2 — Content Fetch:  StealthFetcher (curl_cffi) → Playwright (session-reused)
+  Tier 3 — Content Parse:  ContentParser (trafilatura → newspaper4k → readability)
 """
-from src.scrapers.base import (
-    BaseScraper,
-    ScrapingError,
-    InvalidURLError,
-    RateLimitError,
-    ContentExtractionError,
-    TimeoutError,
-)
-from src.scrapers.newspaper4k_scraper import Newspaper4kScraper
-from src.scrapers.newsplease_scraper import NewsPleaseScraaper
-from src.scrapers.playwright_scraper import PlaywrightScraper
-from src.scrapers.orchestrator import (
-    ScraperOrchestrator,
-    SourceConfig,
-    ScrapingResult,
-    ConfigValidationError,
-    load_scraper_config,
-    validate_scraper_config,
-)
-
+from src.scrapers.network import StealthFetcher, InvalidURLError
+from src.scrapers.parsers import ContentParser
+from src.scrapers.dtos import ScrapedArticle
+from src.scrapers.hybrid_orchestrator import HybridOrchestrator
+from src.scrapers.feed import FeedDiscoverer
 
 __all__ = [
-    # Base
-    "BaseScraper",
-    "ScrapingError",
+    "HybridOrchestrator",
+    "StealthFetcher",
+    "ContentParser",
+    "ScrapedArticle",
     "InvalidURLError",
-    "RateLimitError",
-    "ContentExtractionError",
-    "TimeoutError",
-    # Scrapers
-    "Newspaper4kScraper",
-    "NewsPleaseScraaper",
-    "PlaywrightScraper",
-    # Orchestrator
-    "ScraperOrchestrator",
-    "SourceConfig",
-    "ScrapingResult",
-    "ConfigValidationError",
-    "load_scraper_config",
-    "validate_scraper_config",
+    "FeedDiscoverer",
 ]

@@ -27,16 +27,6 @@ class ClusteringError(Exception):
     pass
 
 
-class EmptyInputError(ClusteringError):
-    """Raised when input embeddings are empty."""
-    pass
-
-
-class QualityCheckError(ClusteringError):
-    """Raised when clustering quality is below threshold."""
-    pass
-
-
 # ============================================================================
 # Data Classes
 # ============================================================================
@@ -518,8 +508,6 @@ def create_cluster_mapping(
 __all__ = [
     # Exceptions
     "ClusteringError",
-    "EmptyInputError",
-    "QualityCheckError",
     # Classes
     "ClusteringResult",
     "HDBSCANClusterer",

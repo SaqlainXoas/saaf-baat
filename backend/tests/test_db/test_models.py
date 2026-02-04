@@ -243,12 +243,35 @@ class TestClusterModel:
         """Test conversion to database dictionary."""
         article_ids = [uuid4(), uuid4()]
         cluster = Cluster(article_ids=article_ids)
-        
+
         db_dict = cluster.to_db_dict()
-        
+
         assert isinstance(db_dict["id"], str)
         assert all(isinstance(aid, str) for aid in db_dict["article_ids"])
         assert "centroid_embedding" not in db_dict
+
+    def test_to_db_dict_includes_cluster_size(self):
+        """Regression: cluster_size is a @property so must be written explicitly into to_db_dict."""
+        article_ids = [uuid4() for _ in range(4)]
+        cluster = Cluster(article_ids=article_ids)
+
+        db_dict = cluster.to_db_dict()
+        assert "cluster_size" in db_dict
+        assert db_dict["cluster_size"] == 4
+
+    def test_cluster_size_property_tracks_mutations(self):
+        """cluster_size must stay in sync with article_ids after add/remove, including in to_db_dict."""
+        cluster = Cluster(article_ids=[uuid4(), uuid4()])
+        assert cluster.cluster_size == 2
+
+        new_id = uuid4()
+        cluster.add_article(new_id)
+        assert cluster.cluster_size == 3
+        assert cluster.to_db_dict()["cluster_size"] == 3
+
+        cluster.remove_article(new_id)
+        assert cluster.cluster_size == 2
+        assert cluster.to_db_dict()["cluster_size"] == 2
 
 
 class TestAnalyzedFeedModel:
@@ -293,7 +316,7 @@ class TestAnalyzedFeedModel:
         assert feed.confirmed_facts[0].text == "State Bank"
     
     def test_valid_categories(self):
-        """Test all valid category values."""
+        """Test all valid category values including SECURITY and INTERNATIONAL."""
         valid_categories = [
             Category.ECONOMY,
             Category.POLITICS,
@@ -303,9 +326,11 @@ class TestAnalyzedFeedModel:
             Category.SPORTS,
             Category.TECHNOLOGY,
             Category.ENTERTAINMENT,
+            Category.SECURITY,
+            Category.INTERNATIONAL,
             Category.OTHER,
         ]
-        
+
         for category in valid_categories:
             feed = AnalyzedFeed(
                 cluster_id=uuid4(),
@@ -313,6 +338,18 @@ class TestAnalyzedFeedModel:
                 category=category,
             )
             assert feed.category is not None
+
+    def test_security_and_international_categories_round_trip(self):
+        """Regression: SECURITY and INTERNATIONAL must survive to_db_dict / from_db_dict."""
+        for cat_str in ("security", "international"):
+            original = AnalyzedFeed(
+                cluster_id=uuid4(),
+                headline="Regression category test",
+                category=cat_str,
+            )
+            db_dict = original.to_db_dict()
+            restored = AnalyzedFeed.from_db_dict(db_dict)
+            assert restored.category == cat_str
     
     def test_classification_confidence_validation(self):
         """Test that classification_confidence must be between 0 and 1."""
