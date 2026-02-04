@@ -23,7 +23,7 @@ saaf-baat/
 │   │   └── classification_rules.yaml  # Keyword-based classification rules
 │   ├── src/
 │   │   ├── scrapers/       # News scraping modules (newspaper4k + Playwright)
-│   │   ├── intelligence/   # ML pipeline (embeddings, clustering, NLP)
+│   │   ├── agents/         # ML pipeline (embeddings, clustering, NLP)
 │   │   └── database/       # Supabase client and schema management
 │   ├── main.py             # Pipeline entry point (called by GitHub Actions)
 │   └── requirements.txt    # Python dependencies
@@ -89,10 +89,10 @@ python main.py
 python -m src.scrapers.orchestrator
 
 # Clustering only (requires existing articles in DB)
-python -m src.intelligence.clustering
+python -m src.agents.clustering
 
 # Analysis only
-python -m src.intelligence.analysis
+python -m src.agents.analysis
 ```
 
 **Run tests:**
@@ -317,7 +317,7 @@ This creates "What's Certain" vs "What's Debated" sections in story cards.
 
 ### Modifying Classification Logic
 1. For keyword changes: Edit `classification_rules.yaml` (no code changes needed)
-2. For SetFit model updates: Retrain with new examples in `src/intelligence/classifier.py`
+2. For SetFit model updates: Retrain with new examples in `src/agents/classifier.py`
 3. Always maintain hybrid approach (SetFit + rules) for robustness
 
 ### Debugging Pipeline Failures

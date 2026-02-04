@@ -6,6 +6,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (one level up from backend/backend)
+env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(env_path)
 
 # Add src to path for imports
 backend_dir = Path(__file__).parent.parent
