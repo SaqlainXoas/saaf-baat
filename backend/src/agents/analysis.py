@@ -312,13 +312,26 @@ class AnalysisService:
         consensus_detector: ConsensusDetector,
         classifier: RuleBasedClassifier,
         headline_source_priority: Optional[List[str]] = None,
+        max_confirmed_facts: int = 8,
+        max_debated_claims: int = 12,
     ):
         self.entity_extractor = entity_extractor
         self.consensus_detector = consensus_detector
         self.classifier = classifier
+        if max_confirmed_facts <= 0:
+            raise ValueError("max_confirmed_facts must be positive")
+        if max_debated_claims <= 0:
+            raise ValueError("max_debated_claims must be positive")
+        self.max_confirmed_facts = max_confirmed_facts
+        self.max_debated_claims = max_debated_claims
         self.headline_source_priority = headline_source_priority or [
             "dawn", "tribune", "thenews", "geo", "ary"
         ]
+
+    @staticmethod
+    def _limit_entities(entities: Sequence[ExtractedEntity], limit: int) -> List[ExtractedEntity]:
+        ranked = sorted(entities, key=lambda e: (-int(e.sources), str(e.type), e.text.lower()))
+        return list(ranked[:limit])
 
     def _choose_headline(self, articles: Sequence[RawArticle]) -> str:
         by_source: Dict[str, List[RawArticle]] = {}
@@ -363,13 +376,15 @@ class AnalysisService:
         # Entity extraction + consensus uses per-article entities.
         entities_by_article = [self.entity_extractor.extract(a.main_text or "") for a in articles]
         consensus = self.consensus_detector.analyze(entities_by_article)
+        confirmed_facts = self._limit_entities(consensus.confirmed_facts, self.max_confirmed_facts)
+        debated_claims = self._limit_entities(consensus.debated_claims, self.max_debated_claims)
 
         source_attribution: Dict[str, int] = {}
         for a in articles:
             source_attribution[a.source] = source_attribution.get(a.source, 0) + 1
 
         entity_counts: Dict[str, int] = {}
-        for ent in consensus.confirmed_facts + consensus.debated_claims:
+        for ent in confirmed_facts + debated_claims:
             entity_counts[ent.text] = int(ent.sources)
 
         return AnalyzedFeed(
@@ -377,8 +392,8 @@ class AnalysisService:
             headline=headline,
             summary=summary or None,
             category=cls.category,
-            confirmed_facts=consensus.confirmed_facts,
-            debated_claims=consensus.debated_claims,
+            confirmed_facts=confirmed_facts,
+            debated_claims=debated_claims,
             impact_labels=cls.impact_labels,
             source_attribution=source_attribution,
             entity_counts=entity_counts,

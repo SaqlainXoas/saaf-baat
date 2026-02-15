@@ -52,4 +52,4 @@ sources:
     enabled: true
 
 scraping_config:
-  max_articles_per_source: 50
+  max_articles_per_source: 20

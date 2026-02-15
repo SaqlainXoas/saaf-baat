@@ -1,9 +1,9 @@
-name: Daily pipeline
+name: Pipeline refresh
 
 on:
   schedule:
-    # 06:00 PKT (UTC+5) = 01:00 UTC
-    - cron: "0 1 * * *"
+    # Every hour at minute 0 (UTC)
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -15,6 +15,10 @@ jobs:
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       SAAF_ENABLE_PLAYWRIGHT_FALLBACK: "0"
+      SAAF_LOW_COST_MODE: "1"
+      SAAF_MAX_ARTICLES_PER_SOURCE: "20"
+      SAAF_EMBEDDING_BACKFILL_LIMIT: "50"
+      SAAF_PIPELINE_HEARTBEAT_FILE: "backend/.pipeline_heartbeat.json"
     steps:
       - uses: actions/checkout@v4
 
@@ -30,5 +34,4 @@ jobs:
       - name: Run pipeline
         run: |
           cd backend
-          python run_pipeline.py --disable-playwright --log-level INFO
-
+          python run_pipeline.py --disable-playwright --low-cost-mode --log-level INFO

@@ -8,11 +8,14 @@ from fastapi.testclient import TestClient
 
 from src.api.app import create_app
 from src.api.routes.stories import get_db
-from src.db.models import AnalyzedFeed, Cluster, RawArticle
+from src.db.client import DatabaseError
+from src.db.models import AnalyzedFeed, Cluster, ExtractedEntity, RawArticle
 
 
 class _FakeDB:
-    def __init__(self, cluster_id: UUID, feed: AnalyzedFeed, cluster: Cluster, articles: List[RawArticle]):
+    def __init__(
+        self, cluster_id: UUID, feed: AnalyzedFeed, cluster: Cluster, articles: List[RawArticle]
+    ):
         self._cluster_id = cluster_id
         self._feed = feed
         self._cluster = cluster
@@ -73,3 +76,64 @@ def test_story_detail_includes_articles():
     # Newest publish_date first
     assert body["articles"][0]["source"] == "geo"
 
+
+def test_story_detail_returns_503_when_db_unavailable():
+    cluster_id = uuid4()
+
+    class _FailDB:
+        def get_analyzed_feed_by_cluster_id(self, _cluster_id: UUID) -> AnalyzedFeed:
+            raise DatabaseError("down")
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: _FailDB()  # type: ignore[assignment]
+    client = TestClient(app)
+
+    res = client.get(f"/api/stories/{cluster_id}")
+    assert res.status_code == 503
+    assert "Database unavailable" in res.json()["detail"]
+
+
+def test_story_detail_caps_entities_and_derives_sources_when_missing():
+    cluster_id = uuid4()
+    feed = AnalyzedFeed(
+        cluster_id=cluster_id,
+        headline="Entity-heavy story",
+        summary="Snippet here.",
+        category="economy",
+        impact_labels=["💳 WALLET"],
+        source_attribution={},
+        confirmed_facts=[
+            ExtractedEntity(text=f"Confirmed {i}", type="ORG", sources=2) for i in range(30)
+        ],
+        debated_claims=[
+            ExtractedEntity(text=f"Debated {i}", type="GPE", sources=1) for i in range(50)
+        ],
+    )
+    a1 = RawArticle(
+        id=uuid4(),
+        source="dawn",
+        url="https://www.dawn.com/x2",
+        headline="Dawn headline",
+        main_text=("Pakistan IMF " * 30),
+    )
+    a2 = RawArticle(
+        id=uuid4(),
+        source="geo",
+        url="https://www.geo.tv/y2",
+        headline="Geo headline",
+        main_text=("Pakistan IMF " * 30),
+    )
+    cluster = Cluster(id=cluster_id, article_ids=[a1.id, a2.id])
+    fake_db = _FakeDB(cluster_id=cluster_id, feed=feed, cluster=cluster, articles=[a1, a2])
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: fake_db  # type: ignore[assignment]
+    client = TestClient(app)
+
+    res = client.get(f"/api/stories/{cluster_id}")
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body["confirmed_facts"]) == 8
+    assert len(body["debated_claims"]) == 12
+    assert [s["source"] for s in body["sources"]] == ["dawn", "geo"]
+    assert all(article["publish_date"] is None for article in body["articles"])
