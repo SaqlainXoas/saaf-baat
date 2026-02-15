@@ -49,6 +49,15 @@ def create_app() -> FastAPI:
         description="Minimal API for reading analyzed news feed.",
     )
 
+    @app.get("/")
+    def root() -> dict[str, str]:
+        return {
+            "status": "ok",
+            "service": "Saaf Baat API",
+            "docs": "/docs",
+            "health": "/health",
+        }
+
     # Allow Next.js frontend (and localhost dev) to call the API.
     # Configure BACKEND_CORS_ALLOW_ORIGINS for production domains.
     app.add_middleware(

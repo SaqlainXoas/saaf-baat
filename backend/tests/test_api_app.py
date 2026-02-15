@@ -47,6 +47,12 @@ def test_docs_and_health_endpoints(tmp_path, monkeypatch: pytest.MonkeyPatch):
     assert body["pipeline_stale_after_hours"] >= 1
     assert body["pipeline_is_stale"] is False
 
+    root = client.get("/")
+    assert root.status_code == 200
+    root_body = root.json()
+    assert root_body["status"] == "ok"
+    assert root_body["service"] == "Saaf Baat API"
+
     docs = client.get("/docs")
     assert docs.status_code == 200
 
