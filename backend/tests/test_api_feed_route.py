@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 
 from src.api.app import create_app
 from src.api.routes.feed import get_db
-from src.db.models import AnalyzedFeed
+from src.db.client import DatabaseError
+from src.db.models import AnalyzedFeed, ExtractedEntity
 
 
 class _FakeDB:
@@ -54,3 +55,77 @@ def test_feed_route_returns_items():
     assert payload[0]["snippet"] == "Two-line snippet."
     assert payload[0]["story_id"]
     assert payload[0]["sources"][0]["source"] == "dawn"
+
+
+def test_feed_route_returns_503_when_db_unavailable():
+    class _FailDB:
+        def get_analyzed_feed(self, **_kwargs):
+            raise DatabaseError("down")
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: _FailDB()  # type: ignore[assignment]
+    client = TestClient(app)
+
+    res = client.get("/api/feed?limit=10")
+    assert res.status_code == 503
+    assert "Database unavailable" in res.json()["detail"]
+
+
+def test_feed_route_returns_empty_list_when_no_rows():
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: _FakeDB([])  # type: ignore[assignment]
+    client = TestClient(app)
+
+    res = client.get("/api/feed?limit=10")
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+def test_feed_route_handles_missing_source_attribution_and_summary():
+    items = [
+        AnalyzedFeed(
+            cluster_id=uuid4(),
+            headline="No attribution story",
+            summary=None,
+            category="economy",
+            impact_labels=[],
+            source_attribution={},
+        )
+    ]
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: _FakeDB(items)  # type: ignore[assignment]
+    client = TestClient(app)
+
+    res = client.get("/api/feed?limit=10")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload[0]["snippet"] == ""
+    assert payload[0]["sources"] == []
+
+
+def test_feed_route_caps_entities_in_payload():
+    items = [
+        AnalyzedFeed(
+            cluster_id=uuid4(),
+            headline="Entity-heavy story",
+            summary="Snippet",
+            category="economy",
+            impact_labels=["💳 WALLET"],
+            source_attribution={"dawn": 2, "geo": 1},
+            confirmed_facts=[
+                ExtractedEntity(text=f"Confirmed {i}", type="ORG", sources=3) for i in range(20)
+            ],
+            debated_claims=[
+                ExtractedEntity(text=f"Debated {i}", type="GPE", sources=1) for i in range(40)
+            ],
+        )
+    ]
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: _FakeDB(items)  # type: ignore[assignment]
+    client = TestClient(app)
+
+    res = client.get("/api/feed?limit=10")
+    assert res.status_code == 200
+    payload = res.json()
+    assert len(payload[0]["confirmed_facts"]) == 8
+    assert len(payload[0]["debated_claims"]) == 12

@@ -12,7 +12,12 @@ import numpy as np
 import yaml
 from urllib.parse import urlparse
 
-from src.agents.analysis import AnalysisService, ConsensusDetector, EntityExtractor, RuleBasedClassifier
+from src.agents.analysis import (
+    AnalysisService,
+    ConsensusDetector,
+    EntityExtractor,
+    RuleBasedClassifier,
+)
 from src.agents.clustering import (
     ClusteringResult,
     ClusteringService,
@@ -32,13 +37,16 @@ logger = logging.getLogger(__name__)
 class PipelineConfig:
     sources_yaml: Path
     classification_yaml: Path
-    max_articles_per_source: int = 50
+    max_articles_per_source: int = 30
     enable_playwright_fallback: bool = True
     embedding_batch_size: int = 100
-    embedding_backfill_limit: int = 200
+    embedding_backfill_limit: int = 100
     min_cluster_size: int = 2
     min_clusters: int = 2
     max_noise_ratio: float = 0.3
+    consensus_min_agreement_ratio: float = 0.66
+    max_confirmed_facts: int = 8
+    max_debated_claims: int = 12
     analyze_recent_clusters_limit: int = 200
     cluster_lookback_hours: int = 24
     retention_days: int = 7
@@ -49,14 +57,43 @@ class PipelineStats:
     scraped: int = 0
     inserted: int = 0
     duplicates: int = 0
+    insert_failures: int = 0
     embedded: int = 0
+    embed_failures: int = 0
     clustered_articles: int = 0
     clusters_created: int = 0
+    cluster_failures: int = 0
     feeds_inserted: int = 0
     feeds_skipped_existing: int = 0
+    analyze_failures: int = 0
     pruned_articles: int = 0
     pruned_clusters: int = 0
     pruned_feeds: int = 0
+    sources_attempted: int = 0
+    sources_succeeded: int = 0
+    sources_failed: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "scraped": self.scraped,
+            "inserted": self.inserted,
+            "duplicates": self.duplicates,
+            "insert_failures": self.insert_failures,
+            "embedded": self.embedded,
+            "embed_failures": self.embed_failures,
+            "clustered_articles": self.clustered_articles,
+            "clusters_created": self.clusters_created,
+            "cluster_failures": self.cluster_failures,
+            "feeds_inserted": self.feeds_inserted,
+            "feeds_skipped_existing": self.feeds_skipped_existing,
+            "analyze_failures": self.analyze_failures,
+            "pruned_articles": self.pruned_articles,
+            "pruned_clusters": self.pruned_clusters,
+            "pruned_feeds": self.pruned_feeds,
+            "sources_attempted": self.sources_attempted,
+            "sources_succeeded": self.sources_succeeded,
+            "sources_failed": self.sources_failed,
+        }
 
 
 class FeedExistsError(RuntimeError):
@@ -141,13 +178,22 @@ class PipelineOrchestrator:
 
     def _get_analyzer(self) -> AnalysisService:
         if self.analyzer is None:
+            if (
+                self.config.consensus_min_agreement_ratio <= 0
+                or self.config.consensus_min_agreement_ratio > 1
+            ):
+                raise ValueError("consensus_min_agreement_ratio must be in (0, 1]")
             rules = RuleBasedClassifier.from_yaml(self.config.classification_yaml)
             extractor = EntityExtractor()
-            detector = ConsensusDetector(min_agreement_ratio=1.0)
+            detector = ConsensusDetector(
+                min_agreement_ratio=self.config.consensus_min_agreement_ratio
+            )
             self.analyzer = AnalysisService(
                 entity_extractor=extractor,
                 consensus_detector=detector,
                 classifier=rules,
+                max_confirmed_facts=self.config.max_confirmed_facts,
+                max_debated_claims=self.config.max_debated_claims,
             )
         return self.analyzer
 
@@ -171,6 +217,7 @@ class PipelineOrchestrator:
         for source_name, source in sources.items():
             if not source.get("enabled", False):
                 continue
+            stats.sources_attempted += 1
 
             base_url = str(source.get("url"))
             sections = list(source.get("sections") or [])
@@ -186,7 +233,10 @@ class PipelineOrchestrator:
                 )
             except Exception as e:
                 logger.exception("Scrape failed for %s: %s", source_name, e)
+                stats.sources_failed += 1
                 continue
+            else:
+                stats.sources_succeeded += 1
 
             stats.scraped += len(scraped)
 
@@ -201,6 +251,7 @@ class PipelineOrchestrator:
                 except DuplicateArticleError:
                     stats.duplicates += 1
                 except Exception as e:
+                    stats.insert_failures += 1
                     logger.warning("Insert failed (%s): %s", article.url, e)
 
         return stats, inserted_articles
@@ -212,7 +263,12 @@ class PipelineOrchestrator:
 
         embedder = self._get_embedder()
         texts = [f"{a.headline}. {a.main_text[:500]}" for a in to_embed]
-        result = embedder.embed_batch(texts, batch_size=self.config.embedding_batch_size)
+        try:
+            result = embedder.embed_batch(texts, batch_size=self.config.embedding_batch_size)
+        except Exception as e:
+            stats.embed_failures += len(to_embed)
+            logger.exception("Embedding stage failed for %d articles: %s", len(to_embed), e)
+            return
 
         for idx, article in enumerate(to_embed):
             emb = result.embeddings[idx].tolist()
@@ -221,12 +277,15 @@ class PipelineOrchestrator:
                 self.db.update_article_embedding(article.id, emb)
                 stats.embedded += 1
             except Exception as e:
+                stats.embed_failures += 1
                 logger.warning("Failed updating embedding for %s: %s", article.id, e)
 
     def embed_backfill(self, stats: PipelineStats) -> None:
         """Resume embeddings for articles that were inserted in previous runs."""
         try:
-            pending = self.db.get_articles_without_embeddings(limit=self.config.embedding_backfill_limit)
+            pending = self.db.get_articles_without_embeddings(
+                limit=self.config.embedding_backfill_limit
+            )
         except Exception as e:
             logger.warning("Embedding backfill fetch failed: %s", e)
             return
@@ -282,7 +341,8 @@ class PipelineOrchestrator:
                 stats.clusters_created += 1
                 created_cluster_ids.append(cluster_id)
             except Exception as e:
-                logger.warning("Failed creating cluster %s: %s", cluster_id, e)
+                stats.cluster_failures += 1
+                logger.exception("Failed creating cluster %s: %s", cluster_id, e)
                 continue
 
             for article in cluster_articles:
@@ -293,7 +353,9 @@ class PipelineOrchestrator:
 
             # Persist similarity for observability without schema changes.
             # We store it on the feed metadata later; keep local for now.
-            logger.info("Cluster %s: %d articles, similarity=%.3f", cluster_id, len(indices), similarity)
+            logger.info(
+                "Cluster %s: %d articles, similarity=%.3f", cluster_id, len(indices), similarity
+            )
 
         return created_cluster_ids
 
@@ -321,7 +383,8 @@ class PipelineOrchestrator:
                 inserted_feed_ids.append(feed_id)
                 stats.feeds_inserted += 1
             except Exception as e:
-                logger.warning("Failed analyzing cluster %s: %s", cluster.id, e)
+                stats.analyze_failures += 1
+                logger.exception("Failed analyzing cluster %s: %s", cluster.id, e)
 
         return inserted_feed_ids
 
@@ -348,6 +411,13 @@ class PipelineOrchestrator:
     # ---------------------------------------------------------------------
 
     def run(self) -> PipelineStats:
+        logger.info(
+            "Pipeline run started "
+            "(max_articles_per_source=%d, embedding_backfill_limit=%d, cluster_lookback_hours=%d)",
+            self.config.max_articles_per_source,
+            self.config.embedding_backfill_limit,
+            self.config.cluster_lookback_hours,
+        )
         stats, inserted_articles = self.scrape_and_insert()
 
         # Embedding only for newly inserted articles.
@@ -368,6 +438,7 @@ class PipelineOrchestrator:
         except Exception:
             pass
 
+        logger.info("Pipeline run summary: %s", stats.as_dict())
         return stats
 
 
@@ -375,13 +446,32 @@ def default_config(
     sources_yaml: Path | str = "backend/config/sources.yaml",
     classification_yaml: Path | str = "backend/config/classification_rules.yaml",
 ) -> PipelineConfig:
+    def _env_int(name: str, default: int) -> int:
+        raw = (os.getenv(name) or "").strip()
+        if not raw:
+            return default
+        try:
+            value = int(raw)
+            return value if value > 0 else default
+        except ValueError:
+            return default
+
     enable_playwright = os.getenv("SAAF_ENABLE_PLAYWRIGHT_FALLBACK", "1").strip().lower() not in {
         "0",
         "false",
         "no",
     }
+    low_cost_mode = os.getenv("SAAF_LOW_COST_MODE", "0").strip().lower() in {"1", "true", "yes"}
+    max_articles_per_source = _env_int("SAAF_MAX_ARTICLES_PER_SOURCE", 30)
+    embedding_backfill_limit = _env_int("SAAF_EMBEDDING_BACKFILL_LIMIT", 100)
+    if low_cost_mode:
+        max_articles_per_source = min(max_articles_per_source, 20)
+        embedding_backfill_limit = min(embedding_backfill_limit, 50)
+
     return PipelineConfig(
         sources_yaml=Path(sources_yaml),
         classification_yaml=Path(classification_yaml),
         enable_playwright_fallback=enable_playwright,
+        max_articles_per_source=max_articles_per_source,
+        embedding_backfill_limit=embedding_backfill_limit,
     )

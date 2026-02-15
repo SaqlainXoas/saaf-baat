@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import spacy
 
+from src.db.models import ExtractedEntity
 from src.db.models import RawArticle
 
 
@@ -68,3 +69,37 @@ def test_analysis_service_produces_analyzed_feed():
     assert feed.source_attribution.get("geo") == 1
     assert any(e.text == "Pakistan" and e.sources == 3 for e in feed.confirmed_facts)
     assert any(e.text == "IMF" and e.sources == 3 for e in feed.confirmed_facts)
+
+
+def test_analysis_service_caps_confirmed_and_debated_entities():
+    from src.agents.analysis import AnalysisService, ConsensusDetector, RuleBasedClassifier
+
+    class FakeExtractor:
+        def extract(self, text: str):
+            suffix = text[-1]
+            shared = [ExtractedEntity(text=f"Shared {i}", type="ORG", sources=1) for i in range(10)]
+            unique = [ExtractedEntity(text=f"Unique {suffix}-{i}", type="GPE", sources=1) for i in range(10)]
+            return shared + unique
+
+    rules_path = Path(__file__).resolve().parent.parent.parent / "config" / "classification_rules.yaml"
+    clf = RuleBasedClassifier.from_yaml(rules_path)
+    service = AnalysisService(
+        entity_extractor=FakeExtractor(),
+        consensus_detector=ConsensusDetector(min_agreement_ratio=1.0),
+        classifier=clf,
+        max_confirmed_facts=5,
+        max_debated_claims=6,
+    )
+
+    cluster_id = uuid4()
+    articles = [
+        RawArticle(source="dawn", url="https://dawn.com/c1", headline="H1", main_text=("Pakistan IMF a" * 30)),
+        RawArticle(source="tribune", url="https://tribune.com.pk/c2", headline="H2", main_text=("Pakistan IMF b" * 30)),
+        RawArticle(source="geo", url="https://geo.tv/c3", headline="H3", main_text=("Pakistan IMF c" * 30)),
+    ]
+
+    feed = service.analyze_cluster(cluster_id=cluster_id, articles=articles)
+
+    assert len(feed.confirmed_facts) == 5
+    assert len(feed.debated_claims) == 6
+    assert len(feed.entity_counts) == 11

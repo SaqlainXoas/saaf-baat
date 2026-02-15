@@ -17,7 +17,20 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
-from playwright_stealth import Stealth
+
+try:
+    from playwright_stealth import Stealth
+
+    def _apply_stealth(page) -> None:
+        stealth = Stealth()
+        stealth.apply_stealth_sync(page)
+
+except ImportError:
+    from playwright_stealth import stealth_sync
+
+    def _apply_stealth(page) -> None:
+        stealth_sync(page)
+
 
 from src.scrapers.network import StealthFetcher
 from src.scrapers.parsers import ContentParser
@@ -52,12 +65,12 @@ class HybridOrchestrator:
 
     # Patterns that indicate article URLs
     ARTICLE_URL_PATTERNS = [
-        r"/news/\d+",           # Dawn: /news/12345
-        r"/story/\d+",          # Tribune: /story/12345
-        r"/\d{4}/\d{2}/\d{2}/", # Date-based: /2026/02/04/
-        r"-\d+\.html?$",        # Numeric suffix: article-12345.html
-        r"/post/\d+",           # Generic post
-        r"/article/\d+",        # Generic article
+        r"/news/\d+",  # Dawn: /news/12345
+        r"/story/\d+",  # Tribune: /story/12345
+        r"/\d{4}/\d{2}/\d{2}/",  # Date-based: /2026/02/04/
+        r"-\d+\.html?$",  # Numeric suffix: article-12345.html
+        r"/post/\d+",  # Generic post
+        r"/article/\d+",  # Generic article
     ]
 
     def __init__(
@@ -220,8 +233,7 @@ class HybridOrchestrator:
             )
             page = context.new_page()
 
-            stealth = Stealth()
-            stealth.apply_stealth_sync(page)
+            _apply_stealth(page)
 
             page.goto(url, timeout=self._playwright_timeout)
             page.wait_for_load_state("networkidle", timeout=self._playwright_timeout)

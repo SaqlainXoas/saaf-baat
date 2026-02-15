@@ -3,17 +3,21 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.api.dtos import EntityDTO, SourceCountDTO, StoryCardDTO
-from src.db.client import SupabaseClient
+from src.api.dtos import SourceCountDTO, StoryCardDTO
+from src.api.entity_sanitizer import MAX_CONFIRMED_FACTS, MAX_DEBATED_CLAIMS, to_entity_dtos
+from src.db.client import DatabaseError, SupabaseClient
 
 router = APIRouter()
 
 
 @lru_cache(maxsize=1)
 def get_db() -> SupabaseClient:
-    return SupabaseClient()
+    try:
+        return SupabaseClient()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}")
 
 
 def _to_story_card(feed) -> StoryCardDTO:
@@ -28,8 +32,8 @@ def _to_story_card(feed) -> StoryCardDTO:
         snippet=feed.summary or "",
         category=str(feed.category),
         impact_labels=list(feed.impact_labels or []),
-        confirmed_facts=[EntityDTO(**e.model_dump()) for e in (feed.confirmed_facts or [])],
-        debated_claims=[EntityDTO(**e.model_dump()) for e in (feed.debated_claims or [])],
+        confirmed_facts=to_entity_dtos(feed.confirmed_facts, MAX_CONFIRMED_FACTS),
+        debated_claims=to_entity_dtos(feed.debated_claims, MAX_DEBATED_CLAIMS),
         sources=sources,
         metadata=dict(feed.metadata or {}),
     )
@@ -42,5 +46,8 @@ def get_feed(
     limit: int = Query(default=30, ge=1, le=200),
     db: SupabaseClient = Depends(get_db),
 ) -> list[StoryCardDTO]:
-    feeds = db.get_analyzed_feed(category=category, impact_label=impact_label, limit=limit)
+    try:
+        feeds = db.get_analyzed_feed(category=category, impact_label=impact_label, limit=limit)
+    except DatabaseError as exc:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}")
     return [_to_story_card(f) for f in feeds]
