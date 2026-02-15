@@ -74,51 +74,52 @@ You open once, skim a limited set of meaningful stories, see where reporting con
 Architecture starts from `backend/config/sources.yaml` where each source defines `base_url`, `feed_url`, and `sections`.
 
 ```mermaid
-flowchart TD
-    A["backend/config/sources.yaml"] --> B["Source Registry"]
-    B --> B1["Sources: base_url + feed_url + sections"]
-    B1 --> C["Hybrid Scraper"]
+flowchart TB
 
-    C --> C1["Feed discovery + section crawl"]
-    C1 --> X{"Parser usable?"}
-    X -- Yes --> C2["Parser path"]
-    X -- No --> C3["Playwright fallback"]
+  S["Config<br/>sources.yaml"] --> ING
 
-    C2 --> D[(raw_articles)]
-    C3 --> D
-    D --> D1["Deduplicate + off-domain filter"]
+  %% Publisher examples (side reference)
+  PUB["Example Sources<br/>Dawn • Tribune • Geo • ARY • The News"]
+  PUB -.-> S
 
-    D1 --> E["Gemini Embeddings"]
-    E --> F["Clustering\nHDBSCAN (DBSCAN fallback)"]
-    F --> G[(clusters)]
+  subgraph ING["Ingestion"]
+    I["Hybrid Scraper<br/>Parser → Playwright fallback"]
+    R[(raw_articles)]
+    I --> R
+  end
 
-    G --> H["Analysis Service"]
-    H --> H1["Entity extraction"]
-    H --> H2["Consensus + rule classification"]
-    H1 --> I[(analyzed_feed)]
-    H2 --> I
+  R --> P
 
-    I --> J["FastAPI"]
-    J --> J1["GET /api/feed"]
-    J --> J2["GET /api/stories/:cluster_id"]
-    J --> J3["GET /health"]
-    J1 --> K["Next.js Frontend"]
-    J2 --> K
-    J3 --> K
+  subgraph P["Processing"]
+    D["Dedup + Off-domain filter"]
+    E["Embeddings<br/>Gemini text-embedding-004"]
+    C["Clustering<br/>HDBSCAN (DBSCAN fallback)"]
+    A["Analysis<br/>spaCy entities + consensus + rules"]
+    D --> E --> C --> A
+  end
 
-    classDef source fill:#EAF3FF,stroke:#2F6FED,color:#0F2A66,stroke-width:1.4px;
-    classDef process fill:#EFFAF3,stroke:#2E7D32,color:#113B18,stroke-width:1.2px;
-    classDef storage fill:#FFF6E8,stroke:#C77700,color:#5C3A00,stroke-width:1.2px;
-    classDef decision fill:#FFF1F1,stroke:#C62828,color:#5A1111,stroke-width:1.2px;
-    classDef api fill:#F3EFFF,stroke:#6F42C1,color:#2F1A63,stroke-width:1.2px;
-    classDef ui fill:#FCEEF4,stroke:#C2185B,color:#5A1030,stroke-width:1.2px;
+  A --> F[(analyzed_feed)]
 
-    class A,B,B1 source;
-    class C,C1,C2,C3,D1,E,F,H,H1,H2 process;
-    class D,G,I storage;
-    class X decision;
-    class J,J1,J2,J3 api;
-    class K ui;
+  subgraph SERVE["Delivery"]
+    API["FastAPI<br/>/api/feed • /api/stories/{cluster_id} • /health"]
+    UI["Next.js UI"]
+    API --> UI
+  end
+
+  F --> SERVE
+
+  classDef source fill:#EAF3FF,stroke:#2F6FED,color:#0F2A66,stroke-width:1.2px;
+  classDef process fill:#EFFAF3,stroke:#2E7D32,color:#113B18,stroke-width:1.1px;
+  classDef storage fill:#FFF6E8,stroke:#C77700,color:#5C3A00,stroke-width:1.1px;
+  classDef api fill:#F3EFFF,stroke:#6F42C1,color:#2F1A63,stroke-width:1.1px;
+  classDef ui fill:#FCEEF4,stroke:#C2185B,color:#5A1030,stroke-width:1.1px;
+
+  class S source;
+  class PUB source;
+  class I,D,E,C,A process;
+  class R,F storage;
+  class API api;
+  class UI ui;
 ```
 
 ## Repository Layout
