@@ -1,0 +1,24 @@
+name: Pull Request Template
+description: Checklist for production-safe changes.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Summary
+        - What changed and why?
+        - Which user flow or system behavior is affected?
+  - type: markdown
+    attributes:
+      value: |
+        ## Validation
+        - [ ] Backend tests pass (`cd backend && pytest ...`)
+        - [ ] Frontend tests pass (`cd frontend && npm test`)
+        - [ ] Frontend build passes (`cd frontend && npm run build`)
+        - [ ] Manual QA completed for impacted paths
+  - type: markdown
+    attributes:
+      value: |
+        ## Risk and Rollback
+        - Risk level: low / medium / high
+        - Rollback plan:
+        - Config or secret changes:
