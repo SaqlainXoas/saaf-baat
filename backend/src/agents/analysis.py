@@ -25,14 +25,72 @@ from src.db.models import AnalyzedFeed, ExtractedEntity, RawArticle
 # Labels we keep for MVP (English-only).
 DEFAULT_ALLOWED_ENTITY_LABELS = {"PERSON", "ORG", "GPE", "DATE", "MONEY", "EVENT"}
 
+# When keyword matching produces zero impact hits, derive a default badge from
+# the story category.  Ensures every categorised card shows at least one signal.
+_CATEGORY_IMPACT_FALLBACK: Dict[str, str] = {
+    "economy": "💳 WALLET",
+    "politics": "🏛️ GOVERNANCE",
+    "security": "🛡️ SAFETY",
+    "city": "🚦 COMMUTE",
+    "international": "🏛️ GOVERNANCE",
+}
+
 
 def _collapse_ws(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip())
 
 
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def build_snippet(text: str, max_chars: int = 240) -> str:
+    """
+    Build a short, deterministic snippet for the AnalyzedFeed.summary field.
+
+    MVP goal: fill the product card without LLM summaries.
+    """
+    clean = _collapse_ws(text)
+    if not clean:
+        return ""
+
+    # Prefer the first 1–2 sentences if punctuation exists.
+    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(clean) if s.strip()]
+    if len(sentences) >= 2:
+        snippet = f"{sentences[0]} {sentences[1]}"
+    else:
+        snippet = clean
+
+    if len(snippet) <= max_chars:
+        return snippet
+
+    # Truncate at a word boundary and add ellipsis.
+    truncated = snippet[: max_chars + 1]
+    if " " in truncated:
+        truncated = truncated.rsplit(" ", 1)[0]
+    truncated = truncated.rstrip(" .,:;")
+    return f"{truncated}…"
+
+
+# Strip leading articles so "The IMF" and "IMF" share a key across sources.
+_LEADING_ARTICLES = ("the ", "a ", "an ")
+
+# Qualifiers to strip from MONEY entities so "$16.4bn" and "approximately $16.4bn" merge.
+_MONEY_QUALIFIERS = ("approximately ", "about ", "around ", "nearly ", "over ", "almost ", "up to ")
+
+
 def _entity_key(text: str, label: str) -> Tuple[str, str]:
-    # Key is case-insensitive but type-sensitive.
-    return (_collapse_ws(text).lower(), label)
+    normalized = _collapse_ws(text).lower()
+    for prefix in _LEADING_ARTICLES:
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+            break
+    if label == "MONEY":
+        for qual in _MONEY_QUALIFIERS:
+            if normalized.startswith(qual):
+                normalized = normalized[len(qual):]
+                break
+        normalized = normalized.lstrip("$£€¥")
+    return (normalized, label)
 
 
 def _upper_score(text: str) -> int:
@@ -179,6 +237,26 @@ class RuleBasedClassifier:
 
         self.max_impact = int(self.config.get("max_impact_labels_per_article", 3))
 
+        # Pre-compile word-boundary patterns so substring false-positives are
+        # avoided (e.g. "signal" inside "signals", "power" inside "powers").
+        self._cat_patterns: Dict[str, Tuple[List[re.Pattern], float]] = {}
+        for cat, spec in self.categories.items():
+            kws = spec.get("keywords") or []
+            w = float(spec.get("weight", 1.0))
+            self._cat_patterns[cat] = (
+                [re.compile(r"\b" + re.escape(str(k).lower()) + r"\b") for k in kws if k],
+                w,
+            )
+
+        self._impact_patterns: Dict[str, Tuple[List[re.Pattern], float]] = {}
+        for label, spec in self.impact_labels.items():
+            kws = spec.get("keywords") or []
+            w = float(spec.get("weight", 1.0))
+            self._impact_patterns[label] = (
+                [re.compile(r"\b" + re.escape(str(k).lower()) + r"\b") for k in kws if k],
+                w,
+            )
+
     @classmethod
     def from_yaml(cls, path: Path) -> "RuleBasedClassifier":
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
@@ -188,10 +266,8 @@ class RuleBasedClassifier:
         text_l = (text or "").lower()
 
         cat_scores: Dict[str, float] = {}
-        for cat, spec in self.categories.items():
-            keywords = spec.get("keywords") or []
-            weight = float(spec.get("weight", 1.0))
-            score = sum(1 for kw in keywords if kw and str(kw).lower() in text_l) * weight
+        for cat, (patterns, weight) in self._cat_patterns.items():
+            score = sum(1 for p in patterns if p.search(text_l)) * weight
             if score > 0:
                 cat_scores[cat] = score
 
@@ -205,16 +281,24 @@ class RuleBasedClassifier:
         # Confidence is a simple bounded function of the score.
         confidence = 0.0 if top_score <= 0 else min(1.0, float(top_score) / 5.0)
 
+        min_conf = float(self.config.get("min_confidence", 0.0))
+        if confidence < min_conf:
+            top_cat = "other"
+            confidence = 0.0
+
         impact_scores: List[Tuple[str, float]] = []
-        for label, spec in self.impact_labels.items():
-            keywords = spec.get("keywords") or []
-            weight = float(spec.get("weight", 1.0))
-            score = sum(1 for kw in keywords if kw and str(kw).lower() in text_l) * weight
+        for label, (patterns, weight) in self._impact_patterns.items():
+            score = sum(1 for p in patterns if p.search(text_l)) * weight
             if score > 0:
                 impact_scores.append((label, score))
 
         impact_scores.sort(key=lambda x: (-x[1], x[0]))
         impacts = [lbl for (lbl, _s) in impact_scores[: self.max_impact]]
+
+        # Fallback: derive one impact badge from the category so every
+        # categorised card shows at least one life-impact signal.
+        if not impacts and top_cat in _CATEGORY_IMPACT_FALLBACK:
+            impacts = [_CATEGORY_IMPACT_FALLBACK[top_cat]]
 
         return ClassificationResult(category=top_cat, impact_labels=impacts, confidence=confidence)
 
@@ -232,7 +316,9 @@ class AnalysisService:
         self.entity_extractor = entity_extractor
         self.consensus_detector = consensus_detector
         self.classifier = classifier
-        self.headline_source_priority = headline_source_priority or ["dawn", "tribune", "geo"]
+        self.headline_source_priority = headline_source_priority or [
+            "dawn", "tribune", "thenews", "geo", "ary"
+        ]
 
     def _choose_headline(self, articles: Sequence[RawArticle]) -> str:
         by_source: Dict[str, List[RawArticle]] = {}
@@ -247,15 +333,30 @@ class AnalysisService:
         # Fallback: longest headline overall.
         return sorted(articles, key=lambda a: (-len(a.headline or ""), a.url))[0].headline
 
+    def _choose_snippet_text(self, articles: Sequence[RawArticle]) -> str:
+        # Use the same source-priority approach as headline selection.
+        by_source: Dict[str, List[RawArticle]] = {}
+        for a in articles:
+            by_source.setdefault(a.source, []).append(a)
+
+        for src in self.headline_source_priority:
+            if src in by_source:
+                chosen = sorted(by_source[src], key=lambda a: (-len(a.main_text or ""), a.url))[0]
+                return chosen.main_text or ""
+
+        # Fallback: longest body overall.
+        return sorted(articles, key=lambda a: (-len(a.main_text or ""), a.url))[0].main_text or ""
+
     def analyze_cluster(self, cluster_id: UUID, articles: Sequence[RawArticle]) -> AnalyzedFeed:
         if not articles:
             raise ValueError("Cannot analyze empty cluster")
 
         headline = self._choose_headline(articles)
+        summary = build_snippet(self._choose_snippet_text(articles))
 
-        # Classification uses all headlines + short snippets for signal.
+        # Classification uses full article text for maximum keyword coverage.
         cluster_text = " ".join(
-            [f"{a.headline}. {a.main_text[:500]}" for a in articles if a.headline and a.main_text]
+            [f"{a.headline}. {a.main_text}" for a in articles if a.headline and a.main_text]
         )
         cls = self.classifier.classify_text(cluster_text)
 
@@ -274,7 +375,7 @@ class AnalysisService:
         return AnalyzedFeed(
             cluster_id=cluster_id,
             headline=headline,
-            summary=None,
+            summary=summary or None,
             category=cls.category,
             confirmed_facts=consensus.confirmed_facts,
             debated_claims=consensus.debated_claims,

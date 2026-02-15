@@ -25,5 +25,31 @@ sources:
       - "pakistan"
     enabled: true
 
+  ary:
+    url: "https://arynews.tv"
+    # ARY is a Next.js site — /feed/ returns HTML, not RSS.
+    # FeedDiscoverer will fall back to section-page scraping.
+    sections:
+      - "latest-news"
+      - "pakistan"
+    enabled: true
+
+  samaa:
+    url: "https://www.samaa.tv"
+    feed_url: "https://www.samaa.tv/rss/1"
+    sections:
+      - "latest"
+      - "pakistan"
+    # All RSS endpoints blocked — re-enable once a working feed URL is found.
+    enabled: false
+
+  thenews:
+    url: "https://www.thenews.com.pk"
+    feed_url: "https://www.thenews.com.pk/rss/1/1"
+    sections:
+      - "latest"
+      - "pakistan"
+    enabled: true
+
 scraping_config:
   max_articles_per_source: 50

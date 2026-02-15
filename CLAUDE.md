@@ -105,6 +105,20 @@ python -m src.agents.clustering
 python -m src.agents.analysis
 ```
 
+**Run full daily pipeline (scrape → embed → cluster → analyze → write to DB):**
+```bash
+cd backend
+source venv/bin/activate
+python run_pipeline.py
+```
+
+**Run API server (Swagger docs at /docs):**
+```bash
+cd backend
+source venv/bin/activate
+uvicorn main:app --reload
+```
+
 **Run tests:**
 ```bash
 pytest tests/
