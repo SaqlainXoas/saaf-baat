@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.api.app import create_app
+
 _BACKEND_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(_BACKEND_DIR / "src"))
 load_dotenv(_BACKEND_DIR / ".env")
 
-from src.api.app import create_app  # noqa: E402
 
 app = create_app()
 
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
