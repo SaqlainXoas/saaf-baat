@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible defect in Saaf Baat.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Briefly describe the bug and impact.
+      placeholder: The feed route returns 500 when ...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include exact commands/URLs and inputs.
+      placeholder: |
+        1. Run `cd backend && uvicorn main:app --reload`
+        2. Open `/api/feed`
+        3. Observe error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Commit SHA, OS, browser, and relevant env flags.
+      placeholder: "SHA: ..., OS: macOS 14, NEXT_PUBLIC_STRICT_LIVE_DATA=1"
