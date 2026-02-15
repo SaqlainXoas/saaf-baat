@@ -64,7 +64,7 @@ def validate_sources_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
     # Validate each source
     for source_name, source_data in sources.items():
-        required_fields = ["url", "feed_url", "sections", "enabled"]
+        required_fields = ["url", "sections", "enabled"]
 
         for field in required_fields:
             if field not in source_data:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -348,6 +349,24 @@ class SupabaseClient:
             
         except Exception as e:
             raise DatabaseError(f"Failed to get articles without clusters: {e}")
+
+    def get_articles_without_clusters_since(self, since: datetime, limit: int = 500) -> ArticleList:
+        """Get unclustered articles scraped since a given timestamp."""
+        try:
+            if since.tzinfo is None:
+                since = since.replace(tzinfo=timezone.utc)
+            response = (
+                self.client.table(self.TABLE_RAW_ARTICLES)
+                .select("*")
+                .is_("cluster_id", "null")
+                .gte("scraped_at", since.isoformat())
+                .order("scraped_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return [RawArticle(**self._parse_embedding(item)) for item in response.data]
+        except Exception as e:
+            raise DatabaseError(f"Failed to get recent unclustered articles: {e}")
     
     def get_recent_articles(self, limit: int = 50) -> ArticleList:
         """Get most recently scraped articles."""
@@ -398,6 +417,21 @@ class SupabaseClient:
             
         except Exception as e:
             raise DatabaseError(f"Failed to delete article: {e}")
+
+    def delete_raw_articles_older_than(self, cutoff: datetime) -> int:
+        """Delete raw_articles with scraped_at older than cutoff."""
+        try:
+            if cutoff.tzinfo is None:
+                cutoff = cutoff.replace(tzinfo=timezone.utc)
+            response = (
+                self.client.table(self.TABLE_RAW_ARTICLES)
+                .delete()
+                .lt("scraped_at", cutoff.isoformat())
+                .execute()
+            )
+            return len(response.data or [])
+        except Exception as e:
+            raise DatabaseError(f"Failed to prune raw articles: {e}")
     
     # ==========================================
     # Cluster Operations
@@ -535,11 +569,40 @@ class SupabaseClient:
             
         except Exception as e:
             raise DatabaseError(f"Failed to delete cluster: {e}")
+
+    def delete_clusters_older_than(self, cutoff: datetime) -> int:
+        """Delete clusters with created_at older than cutoff."""
+        try:
+            if cutoff.tzinfo is None:
+                cutoff = cutoff.replace(tzinfo=timezone.utc)
+            response = (
+                self.client.table(self.TABLE_CLUSTERS)
+                .delete()
+                .lt("created_at", cutoff.isoformat())
+                .execute()
+            )
+            return len(response.data or [])
+        except Exception as e:
+            raise DatabaseError(f"Failed to prune clusters: {e}")
     
     # ==========================================
     # Analyzed Feed Operations
     # ==========================================
-    
+
+    def analyzed_feed_exists(self, cluster_id: Any) -> bool:
+        """Return True if an analyzed_feed row exists for the given cluster_id."""
+        try:
+            response = (
+                self.client.table(self.TABLE_ANALYZED_FEED)
+                .select("id")
+                .eq("cluster_id", str(cluster_id))
+                .limit(1)
+                .execute()
+            )
+            return bool(response.data)
+        except Exception as e:
+            raise DatabaseError(f"Failed to check analyzed feed existence: {e}")
+
     def insert_analyzed_feed(self, feed: Any) -> UUID:
         """
         Insert analyzed story into feed.
@@ -590,6 +653,25 @@ class SupabaseClient:
             if "PGRST116" in str(e):
                 raise NotFoundError(f"Feed item not found: {feed_id}")
             raise DatabaseError(f"Failed to get feed item: {e}")
+
+    def get_analyzed_feed_by_cluster_id(self, cluster_id: Any) -> AnalyzedFeed:
+        """Retrieve analyzed feed item by cluster_id."""
+        try:
+            response = (
+                self.client.table(self.TABLE_ANALYZED_FEED)
+                .select("*")
+                .eq("cluster_id", str(cluster_id))
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if response.data:
+                return AnalyzedFeed.from_db_dict(response.data[0])
+            raise NotFoundError(f"Feed item not found for cluster: {cluster_id}")
+        except NotFoundError:
+            raise
+        except Exception as e:
+            raise DatabaseError(f"Failed to get feed item by cluster: {e}")
     
     def get_analyzed_feed(
         self,
@@ -635,6 +717,21 @@ class SupabaseClient:
             
         except Exception as e:
             raise DatabaseError(f"Failed to delete feed item: {e}")
+
+    def delete_analyzed_feed_older_than(self, cutoff: datetime) -> int:
+        """Delete analyzed_feed with created_at older than cutoff."""
+        try:
+            if cutoff.tzinfo is None:
+                cutoff = cutoff.replace(tzinfo=timezone.utc)
+            response = (
+                self.client.table(self.TABLE_ANALYZED_FEED)
+                .delete()
+                .lt("created_at", cutoff.isoformat())
+                .execute()
+            )
+            return len(response.data or [])
+        except Exception as e:
+            raise DatabaseError(f"Failed to prune analyzed feed: {e}")
     
     # ==========================================
     # Schema & Utility Operations

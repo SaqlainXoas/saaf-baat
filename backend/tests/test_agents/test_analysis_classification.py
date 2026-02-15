@@ -28,5 +28,17 @@ def test_rule_based_classifier_falls_back_to_other():
     text = "A rare comet passes by Earth in a spectacular night sky event."
     result = clf.classify_text(text)
 
-    assert result.category in ("other", "international", "technology", "sports", "health", "city", "politics", "economy", "security")
-    # specifically should not crash; unknown should map to other by default
+    assert result.category in (
+        "other",
+        "international",
+        "technology",
+        "sports",
+        "health",
+        "city",
+        "politics",
+        "economy",
+        "security",
+        "education",
+        "entertainment",
+    )
+    # Specifically: should not crash; unknown content should generally map to "other".

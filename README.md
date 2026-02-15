@@ -1,28 +1,97 @@
-# saaf-baat
+# Saaf Baat
 
-Minimalist news intelligence platform for Pakistan. Synthesizes multi-source news coverage into clear, factual summaries.
+<p align="left">
+  <img src="design/brand/icon/saaf-baat-icon.svg" alt="Saaf Baat logo" width="64" />
+</p>
 
-**Core Philosophy:** "Open once in morning. Know what matters. Close app. Get on with life."
+Calm, finite morning brief for Pakistan.
 
-## Features
+Saaf Baat turns multi-source coverage into a clear daily digest:
+- what is agreed,
+- what is debated,
+- where to verify each claim from original reporting.
 
-- Multi-source news aggregation
-- ML-powered story clustering
-- Consensus-based fact extraction
-- Zero ads, zero tracking, zero paywalls
-- 100% free and open-source
+## Product Promise
 
-## Tech Stack
+Open once in the morning. Read 7 essential stories. Verify quickly. Move on with your day.
 
-- **Backend:** Python, HDBSCAN, spaCy, SetFit, Gemini API
-- **Frontend:** Next.js, React, Tailwind CSS
-- **Database:** Supabase (PostgreSQL)
-- **Infrastructure:** GitHub Actions, Vercel
+## Current Product Status
 
-## Getting Started
+- Backend ingestion, clustering, analysis, API routes, and daily orchestration are implemented.
+- Frontend home/detail experience, theme controls, focus filters, and reliability states are implemented.
+- Frontend quality gates pass:
+  - `cd frontend && npm test`
+  - `cd frontend && npm run build`
 
-See [CLAUDE.md](./CLAUDE.md) for detailed development documentation.
+## Repository Structure
+
+- `backend/` FastAPI API, scraping + NLP pipeline, database layer, pytest suite
+- `frontend/` Next.js App Router UI + Jest tests
+- `docs/` core product documents and plans
+  - `docs/plan.md` primary engineering execution plan
+  - `docs/saaf-baat-prd-final.md` primary PRD
+  - `docs/final-draft-product.md` frontend productization draft
+  - `docs/final-draft-plan.md` completed frontend phase checklist
+- `design/` brand and design assets
+
+## Quick Start
+
+### Backend
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+uvicorn main:app --reload
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+## Environment Variables
+
+### Frontend
+
+- `NEXT_PUBLIC_API_URL` backend base URL (example: `http://localhost:8000`)
+- `NEXT_PUBLIC_CITY_NAME` local greeting city (default: `Islamabad`)
+- `NEXT_PUBLIC_DEFAULT_THEME` `system|light|dark` (default: `system`)
+
+### Backend
+
+Use `.env` (gitignored) for API keys and database credentials. See `CLAUDE.md` and `backend/config/` for operational details.
+
+## Quality Commands
+
+### Backend
+
+```bash
+cd backend
+pytest
+black src
+ruff check src
+mypy src
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm test
+npm run build
+```
+
+## Documentation
+
+- Developer and workflow notes: `CLAUDE.md`
+- Primary product docs: `docs/`
 
 ## License
 
-Open source - details TBD
+Open source (license file to be finalized).

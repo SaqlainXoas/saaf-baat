@@ -59,6 +59,9 @@ def test_analysis_service_produces_analyzed_feed():
 
     assert str(feed.cluster_id) == str(cluster_id)
     assert feed.headline  # chosen deterministically
+    assert isinstance(feed.summary, str)
+    assert feed.summary
+    assert len(feed.summary) <= 241  # 240 chars + possible ellipsis
     assert feed.category == "economy"
     assert feed.source_attribution.get("dawn") == 1
     assert feed.source_attribution.get("tribune") == 1

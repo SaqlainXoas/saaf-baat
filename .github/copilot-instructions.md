@@ -85,7 +85,8 @@ debated = set.symmetric_difference(*[article.entities for article in cluster])
 ```bash
 # Backend
 cd backend && source venv/bin/activate
-python main.py                            # Full pipeline
+python run_pipeline.py                    # Full pipeline
+uvicorn main:app --reload                 # API (docs at /docs)
 python -m src.scrapers.orchestrator       # Scraping only
 python -m src.agents.clustering           # Clustering only
 pytest tests/                             # Run tests

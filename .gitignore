@@ -34,6 +34,7 @@ Thumbs.db
 # Node
 frontend/node_modules/
 frontend/.next/
+frontend/.swc/
 frontend/out/
 frontend/build/
 frontend/.vercel
@@ -57,3 +58,10 @@ coverage.xml
 *.db
 *.sqlite
 *.sqlite3
+
+# Documentation (archive/local notes)
+docs/extra/
+MEMORY.md
+
+# Design exploration artifacts
+design-mockups/

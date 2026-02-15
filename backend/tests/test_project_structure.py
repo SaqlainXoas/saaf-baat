@@ -19,6 +19,9 @@ class TestDirectoryStructure:
             "src/agents",
             "src/db",
             "src/utils",
+            "src/api",
+            "src/api/routes",
+            "src/pipeline",
         ]
 
         for dir_path in required_dirs:
@@ -58,6 +61,9 @@ class TestDirectoryStructure:
             "src/agents/__init__.py",
             "src/db/__init__.py",
             "src/utils/__init__.py",
+            "src/api/__init__.py",
+            "src/api/routes/__init__.py",
+            "src/pipeline/__init__.py",
             "tests/__init__.py",
         ]
 
@@ -82,9 +88,14 @@ class TestConfigFiles:
 
         for source_name, source_data in sources_config["sources"].items():
             assert "url" in source_data, f"Source {source_name} missing URL"
-            assert "feed_url" in source_data, f"Source {source_name} missing feed_url"
             assert "sections" in source_data, f"Source {source_name} missing sections"
             assert "enabled" in source_data, f"Source {source_name} missing enabled"
+            # feed_url is optional — scraper falls back to section-page scraping
+
+        # Optional sources should be present but can be disabled
+        assert "ary" in sources_config["sources"]
+        assert "samaa" in sources_config["sources"]
+        assert "thenews" in sources_config["sources"]
 
     def test_classification_yaml_exists(self):
         """Verify classification_rules.yaml exists."""
