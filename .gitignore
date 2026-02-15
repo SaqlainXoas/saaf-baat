@@ -19,6 +19,7 @@ build/
 .env
 .env.local
 .env.*.local
+backend/.pipeline_heartbeat.json
 
 # IDE
 .vscode/
@@ -62,6 +63,16 @@ coverage.xml
 # Documentation (archive/local notes)
 docs/extra/
 MEMORY.md
+CLAUDE.md
+docs/plan.md
+docs/saaf-baat-prd-final.md
+docs/final-draft-plan.md
+docs/final-draft-product.md
+.claude/
+backend/.claude/
+.github/copilot-instructions.md
 
 # Design exploration artifacts
 design-mockups/
+design/
+frontend/mockups/

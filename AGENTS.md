@@ -1,5 +1,13 @@
 # Repository Guidelines
 
+## Current Phase (Final Checkup)
+
+- Working directory: `/Users/saqlain/projects/personal/saaf-baat`
+- Active release phase: final pre-ship cleanup and verification
+- Source-of-truth checklist: `docs/final-ready-plan.md`
+- Keep tracked docs minimal: `README.md`, `AGENTS.md`, and `docs/final-ready-plan.md`
+- Archive local/scratch/planning/design exploration material under `docs/extra/` (gitignored)
+
 ## Project Structure
 
 - `backend/`: Python FastAPI API + news pipeline
@@ -11,7 +19,7 @@
   - `frontend/src/app/`: routes (e.g. `stories/[cluster_id]`)
   - `frontend/src/components/`: UI components
   - `frontend/tests/`: Jest + Testing Library tests
-- Root docs/plans: `README.md`, `CLAUDE.md`, `plan*.md`, `saaf-baat-prd-final.md`
+- Root docs/plans: `README.md`, `AGENTS.md`, `docs/final-ready-plan.md`
 
 ## Build, Test, and Development Commands
 
