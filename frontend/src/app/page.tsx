@@ -1,8 +1,7 @@
 import { fetchFeedWithMeta } from "@/data/api";
 import MorningGreeting from "@/components/MorningGreeting";
-import BrandHeader from "@/components/BrandHeader";
+import DesktopBrief from "@/components/DesktopBrief";
 import Deck from "@/components/Deck";
-import StoryCard from "@/components/StoryCard";
 import Link from "next/link";
 import { applyFilters, deriveAvailableSources, parseFilters } from "@/utils/focusFilters";
 import DataStatusBanner from "@/components/DataStatusBanner";
@@ -32,47 +31,55 @@ export default async function Home({
   const filters = parseFilters(urlParams);
   const filtered = applyFilters(allStories, filters);
   const stories = filtered.slice(0, MAX_STORIES);
+  const latestCreatedAt = allStories[0]?.created_at;
   const hasFilters = urlParams.has("impact") || urlParams.has("sources");
+  const hasLiveDataError = feedResult.status === "error-live-required";
 
   return (
     <div className="min-h-screen" style={{ background: "var(--paper)" }}>
       <div className="bg-ambient" />
+      <a
+        href="#main-content"
+        className="sb-focusable absolute left-3 top-3 z-40 rounded-lg px-3 py-2 text-xs font-bold"
+        style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--hairline)" }}
+      >
+        Skip to stories
+      </a>
 
-      <div className="relative">
+      <main id="main-content" className="relative" role="main">
         {/* ── Desktop: single-flow brief (feed) ── */}
         <div className="hidden lg:block">
-          <div className="sb-container px-4 py-2" style={{ maxWidth: 900 }}>
-            <BrandHeader availableSources={availableSources} storyCount={stories.length} />
-            <DataStatusBanner status={feedResult.status} />
-
-            {stories.length > 0 ? (
-              <div className="mt-6 space-y-4">
-                <Link href={`/stories/${stories[0].story_id}`}>
-                  <StoryCard story={stories[0]} variant="featured" />
-                </Link>
-
-                {stories.slice(1).map((story) => (
-                  <Link key={story.story_id} href={`/stories/${story.story_id}`} className="block">
-                    <StoryCard story={story} variant="compact" />
-                  </Link>
-                ))}
-
-                <p className="text-center text-sm py-4" style={{ color: "var(--ink-muted)" }}>
-                  You&apos;re all caught up. Enjoy your day.
-                </p>
-              </div>
-            ) : (
+          {hasLiveDataError ? (
+            <div className="sb-container px-4 py-2" style={{ maxWidth: 900 }}>
+              <LiveDataErrorState message={feedResult.message} />
+            </div>
+          ) : stories.length > 0 ? (
+            <DesktopBrief
+              stories={stories}
+              availableSources={availableSources}
+              status={feedResult.status}
+              statusMessage={feedResult.message}
+              latestCreatedAt={latestCreatedAt}
+            />
+          ) : (
+            <div className="sb-container px-4 py-2" style={{ maxWidth: 900 }}>
               <EmptyState hasFilters={hasFilters} />
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* ── Mobile: greeting + card deck ── */}
         <div className="lg:hidden max-w-md mx-auto px-4">
           <MorningGreeting storyCount={stories.length} availableSources={availableSources} />
-          <DataStatusBanner status={feedResult.status} />
+          <DataStatusBanner
+            status={feedResult.status}
+            message={feedResult.message}
+            latestCreatedAt={latestCreatedAt}
+          />
 
-          {stories.length > 0 ? (
+          {hasLiveDataError ? (
+            <LiveDataErrorState compact message={feedResult.message} />
+          ) : stories.length > 0 ? (
             <div className="mt-3">
               <Deck stories={stories} />
             </div>
@@ -80,7 +87,27 @@ export default async function Home({
             <EmptyState hasFilters={hasFilters} />
           )}
         </div>
-      </div>
+      </main>
+    </div>
+  );
+}
+
+function LiveDataErrorState({ message, compact = false }: { message?: string; compact?: boolean }) {
+  return (
+    <div className={`text-center ${compact ? "py-10" : "py-20"} px-6`}>
+      <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
+        Live data unavailable
+      </p>
+      <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
+        {message || "Connect NEXT_PUBLIC_API_URL to a healthy backend to view the brief."}
+      </p>
+      <Link
+        href="/"
+        className="inline-block mt-4 text-sm font-bold sb-focusable px-4 py-2 rounded-xl"
+        style={{ background: "var(--surface)", border: "1px solid var(--hairline)", color: "var(--ink)" }}
+      >
+        Retry
+      </Link>
     </div>
   );
 }

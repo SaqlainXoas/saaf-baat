@@ -303,6 +303,44 @@ body {
     background-size: 240% 100%;
     animation: sb-shimmer 1.4s ease-in-out infinite;
   }
+
+  .sb-featured-enter {
+    animation: sb-featured-in 160ms ease-out;
+  }
+
+  .sb-sheet-backdrop-open,
+  .sb-sheet-backdrop-closed {
+    transition: opacity 170ms ease;
+  }
+
+  .sb-sheet-backdrop-open {
+    opacity: 1;
+  }
+
+  .sb-sheet-backdrop-closed {
+    opacity: 0;
+  }
+
+  .sb-sheet-panel-open,
+  .sb-sheet-panel-closed {
+    transition: opacity 170ms ease, transform 170ms ease;
+  }
+
+  .sb-sheet-panel-open {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .sb-sheet-panel-closed {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  @media (min-width: 640px) {
+    .sb-sheet-panel-closed {
+      transform: translateY(10px) scale(0.99);
+    }
+  }
 }
 
 @keyframes sb-shimmer {
@@ -314,11 +352,28 @@ body {
   }
 }
 
+@keyframes sb-featured-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sb-card-interactive,
   .sb-theme-option,
-  .sb-list-item {
+  .sb-list-item,
+  .sb-featured-enter,
+  .sb-sheet-backdrop-open,
+  .sb-sheet-backdrop-closed,
+  .sb-sheet-panel-open,
+  .sb-sheet-panel-closed {
     transition: none;
+    animation: none;
   }
 
   .sb-skeleton {

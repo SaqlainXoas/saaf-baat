@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type TouchEvent } from "react";
 import Link from "next/link";
 import StoryCard from "./StoryCard";
 import type { StoryCardData } from "@/data/types";
@@ -11,11 +11,17 @@ const DEPTH_STYLE: { transform: string; opacity: number; zIndex: number }[] = [
   { transform: "translate(14px, 20px) scale(0.962)", opacity: 0.54, zIndex: 8 },
   { transform: "translate(20px, 29px) scale(0.948)", opacity: 0.38, zIndex: 7 },
 ];
+const SWIPE_THRESHOLD_PX = 56;
 
 export default function Deck({ stories }: { stories: StoryCardData[] }) {
   const [idx, setIdx] = useState(0);
   const total = stories.length;
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const suppressTap = useRef(false);
 
   useEffect(() => {
     const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
@@ -30,8 +36,57 @@ export default function Deck({ stories }: { stories: StoryCardData[] }) {
   const visible: number[] = [];
   for (let i = 0; i < 4 && idx + i < total; i++) visible.push(idx + i);
 
+  function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0];
+    touchStartX.current = touch.clientX;
+    touchStartY.current = touch.clientY;
+    setDragging(false);
+    setDragOffset(0);
+  }
+
+  function handleTouchMove(event: TouchEvent<HTMLDivElement>) {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const touch = event.touches[0];
+    const dx = touch.clientX - touchStartX.current;
+    const dy = touch.clientY - touchStartY.current;
+
+    if (Math.abs(dx) <= Math.abs(dy)) return;
+    setDragging(true);
+    setDragOffset(dx);
+  }
+
+  function handleTouchEnd() {
+    if (!dragging) {
+      touchStartX.current = null;
+      touchStartY.current = null;
+      return;
+    }
+
+    if (dragOffset <= -SWIPE_THRESHOLD_PX && idx < total - 1) {
+      setIdx((current) => current + 1);
+    } else if (dragOffset >= SWIPE_THRESHOLD_PX && idx > 0) {
+      setIdx((current) => current - 1);
+    }
+
+    suppressTap.current = true;
+    window.setTimeout(() => {
+      suppressTap.current = false;
+    }, 140);
+
+    touchStartX.current = null;
+    touchStartY.current = null;
+    setDragging(false);
+    setDragOffset(0);
+  }
+
   return (
-    <div aria-label="Morning brief deck">
+    <div
+      aria-label="Morning brief deck"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+    >
       <div className="relative" style={{ height: 430 }}>
         {[...visible].reverse().map((si) => {
           const depth = si - idx;
@@ -46,13 +101,24 @@ export default function Deck({ stories }: { stories: StoryCardData[] }) {
                 ...ds,
                 transition: reduceMotion
                   ? "none"
+                  : dragging && depth === 0
+                    ? "none"
                   : "transform 0.24s ease-out, opacity 0.24s ease-out",
                 transformOrigin: "50% 50%",
                 filter: depth === 0 ? "none" : "saturate(0.92)",
+                transform:
+                  depth === 0 && dragging ? `${ds.transform} translateX(${dragOffset}px)` : ds.transform,
               }}
             >
               {depth === 0 ? (
-                <Link href={`/stories/${story.story_id}`} className="block">
+                <Link
+                  href={`/stories/${story.story_id}`}
+                  className="block"
+                  onClick={(event) => {
+                    if (!suppressTap.current) return;
+                    event.preventDefault();
+                  }}
+                >
                   <StoryCard story={story} />
                 </Link>
               ) : (

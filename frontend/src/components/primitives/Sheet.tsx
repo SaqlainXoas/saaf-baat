@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+const SHEET_ANIM_MS = 170;
 
 function getFocusableElements(container: HTMLElement | null): HTMLElement[] {
   if (!container) return [];
@@ -34,6 +36,20 @@ export default function Sheet({
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const lastActive = useMemo(() => (typeof document !== "undefined" ? document.activeElement : null), []);
+  const [rendered, setRendered] = useState(open);
+  const [visible, setVisible] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      const raf = window.requestAnimationFrame(() => setVisible(true));
+      return () => window.cancelAnimationFrame(raf);
+    }
+
+    setVisible(false);
+    const timer = window.setTimeout(() => setRendered(false), SHEET_ANIM_MS);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -68,13 +84,13 @@ export default function Sheet({
     el?.focus?.();
   }, [open, lastActive]);
 
-  if (!open) return null;
+  if (!rendered) return null;
 
   return (
     <div className="fixed inset-0 z-50">
       <div
-        className="absolute inset-0"
-        style={{ background: "rgba(11, 18, 32, 0.38)" }}
+        className={`absolute inset-0 ${visible ? "sb-sheet-backdrop-open" : "sb-sheet-backdrop-closed"}`}
+        style={{ background: "rgba(11, 18, 32, 0.38)", transitionDuration: `${SHEET_ANIM_MS}ms` }}
         onClick={onClose}
         aria-hidden="true"
       />
@@ -86,12 +102,15 @@ export default function Sheet({
           aria-modal="true"
           aria-label={title}
           tabIndex={-1}
-          className={`w-full ${widthClassName} sb-focusable`}
+          className={`w-full ${widthClassName} sb-focusable ${
+            visible ? "sb-sheet-panel-open" : "sb-sheet-panel-closed"
+          }`}
           style={{
             background: "var(--surface)",
             border: "1px solid var(--hairline)",
             borderRadius: "var(--radius-2xl)",
             boxShadow: "var(--elev-2)",
+            transitionDuration: `${SHEET_ANIM_MS}ms`,
           }}
         >
           <div className="px-4 py-3 flex items-center justify-between">
@@ -122,4 +141,3 @@ export default function Sheet({
     </div>
   );
 }
-
