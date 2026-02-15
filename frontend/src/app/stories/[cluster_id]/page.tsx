@@ -16,9 +16,10 @@ export default async function StoryDetail({
   params: Promise<{ cluster_id: string }>;
 }) {
   const { cluster_id } = await params;
-  const { story, status } = await fetchStoryWithMeta(cluster_id);
+  const { story, status, message } = await fetchStoryWithMeta(cluster_id);
 
   if (!story) {
+    const isLiveModeError = status === "error-live-required";
     return (
       <div
         className="min-h-screen flex items-center justify-center"
@@ -26,10 +27,12 @@ export default async function StoryDetail({
       >
         <div className="text-center p-8 max-w-sm">
           <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
-            Story not found
+            {isLiveModeError ? "Live story unavailable" : "Story not found"}
           </p>
           <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
-            This story may have been updated or removed.
+            {isLiveModeError
+              ? (message || "Connect NEXT_PUBLIC_API_URL to a healthy backend and try again.")
+              : "This story may have been updated or removed."}
           </p>
           <Link
             href="/"
@@ -50,8 +53,15 @@ export default async function StoryDetail({
   return (
     <div className="min-h-screen" style={{ background: "var(--paper)" }}>
       <div className="bg-ambient" />
+      <a
+        href="#story-main"
+        className="sb-focusable absolute left-3 top-3 z-40 rounded-lg px-3 py-2 text-xs font-bold"
+        style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--hairline)" }}
+      >
+        Skip to story
+      </a>
 
-      <div className="relative sb-container px-4 py-6">
+      <main id="story-main" className="relative sb-container px-4 py-6" role="main">
         <Link
           href="/"
           className="sb-focusable inline-flex items-center gap-1 text-sm px-2 py-1 rounded-lg"
@@ -61,7 +71,7 @@ export default async function StoryDetail({
           <span>Back to brief</span>
         </Link>
         <div className="mt-3">
-          <DataStatusBanner status={status} />
+          <DataStatusBanner status={status} message={message} latestCreatedAt={story.created_at} />
         </div>
 
         <div className="mt-4">
@@ -105,7 +115,7 @@ export default async function StoryDetail({
         />
 
         <OriginalSourcesList articles={story.articles || []} />
-      </div>
+      </main>
     </div>
   );
 }

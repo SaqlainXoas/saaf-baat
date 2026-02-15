@@ -3,14 +3,31 @@
 import { useMemo, useState } from "react";
 import type { StoryArticleData } from "@/data/types";
 
-const BADGE_BG: Record<string, string> = {
+const SOURCE_BADGE_BG: Record<string, string> = {
   dawn: "#52B7A3",
   geo: "#22c55e",
   tribune: "#6B7280",
+  ary: "#ef4444",
+  thenews: "#0ea5e9",
+  samaa: "#f59e0b",
 };
+
+const FALLBACK_BADGE_BG = ["#64748b", "#0f766e", "#1d4ed8", "#b45309", "#7c3aed", "#be123c"];
 
 function capitalise(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function sourceBadgeColor(source: string) {
+  const key = source.trim().toLowerCase();
+  const known = SOURCE_BADGE_BG[key];
+  if (known) return known;
+
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = ((hash << 5) - hash + key.charCodeAt(index)) | 0;
+  }
+  return FALLBACK_BADGE_BG[Math.abs(hash) % FALLBACK_BADGE_BG.length];
 }
 
 export default function OriginalSourcesList({
@@ -46,7 +63,7 @@ export default function OriginalSourcesList({
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <span
                 className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                style={{ background: BADGE_BG[a.source] || "#6B7280" }}
+                style={{ background: sourceBadgeColor(a.source) }}
               >
                 {a.source[0]?.toUpperCase()}
               </span>

@@ -36,4 +36,27 @@ describe("Deck", () => {
     expect(screen.getByText(/You're all caught up/)).toBeDefined();
     expect(screen.getByText(/Enjoy your day/)).toBeDefined();
   });
+
+  it("moves to next story on left swipe", () => {
+    render(<Deck stories={stories} />);
+    const deck = screen.getByLabelText("Morning brief deck");
+
+    fireEvent.touchStart(deck, { touches: [{ clientX: 240, clientY: 120 }] });
+    fireEvent.touchMove(deck, { touches: [{ clientX: 140, clientY: 120 }] });
+    fireEvent.touchEnd(deck);
+
+    expect(screen.getByText("2 / 3")).toBeDefined();
+  });
+
+  it("moves to previous story on right swipe", () => {
+    render(<Deck stories={stories} />);
+    const deck = screen.getByLabelText("Morning brief deck");
+
+    fireEvent.click(screen.getByLabelText("Go to story 2"));
+    fireEvent.touchStart(deck, { touches: [{ clientX: 120, clientY: 120 }] });
+    fireEvent.touchMove(deck, { touches: [{ clientX: 220, clientY: 120 }] });
+    fireEvent.touchEnd(deck);
+
+    expect(screen.getByText("1 / 3")).toBeDefined();
+  });
 });

@@ -27,7 +27,7 @@ export interface StoryArticleData {
   source: string;
   headline: string;
   url: string;
-  publish_date?: string;
+  publish_date?: string | null;
 }
 
 export interface StoryDetailData extends StoryCardData {
