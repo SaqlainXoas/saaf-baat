@@ -178,6 +178,12 @@ The next improvements should stay within the current architecture:
 4. Tighten category consistency and deterministic importance ranking so the surviving `5-9` cards are the right `5-9`, not just coherent clusters.
 5. Reduce scraper runtime without broadening source risk or adding opaque complexity.
 
+## Current Main Blockers
+
+- `dawn` discovery quality is still inconsistent and sometimes surfaces `images.dawn.com` lifestyle links instead of hard-news URLs.
+- Groq editorial reliability is still below target because strict schema mode can fail and the fallback path can hit `429` rate limits.
+- The system can now produce `5-9` cards, but deterministic ranking still needs work so softer feature stories do not take slots from stronger civic/public-interest stories.
+
 ## Hard Rules
 
 - Do not trade correctness for novelty.

@@ -135,6 +135,16 @@ The next work items are:
 4. Re-check publish-date and freshness handling on live rows.
 5. Do final frontend polish only after backend output is stable.
 
+## Main Blockers
+
+These are the current concrete blockers from the latest live run:
+
+- `dawn` discovery is inconsistent and can surface `images.dawn.com` lifestyle links instead of hard-news pages.
+- Groq editorial can fail on strict schema validation and then hit `429` on fallback, which forces deterministic publishing.
+- Deterministic ranking still lets some softer feature stories survive when stronger civic/public-interest stories should win the slot.
+
+Until those three are fixed, the product is close but not fully ship-ready.
+
 ## Repository Layout
 
 ```text

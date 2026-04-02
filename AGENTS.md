@@ -77,6 +77,14 @@ The order of work should be:
 4. Tighten freshness and publish-date trust.
 5. Polish the frontend only after backend output is stable.
 
+## Main Blockers
+
+Carry these forward unless a newer live run disproves them:
+
+- `dawn` discovery quality is still unstable and can return `images.dawn.com` lifestyle links.
+- Groq editorial is not yet operationally reliable because strict schema mode can fail and fallback can rate-limit.
+- Deterministic ranking still needs tightening so the final `5-9` cards stay hard-news selective.
+
 ## Documentation Hygiene
 
 - Keep tracked docs minimal.

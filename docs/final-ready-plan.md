@@ -32,6 +32,12 @@ Not finished:
 - freshness and publish-date trust need more validation
 - one more clean live acceptance pass is still needed after the latest classifier and publish-gate tuning
 
+## Current Main Blockers
+
+- `dawn` discovery quality is still unstable and can route the morning run toward `images.dawn.com` lifestyle content instead of hard news.
+- Groq editorial is still operationally fragile because strict schema mode can fail and the fallback request can hit `429` rate limits.
+- Deterministic ranking still needs tightening so softer feature stories do not occupy slots that should go to stronger civic and public-interest stories.
+
 ## Release Definition
 
 The project is ready to ship only when all of the following are true:
