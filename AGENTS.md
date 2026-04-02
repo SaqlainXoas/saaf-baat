@@ -11,20 +11,8 @@
   - `program.md`
   - `docs/final-ready-plan.md`
 
-## Product Reality Check
-
-The project is past the basic build stage. It already has scraping, embeddings, clustering, DB integration, API delivery, frontend rendering, and a bounded Groq editorial layer.
-
-The project is not done yet because the live morning brief still does not reliably produce the intended `5-9` strong cards from fresh data.
-
-Current state:
-
-- `dawn`, `tribune`, and `geo` are the active core sources
-- `ary` is disabled because live discovery and extraction were unreliable
-- deterministic extraction still matters for explainability
-- Groq is now allowed for editorial selection and card framing only
-- the main remaining work is source quality, editorial reliability, freshness, and feed trust
-- latest constrained live runs now reach the `5-9` target range, but some surviving stories are still softer than the product goal wants
+For current progress, blockers, and next actions, read `docs/final-ready-plan.md`.
+For product reasoning and evaluation rules, read `program.md`.
 
 ## End Vision
 
@@ -66,24 +54,6 @@ These decisions are currently approved and should be treated as active constrain
 - If a heuristic chain becomes hard to reason about, simplify it.
 - Do not optimize for article volume. Optimize for morning-brief quality.
 - Do not revert unrelated user changes in a dirty worktree.
-
-## Current Priorities
-
-The order of work should be:
-
-1. Fix `dawn` discovery quality so hard-news links dominate and off-mission `images.dawn.com` links do not drive a run.
-2. Harden the Groq editorial path so schema validation or rate limits do not routinely force deterministic fallback.
-3. Tighten deterministic importance ranking so softer feature stories do not consume morning-brief slots.
-4. Tighten freshness and publish-date trust.
-5. Polish the frontend only after backend output is stable.
-
-## Main Blockers
-
-Carry these forward unless a newer live run disproves them:
-
-- `dawn` discovery quality is still unstable and can return `images.dawn.com` lifestyle links.
-- Groq editorial is not yet operationally reliable because strict schema mode can fail and fallback can rate-limit.
-- Deterministic ranking still needs tightening so the final `5-9` cards stay hard-news selective.
 
 ## Documentation Hygiene
 
