@@ -278,6 +278,32 @@ class TestHybridOrchestratorArticleURLExtraction:
         assert len(urls) >= 3
         assert any("/news/12345" in url for url in urls)
 
+    def test_extracts_geo_latest_article_urls(self):
+        """Should recognize Geo latest article URLs from listing pages."""
+        from src.scrapers.hybrid_orchestrator import HybridOrchestrator
+
+        orchestrator = HybridOrchestrator()
+
+        section_html = """
+        <html>
+        <body>
+            <a href="/latest/658205-pakistan-in-close-contact-with-us">Geo Story</a>
+            <a href="/category/pakistan">Pakistan Category</a>
+            <a href="/latest/658196-security-forces-neutralise-8-militants">Another Geo Story</a>
+        </body>
+        </html>
+        """
+
+        urls = orchestrator._extract_article_urls(
+            section_html,
+            base_url="https://www.geo.tv",
+            source="geo",
+        )
+
+        assert len(urls) == 2
+        assert urls[0] == "https://www.geo.tv/latest/658205-pakistan-in-close-contact-with-us"
+        assert urls[1] == "https://www.geo.tv/latest/658196-security-forces-neutralise-8-militants"
+
     def test_deduplicates_article_urls(self):
         """Should remove duplicate URLs."""
         from src.scrapers.hybrid_orchestrator import HybridOrchestrator

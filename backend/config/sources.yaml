@@ -1,38 +1,36 @@
 sources:
   dawn:
     url: "https://www.dawn.com"
-    feed_url: "https://www.dawn.com/feeds/latest-news"
     sections:
-      - "latest-news"
-      - "pakistan"
-      - "business"
+      - "https://www.dawn.com/pakistan"
+      - "https://www.dawn.com/business"
     enabled: true
 
   tribune:
     url: "https://tribune.com.pk"
-    feed_url: "https://tribune.com.pk/rss.xml"
     sections:
-      - "latest"
-      - "pakistan"
-      - "business"
+      - "https://tribune.com.pk/pakistan"
+      - "https://tribune.com.pk/business"
     enabled: true
 
   geo:
     url: "https://www.geo.tv"
-    feed_url: "https://www.geo.tv/rss"
     sections:
-      - "latest-news"
-      - "pakistan"
+      - "https://www.geo.tv/category/pakistan"
+      - "https://www.geo.tv/category/business"
     enabled: true
 
   ary:
     url: "https://arynews.tv"
-    # ARY is a Next.js site — /feed/ returns HTML, not RSS.
-    # FeedDiscoverer will fall back to section-page scraping.
+    # ARY is not reliable enough for core-source use right now.
+    # Live checks on 2026-04-02 showed:
+    # - section discovery either returned no story links or failed outright
+    # - direct article scraping also failed, including Playwright fallback
+    # Re-enable only after a stable discovery path and extractor are verified.
     sections:
       - "latest-news"
-      - "pakistan"
-    enabled: true
+      - "category/pakistan"
+    enabled: false
 
   samaa:
     url: "https://www.samaa.tv"
@@ -47,9 +45,9 @@ sources:
     url: "https://www.thenews.com.pk"
     feed_url: "https://www.thenews.com.pk/rss/1/1"
     sections:
-      - "latest"
       - "pakistan"
-    enabled: true
+    # Re-enable once section-scoped discovery is verified. The current RSS is too broad.
+    enabled: false
 
 scraping_config:
   max_articles_per_source: 20

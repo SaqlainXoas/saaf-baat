@@ -367,6 +367,24 @@ class SupabaseClient:
             return [RawArticle(**self._parse_embedding(item)) for item in response.data]
         except Exception as e:
             raise DatabaseError(f"Failed to get recent unclustered articles: {e}")
+
+    def get_articles_with_embeddings_since(self, since: datetime, limit: int = 500) -> ArticleList:
+        """Get articles with embeddings scraped since a given timestamp."""
+        try:
+            if since.tzinfo is None:
+                since = since.replace(tzinfo=timezone.utc)
+            response = (
+                self.client.table(self.TABLE_RAW_ARTICLES)
+                .select("*")
+                .not_.is_("embedding", "null")
+                .gte("scraped_at", since.isoformat())
+                .order("scraped_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return [RawArticle(**self._parse_embedding(item)) for item in response.data]
+        except Exception as e:
+            raise DatabaseError(f"Failed to get recent embedded articles: {e}")
     
     def get_recent_articles(self, limit: int = 50) -> ArticleList:
         """Get most recently scraped articles."""
@@ -383,6 +401,23 @@ class SupabaseClient:
             
         except Exception as e:
             raise DatabaseError(f"Failed to get recent articles: {e}")
+
+    def get_articles_since(self, since: datetime, limit: int = 2000) -> ArticleList:
+        """Get articles scraped since a given timestamp (for local dedup/indexing)."""
+        try:
+            if since.tzinfo is None:
+                since = since.replace(tzinfo=timezone.utc)
+            response = (
+                self.client.table(self.TABLE_RAW_ARTICLES)
+                .select("*")
+                .gte("scraped_at", since.isoformat())
+                .order("scraped_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return [RawArticle(**self._parse_embedding(item)) for item in response.data]
+        except Exception as e:
+            raise DatabaseError(f"Failed to get articles since {since}: {e}")
     
     def update_article_embedding(
         self, 
@@ -407,6 +442,21 @@ class SupabaseClient:
             
         except Exception as e:
             raise DatabaseError(f"Failed to assign article to cluster: {e}")
+
+    def clear_cluster_assignments_since(self, since: datetime) -> int:
+        """Clear cluster_id for articles scraped since the given timestamp."""
+        try:
+            if since.tzinfo is None:
+                since = since.replace(tzinfo=timezone.utc)
+            response = (
+                self.client.table(self.TABLE_RAW_ARTICLES)
+                .update({"cluster_id": None})
+                .gte("scraped_at", since.isoformat())
+                .execute()
+            )
+            return len(response.data or [])
+        except Exception as e:
+            raise DatabaseError(f"Failed clearing cluster assignments: {e}")
     
     def delete_article(self, article_id: Any) -> None:
         """Delete an article."""
@@ -717,6 +767,19 @@ class SupabaseClient:
             
         except Exception as e:
             raise DatabaseError(f"Failed to delete feed item: {e}")
+
+    def delete_analyzed_feed_by_cluster_id(self, cluster_id: Any) -> int:
+        """Delete all analyzed feed rows for a cluster."""
+        try:
+            response = (
+                self.client.table(self.TABLE_ANALYZED_FEED)
+                .delete()
+                .eq("cluster_id", str(cluster_id))
+                .execute()
+            )
+            return len(response.data or [])
+        except Exception as e:
+            raise DatabaseError(f"Failed deleting feed rows for cluster: {e}")
 
     def delete_analyzed_feed_older_than(self, cutoff: datetime) -> int:
         """Delete analyzed_feed with created_at older than cutoff."""

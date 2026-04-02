@@ -28,6 +28,10 @@ export default function DesktopBrief({
     if (!stories.length) return null;
     return stories.find((story) => story.story_id === activeStoryId) || stories[0];
   }, [activeStoryId, stories]);
+  const compactStories = useMemo(
+    () => stories.filter((story) => story.story_id !== activeStory?.story_id),
+    [activeStory?.story_id, stories],
+  );
 
   function resetPreview() {
     setActiveStoryId(defaultStoryId);
@@ -58,7 +62,7 @@ export default function DesktopBrief({
             if (!event.currentTarget.contains(next)) resetPreview();
           }}
         >
-          {stories.map((story) => (
+          {compactStories.map((story, index) => (
             <Link
               key={story.story_id}
               href={`/stories/${story.story_id}`}
@@ -66,8 +70,11 @@ export default function DesktopBrief({
               data-testid={`desktop-compact-${story.story_id}`}
               onMouseEnter={() => setActiveStoryId(story.story_id)}
               onFocus={() => setActiveStoryId(story.story_id)}
+              style={{ animationDelay: `${Math.min(index * 40, 180)}ms` }}
             >
-              <StoryCard story={story} variant="compact" />
+              <div className="sb-list-stagger-in">
+                <StoryCard story={story} variant="compact" />
+              </div>
             </Link>
           ))}
         </div>

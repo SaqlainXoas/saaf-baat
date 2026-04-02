@@ -62,6 +62,7 @@ coverage.xml
 
 # Documentation (archive/local notes)
 docs/extra/
+codex-thinking/
 MEMORY.md
 CLAUDE.md
 docs/plan.md

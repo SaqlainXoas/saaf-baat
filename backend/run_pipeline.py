@@ -5,6 +5,8 @@ import json
 import logging
 import os
 import sys
+import urllib.request
+import urllib.error
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,6 +51,38 @@ def _write_pipeline_heartbeat(backend_dir: Path, stats: object) -> None:
         logging.getLogger("pipeline").info("Wrote pipeline heartbeat: %s", path)
     except Exception as exc:
         logging.getLogger("pipeline").warning("Failed writing pipeline heartbeat: %s", exc)
+
+
+def _trigger_frontend_revalidate(stats: object) -> None:
+    """
+    Optionally tell the Next.js app to invalidate cached feed/health responses.
+
+    This enables near-real-time UI updates even when server fetch uses long
+    revalidate windows.
+    """
+    url = (os.getenv("SAAF_FRONTEND_REVALIDATE_URL") or "").strip()
+    secret = (os.getenv("SAAF_FRONTEND_REVALIDATE_SECRET") or "").strip()
+    if not url or not secret:
+        return
+
+    payload = json.dumps({"tags": ["feed", "health"]}).encode("utf-8")
+    req = urllib.request.Request(
+        url=url,
+        data=payload,
+        method="POST",
+        headers={
+            "content-type": "application/json",
+            "x-revalidate-secret": secret,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            logging.getLogger("pipeline").info("Frontend revalidate response: %s", body[:200])
+    except urllib.error.HTTPError as exc:
+        logging.getLogger("pipeline").warning("Frontend revalidate failed (HTTP %s)", exc.code)
+    except Exception as exc:
+        logging.getLogger("pipeline").warning("Frontend revalidate failed: %s", exc)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -109,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     stats = runner.run()
 
     _write_pipeline_heartbeat(backend_dir, stats)
+    _trigger_frontend_revalidate(stats)
     logging.getLogger("pipeline").info("Pipeline complete: %s", stats.as_dict())
     return 0
 

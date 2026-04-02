@@ -308,6 +308,10 @@ body {
     animation: sb-featured-in 160ms ease-out;
   }
 
+  .sb-list-stagger-in {
+    animation: sb-list-in 220ms ease-out both;
+  }
+
   .sb-sheet-backdrop-open,
   .sb-sheet-backdrop-closed {
     transition: opacity 170ms ease;
@@ -363,11 +367,23 @@ body {
   }
 }
 
+@keyframes sb-list-in {
+  from {
+    opacity: 0.3;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sb-card-interactive,
   .sb-theme-option,
   .sb-list-item,
   .sb-featured-enter,
+  .sb-list-stagger-in,
   .sb-sheet-backdrop-open,
   .sb-sheet-backdrop-closed,
   .sb-sheet-panel-open,

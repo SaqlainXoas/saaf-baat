@@ -31,7 +31,7 @@ export default async function Home({
   const filters = parseFilters(urlParams);
   const filtered = applyFilters(allStories, filters);
   const stories = filtered.slice(0, MAX_STORIES);
-  const latestCreatedAt = allStories[0]?.created_at;
+  const latestCreatedAt = feedResult.latestPipelineRunAt || allStories[0]?.created_at;
   const hasFilters = urlParams.has("impact") || urlParams.has("sources");
   const hasLiveDataError = feedResult.status === "error-live-required";
 

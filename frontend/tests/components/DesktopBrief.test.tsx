@@ -30,6 +30,13 @@ describe("DesktopBrief", () => {
     expect(within(featured).getByRole("link").getAttribute("href")).toBe("/stories/1");
   });
 
+  it("does not duplicate active featured story inside compact list", () => {
+    render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
+    expect(screen.queryByTestId("desktop-compact-1")).toBeNull();
+    expect(screen.getByTestId("desktop-compact-2")).toBeDefined();
+    expect(screen.getByTestId("desktop-compact-3")).toBeDefined();
+  });
+
   it("updates featured preview on compact card hover", () => {
     render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
 

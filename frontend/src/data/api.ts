@@ -12,16 +12,27 @@ type FeedResult = {
   stories: StoryCardData[];
   status: Exclude<DataStatus, "not-found">;
   message?: string;
+  latestPipelineRunAt?: string;
 };
 
 type StoryResult = {
   story: StoryDetailData | null;
   status: DataStatus;
   message?: string;
+  latestPipelineRunAt?: string;
+};
+
+type HealthResponse = {
+  latest_feed_created_at?: string | null;
+  last_successful_pipeline_run_at?: string | null;
 };
 
 function getApiBase() {
-  return process.env.NEXT_PUBLIC_API_URL?.trim() || "";
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (configured) return configured;
+  // Local dev default so `npm run dev` works without manual env setup.
+  if (process.env.NODE_ENV === "development") return "http://127.0.0.1:8000";
+  return "";
 }
 
 function isStrictLiveMode() {
@@ -47,7 +58,7 @@ export async function fetchFeedWithMeta(): Promise<FeedResult> {
 
   try {
     const res = await fetch(`${apiBase}/api/feed`, {
-      next: { revalidate: 300 },
+      next: { revalidate: 300, tags: ["feed"] },
     });
     if (!res.ok) {
       if (strictLive) {
@@ -60,7 +71,8 @@ export async function fetchFeedWithMeta(): Promise<FeedResult> {
       throw new Error(`HTTP ${res.status}`);
     }
     const stories = (await res.json()) as StoryCardData[];
-    return { stories, status: "live" };
+    const latestPipelineRunAt = await fetchLatestPipelineRunAt(apiBase);
+    return { stories, status: "live", latestPipelineRunAt };
   } catch {
     if (strictLive) {
       return {
@@ -97,12 +109,13 @@ export async function fetchStoryWithMeta(clusterId: string): Promise<StoryResult
 
   try {
     const res = await fetch(`${apiBase}/api/stories/${clusterId}`, {
-      next: { revalidate: 300 },
+      next: { revalidate: 300, tags: [`story:${clusterId}`, "feed"] },
     });
 
     if (res.ok) {
       const story = (await res.json()) as StoryDetailData;
-      return { story, status: "live" };
+      const latestPipelineRunAt = await fetchLatestPipelineRunAt(apiBase);
+      return { story, status: "live", latestPipelineRunAt };
     }
 
     if (res.status === 404) return { story: null, status: "not-found" };
@@ -136,4 +149,21 @@ export async function fetchStory(
 ): Promise<StoryDetailData | null> {
   const result = await fetchStoryWithMeta(clusterId);
   return result.story;
+}
+
+async function fetchLatestPipelineRunAt(apiBase: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${apiBase}/health`, {
+      next: { revalidate: 300, tags: ["health"] },
+    });
+    if (!res.ok) return undefined;
+    const health = (await res.json()) as HealthResponse;
+    return (
+      health.last_successful_pipeline_run_at ||
+      health.latest_feed_created_at ||
+      undefined
+    );
+  } catch {
+    return undefined;
+  }
 }

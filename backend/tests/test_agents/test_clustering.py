@@ -331,8 +331,10 @@ class TestClusteringService:
     def test_quality_validation_high_noise_ratio(self):
         """Test quality checks reject high noise ratio."""
         from src.agents.clustering import ClusteringService
-        
-        service = ClusteringService()
+
+        # Default settings are tuned for small-ish runs where lots of noise is normal.
+        # Use strict thresholds here to validate the noise-ratio gate itself.
+        service = ClusteringService(max_noise_ratio=0.3)
         
         # High noise: >30% are outliers
         high_noise_labels = np.array([0, 0, 0, -1, -1, -1, -1, -1])
@@ -365,6 +367,27 @@ class TestClusteringService:
         assert hasattr(result, 'algorithm_used')
         assert hasattr(result, 'num_clusters')
         assert hasattr(result, 'noise_ratio')
+
+    def test_fallback_rejected_when_dbscan_is_low_quality(self):
+        """When DBSCAN fails quality gates, we still return its labels (pipeline guardrails handle quality)."""
+        from src.agents.clustering import ClusteringService
+
+        service = ClusteringService(min_clusters=2, max_noise_ratio=0.3)
+        embeddings = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+
+        with patch.object(service._hdbscan, "fit_predict", return_value=np.array([-1, -1, -1])):
+            with patch.object(service._dbscan, "fit_predict", return_value=np.array([0, 0, 0])):
+                result = service.cluster(embeddings)
+
+        assert result.algorithm_used == "dbscan_low_quality"
+        assert np.all(result.labels == np.array([0, 0, 0]))
     
     def test_min_clusters_validation(self):
         """Test minimum cluster count is configurable."""

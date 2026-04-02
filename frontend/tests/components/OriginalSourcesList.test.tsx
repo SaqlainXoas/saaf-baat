@@ -59,9 +59,9 @@ describe("OriginalSourcesList", () => {
     });
   });
 
-  it("does not render View full coverage when there are 4 or fewer sources", () => {
+  it("does not render View all reports when there are 4 or fewer entries", () => {
     render(<OriginalSourcesList articles={articles} />);
-    expect(screen.queryByText("View full coverage →")).toBeNull();
+    expect(screen.queryByText(/View all \d+ reports/)).toBeNull();
   });
 
   it("renders source badge initials", () => {
@@ -77,14 +77,14 @@ describe("OriginalSourcesList", () => {
     expect(screen.queryByText("Read")).toBeNull();
   });
 
-  it("shows View full coverage when there are more than 4 sources", () => {
+  it("shows View all reports when there are more than 4 entries", () => {
     const many = [
       ...articles,
       { id: "4", source: "dawn", headline: "Fourth", url: "https://www.dawn.com/news/4" },
       { id: "5", source: "geo", headline: "Fifth", url: "https://www.geo.tv/latest/5" },
     ];
     render(<OriginalSourcesList articles={many as any} />);
-    expect(screen.getByText("View full coverage →")).toBeDefined();
+    expect(screen.getByText("View all 5 reports →")).toBeDefined();
   });
 
   it("expands and collapses full coverage list", () => {
@@ -96,9 +96,9 @@ describe("OriginalSourcesList", () => {
     render(<OriginalSourcesList articles={many as any} />);
 
     expect(screen.queryByText(/Geo: Fifth/)).toBeNull();
-    fireEvent.click(screen.getByText("View full coverage →"));
+    fireEvent.click(screen.getByText("View all 5 reports →"));
     expect(screen.getByText(/Geo: Fifth/)).toBeDefined();
-    fireEvent.click(screen.getByText("Show less"));
+    fireEvent.click(screen.getByText("Show fewer reports"));
     expect(screen.queryByText(/Geo: Fifth/)).toBeNull();
   });
 });

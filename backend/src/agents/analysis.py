@@ -17,8 +17,10 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from uuid import UUID
 
+import numpy as np
 import yaml
 
+from src.agents.clustering import calculate_centroid, find_representative_article
 from src.db.models import AnalyzedFeed, ExtractedEntity, RawArticle
 
 
@@ -360,18 +362,64 @@ class AnalysisService:
         # Fallback: longest body overall.
         return sorted(articles, key=lambda a: (-len(a.main_text or ""), a.url))[0].main_text or ""
 
+    @staticmethod
+    def _normalized_embedding_matrix(articles: Sequence[RawArticle]) -> Optional[np.ndarray]:
+        vectors: List[np.ndarray] = []
+        dims: Optional[int] = None
+        for article in articles:
+            if article.embedding is None:
+                return None
+            vec = np.asarray(article.embedding, dtype=np.float32)
+            if vec.ndim != 1 or vec.size == 0:
+                return None
+            if dims is None:
+                dims = int(vec.size)
+            elif int(vec.size) != dims:
+                return None
+            norm = float(np.linalg.norm(vec))
+            if norm <= 0:
+                return None
+            vectors.append(vec / norm)
+
+        if not vectors:
+            return None
+        return np.vstack(vectors)
+
+    def _choose_representative_article(self, articles: Sequence[RawArticle]) -> RawArticle:
+        embeddings = self._normalized_embedding_matrix(articles)
+        if embeddings is None:
+            return sorted(
+                articles,
+                key=lambda a: (
+                    self.headline_source_priority.index(a.source)
+                    if a.source in self.headline_source_priority else len(self.headline_source_priority),
+                    -len(a.headline or ""),
+                    a.url,
+                ),
+            )[0]
+
+        centroid = calculate_centroid(embeddings)
+        representative_index = find_representative_article(embeddings, centroid)
+        return articles[representative_index]
+
+    def choose_representative_article(self, articles: Sequence[RawArticle]) -> RawArticle:
+        return self._choose_representative_article(articles)
+
     def analyze_cluster(self, cluster_id: UUID, articles: Sequence[RawArticle]) -> AnalyzedFeed:
         if not articles:
             raise ValueError("Cannot analyze empty cluster")
 
-        headline = self._choose_headline(articles)
-        summary = build_snippet(self._choose_snippet_text(articles))
+        representative = self._choose_representative_article(articles)
+        headline = representative.headline or self._choose_headline(articles)
+        summary = build_snippet(representative.main_text or self._choose_snippet_text(articles))
 
-        # Classification uses full article text for maximum keyword coverage.
-        cluster_text = " ".join(
-            [f"{a.headline}. {a.main_text}" for a in articles if a.headline and a.main_text]
+        other_headlines = " ".join(
+            [a.headline for a in articles if a.id != representative.id and a.headline]
         )
-        cls = self.classifier.classify_text(cluster_text)
+        classification_text = (
+            f"{representative.headline}. {representative.main_text} {other_headlines}"
+        )
+        cls = self.classifier.classify_text(classification_text)
 
         # Entity extraction + consensus uses per-article entities.
         entities_by_article = [self.entity_extractor.extract(a.main_text or "") for a in articles]
