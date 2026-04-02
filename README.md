@@ -3,168 +3,168 @@
 </p>
 
 <h1 align="center">Saaf Baat</h1>
-<p align="center"><strong>The morning brief that tells you what is agreed, what is debated, and where to verify.</strong></p>
+<p align="center"><strong>A selective Pakistan morning brief built to answer one question fast: what do I need to know today, and why does it matter?</strong></p>
 
-<p align="center">
-  Multi-source Pakistan news, clustered into finite daily stories with transparent source attribution.
-</p>
+## What This Product Is
 
-## Why Saaf Baat
+Saaf Baat is not an infinite news reader.
 
-Most news feeds optimize for endless scrolling. Saaf Baat optimizes for clarity.
+The goal is a calm, finite morning brief with roughly `5-9` strong story cards. Each card should help an ordinary person in Pakistan understand:
 
-You open once, skim a limited set of meaningful stories, see where reporting converges or diverges, and verify from original sources.
+- what happened
+- why it matters
+- what to watch next
+- where the reporting came from
 
-## What You Get
+The product should feel trustworthy, modern, and quick to scan before getting on with the day.
 
-- A finite daily brief, not an infinite timeline.
-- Story clustering across multiple publishers.
-- Consensus signals (`confirmed_facts` vs `debated_claims`) based on cross-source overlap.
-- Transparent source attribution on each card.
-- Fast web UI and clean API contract.
-- Pipeline health and stale-data detection for operations.
+## Current Product Direction
 
-## Product Snapshot
+These decisions are currently intentional and active:
 
-- `frontend/`: Next.js 15 + React 19 App Router UI.
-- `backend/`: FastAPI + scraping/NLP pipeline.
-- Data flow: scrape -> dedupe -> embed -> cluster -> analyze -> serve.
-- Current status: backend/frontend test suites and production builds are passing in the current branch.
+- Keep the feed finite: target `5-9` cards, not endless scrolling.
+- Prefer importance over recency.
+- Prefer one clean card per real story over multiple headline variants.
+- Keep deterministic extraction for evidence, attribution, and clustering support.
+- Use the LLM layer only for bounded editorial selection and card framing, not for free-form rewriting of the whole product.
+- Allow a strong single-source story only when the civic or public-impact signal is clearly high.
+- Treat suspicious publish dates as low-confidence data, not as automatically trustworthy.
+- Prefer a small set of reliable Pakistani sources over a large unreliable source list.
 
-## How It Works
+## Current Status
 
-### 1) Ingestion and Normalization
+As of `2026-04-02`, the architecture is in place but the live product is not yet production-trustworthy.
 
-- Scrapes configured publishers from `backend/config/sources.yaml`.
-- Filters off-domain links against configured source host.
-- Inserts raw articles into Supabase, deduping by URL/content constraints.
+Working:
 
-### 2) Embeddings and Similarity
+- scraper pipeline runs and inserts raw articles
+- Gemini embeddings are working with DB-compatible `768` dimensions
+- clustering and deterministic analysis are wired end-to-end
+- Groq structured-output editorial review is integrated
+- API and frontend are already wired to live data
+- Geo source discovery bug is fixed
 
-- Uses Gemini embedding model via `google-genai` in `backend/src/agents/embeddings.py`.
-- Embeddings are normalized and stored for clustering and backfill safety.
+Not done yet:
 
-### 3) Story Clustering
+- the live morning brief does not yet reliably produce `5-9` strong stories
+- source coverage is still limited to the currently reliable core set
+- freshness and publish-date trust still need more validation
+- full live acceptance from scrape to frontend quality still needs a clean pass
 
-- Primary algorithm: HDBSCAN on embedding similarity.
-- Fallback: DBSCAN when cluster quality thresholds are not met.
-- Tuned by `min_cluster_size`, `min_clusters`, and `max_noise_ratio`.
+## Current Source Status
 
-### 4) Transparent Analysis (No LLM Summary Generation)
+Core sources right now:
 
-- Entity extraction with spaCy (`en_core_web_sm`).
-- Consensus detector classifies entities as:
-  - `confirmed_facts`: appear across enough sources.
-  - `debated_claims`: partial/disputed overlap.
-- Rule-based classifier (YAML rules in `backend/config/classification_rules.yaml`) assigns:
-  - category
-  - impact labels
-  - confidence
-- Snippets are deterministic from article text (not generative summaries).
+- `dawn`
+- `tribune`
+- `geo`
 
-### 5) API and UI Delivery
+Disabled for now:
 
-- `GET /api/feed` returns story cards.
-- `GET /api/stories/{cluster_id}` returns full story detail + source links.
-- `GET /health` returns DB connectivity + freshness/staleness signals.
-- Frontend supports strict live mode (`NEXT_PUBLIC_STRICT_LIVE_DATA=1`) to block mock fallback in production.
+- `ary`
 
-## Architecture
+`ary` was not removed arbitrarily. It was investigated live and found unreliable for both discovery and extraction. The current policy is to disable flaky sources rather than let them pollute downstream clustering and editorial selection.
 
-Architecture starts from `backend/config/sources.yaml` where each source defines `base_url`, `feed_url`, and `sections`.
+## How The Pipeline Works
 
-```mermaid
-flowchart TB
-
-  S["Config<br/>sources.yaml"] --> ING
-
-  %% Publisher examples (side reference)
-  PUB["Example Sources<br/>Dawn • Tribune • Geo • ARY • The News"]
-  PUB -.-> S
-
-  subgraph ING["Ingestion"]
-    I["Hybrid Scraper<br/>Parser → Playwright fallback"]
-    R[(raw_articles)]
-    I --> R
-  end
-
-  R --> P
-
-  subgraph P["Processing"]
-    D["Dedup + Off-domain filter"]
-    E["Embeddings<br/>Gemini text-embedding-004"]
-    C["Clustering<br/>HDBSCAN (DBSCAN fallback)"]
-    A["Analysis<br/>spaCy entities + consensus + rules"]
-    D --> E --> C --> A
-  end
-
-  A --> F[(analyzed_feed)]
-
-  subgraph SERVE["Delivery"]
-    API["FastAPI<br/>/api/feed • /api/stories/{cluster_id} • /health"]
-    UI["Next.js UI"]
-    API --> UI
-  end
-
-  F --> SERVE
-
-  classDef source fill:#EAF3FF,stroke:#2F6FED,color:#0F2A66,stroke-width:1.2px;
-  classDef process fill:#EFFAF3,stroke:#2E7D32,color:#113B18,stroke-width:1.1px;
-  classDef storage fill:#FFF6E8,stroke:#C77700,color:#5C3A00,stroke-width:1.1px;
-  classDef api fill:#F3EFFF,stroke:#6F42C1,color:#2F1A63,stroke-width:1.1px;
-  classDef ui fill:#FCEEF4,stroke:#C2185B,color:#5A1030,stroke-width:1.1px;
-
-  class S source;
-  class PUB source;
-  class I,D,E,C,A process;
-  class R,F storage;
-  class API api;
-  class UI ui;
+```text
+scrape sources
+-> normalize + deduplicate
+-> embed articles with Gemini
+-> cluster related coverage
+-> run deterministic analysis
+-> run bounded Groq editorial review on candidates
+-> publish the best morning-brief cards
+-> serve via FastAPI to the Next.js frontend
 ```
+
+### Deterministic Layers
+
+- URL/domain filtering and source scoping
+- raw article storage in Supabase
+- embeddings for similarity grouping
+- clustering and representative-article selection
+- entity extraction, source attribution, and classification support
+
+### LLM Layer
+
+Groq is used as an editorial layer to decide whether a candidate cluster deserves publication and to shape structured card fields such as:
+
+- `why_it_matters`
+- `what_to_watch`
+- priority
+- grade
+- tags
+
+This is intentionally bounded. The system is not meant to become an opaque LLM-only summarizer.
+
+## Main Problem We Are Solving Now
+
+The core challenge is no longer basic plumbing. The remaining challenge is live feed quality.
+
+The project previously leaned too much on embeddings plus lexical methods alone. That was not enough to reliably:
+
+- merge duplicate story variants well
+- distinguish meaningful public-interest stories from filler
+- present morning cards in a crisp, useful way
+
+The new editorial layer fixes part of that, but the product still needs better live yield and freshness discipline before launch.
+
+## Next Phase
+
+The current phase is `live-quality hardening`.
+
+The next work items are:
+
+1. Run and verify a constrained live pipeline pass.
+2. Confirm recent DB rows include the intended core sources.
+3. Improve candidate yield so the feed reliably reaches `5-9` strong stories.
+4. Tighten publish-date and freshness handling.
+5. Do final frontend polish only after backend output is stable.
 
 ## Repository Layout
 
 ```text
 backend/
-  config/                   # sources + classification rules
+  config/                   # sources and classification rules
+  scripts/                  # quality inspection helpers
   src/
-    agents/                 # embeddings, clustering, analysis
-    api/                    # FastAPI app + routes + DTOs
-    db/                     # Supabase client + models
+    agents/                 # embeddings, clustering, analysis, editorial
+    api/                    # FastAPI app and routes
+    db/                     # Supabase client and models
     pipeline/               # orchestration
-    scrapers/               # source ingestion
+    scrapers/               # source discovery and extraction
   tests/                    # pytest suites
-  run_pipeline.py           # scheduled pipeline entrypoint
-  main.py                   # API app entrypoint
+  main.py                   # API entrypoint
+  run_pipeline.py           # pipeline entrypoint
 
 frontend/
   src/app/                  # Next.js routes
   src/components/           # UI components
-  src/data/                 # API client + data adapters
+  src/data/                 # API client and adapters
   tests/                    # Jest + Testing Library
+
+docs/
+  final-ready-plan.md       # active release checklist
+
+program.md                  # operating rules and product principles
+AGENTS.md                   # repo workflow for autonomous evaluators
 ```
 
-## Quick Start
+## Setup
 
-### Prerequisites
-
-- Python `3.11+` (recommended: `3.11.x`)
-- Node.js `20+`
-- npm `10+`
-
-### Backend Setup
+### Backend
 
 ```bash
 cd backend
-python3.11 -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+python -m spacy download en_core_web_sm
 uvicorn main:app --reload
 ```
 
-Backend docs will be available at `http://127.0.0.1:8000/docs`.
-
-### Frontend Setup
+### Frontend
 
 ```bash
 cd frontend
@@ -172,63 +172,46 @@ npm ci
 npm run dev
 ```
 
-Frontend runs at `http://localhost:3000` by default.
+## Environment
 
-## Environment Variables
-
-### Backend (`backend/.env`)
+Backend env lives in `backend/.env`.
 
 Required:
 
 - `SUPABASE_URL`
 - `SUPABASE_KEY`
 - `GEMINI_API_KEY`
+- `GROQ_API_KEY` if editorial review is enabled
 
-Operational:
+Important optional controls:
 
-- `ENVIRONMENT=production|development`
-- `BACKEND_CORS_ALLOW_ORIGINS=https://app.example.com`
-- `SAAF_PIPELINE_HEARTBEAT_FILE=backend/.pipeline_heartbeat.json`
-- `SAAF_FEED_STALE_AFTER_HOURS=6`
-- `SAAF_LOW_COST_MODE=1|0`
-- `SAAF_MAX_ARTICLES_PER_SOURCE=20`
-- `SAAF_EMBEDDING_BACKFILL_LIMIT=50`
+- `SAAF_ENABLE_EDITORIAL_LLM`
+- `SAAF_EDITORIAL_LLM_MODEL`
+- `SAAF_EDITORIAL_CANDIDATE_LIMIT`
+- `SAAF_EDITORIAL_MAX_STORIES`
+- `SAAF_LOW_COST_MODE`
+- `SAAF_MAX_ARTICLES_PER_SOURCE`
+- `SAAF_EMBEDDING_BACKFILL_LIMIT`
+- `SAAF_ENABLE_PLAYWRIGHT_FALLBACK`
+- `SAAF_PIPELINE_HEARTBEAT_FILE`
+- `SAAF_FEED_STALE_AFTER_HOURS`
+- `BACKEND_CORS_ALLOW_ORIGINS`
+- `SAAF_FRONTEND_REVALIDATE_URL`
+- `SAAF_FRONTEND_REVALIDATE_SECRET`
 
-### Frontend (`frontend/.env.local`)
+Frontend env usually needs:
 
-- `NEXT_PUBLIC_API_URL=http://localhost:8000`
-- `NEXT_PUBLIC_CITY_NAME=Islamabad`
-- `NEXT_PUBLIC_DEFAULT_THEME=system`
+- `NEXT_PUBLIC_API_URL`
 - `NEXT_PUBLIC_STRICT_LIVE_DATA=1`
+- `NEXT_PUBLIC_CITY_NAME`
+- `NEXT_PUBLIC_DEFAULT_THEME`
+- `REVALIDATE_SECRET`
 
-## Running the Pipeline
+See `backend/.env.example` for the backend template.
 
-Daily/periodic run:
+## Useful Commands
 
-```bash
-cd backend
-source venv/bin/activate
-python run_pipeline.py --disable-playwright --low-cost-mode
-```
-
-Useful flags:
-
-- `--max-articles-per-source`
-- `--embedding-backfill-limit`
-- `--log-level INFO|DEBUG`
-
-## API Contract
-
-- `GET /health`
-  - returns `status`, `database`, `latest_feed_created_at`, `last_successful_pipeline_run_at`, `pipeline_is_stale`.
-- `GET /api/feed?limit=30&category=&impact_label=`
-  - returns normalized story cards.
-- `GET /api/stories/{cluster_id}`
-  - returns story detail plus sorted source articles.
-
-## Quality Gates
-
-### Backend
+Backend tests:
 
 ```bash
 cd backend
@@ -236,25 +219,57 @@ source venv/bin/activate
 pytest
 ```
 
-### Frontend
+Constrained pipeline run:
+
+```bash
+cd backend
+source venv/bin/activate
+python run_pipeline.py --disable-playwright --log-level INFO --max-articles-per-source 12
+```
+
+Quality report:
+
+```bash
+cd backend
+source venv/bin/activate
+python scripts/quality_report.py --limit 20
+```
+
+Frontend tests:
 
 ```bash
 cd frontend
-npm test -- --watch=false
+npm test
 npm run build
 ```
 
-## Security and Secrets
+## How To Evaluate Progress
 
-- Never commit real API keys.
-- Use `backend/.env.example` as template values only.
-- If any key was ever exposed, rotate it before deployment.
+The project should be judged by live output, not by passing unit tests alone.
 
-## Documentation Kept in Repo
+Good signs:
 
-- `AGENTS.md`: active repository working conventions.
-- `docs/final-ready-plan.md`: release checklist and completion tracking.
+- recent rows are on-mission Pakistan stories
+- the feed contains `5-9` distinct cards
+- duplicate events are merged cleanly
+- cards have useful `why it matters` and `what to watch` fields
+- source attribution is credible and easy to inspect
 
-## License
+Bad signs:
 
-License file can be added based on your preferred OSS license before public launch.
+- only `1-3` cards appear after a fresh run
+- celebrity/sports/global filler enters the brief
+- stale or suspicious dates leak into top cards
+- one event appears as multiple cards
+- source extraction is flaky but still left enabled
+
+## Documentation Policy
+
+Tracked docs should stay minimal and current:
+
+- `README.md`
+- `AGENTS.md`
+- `program.md`
+- `docs/final-ready-plan.md`
+
+Everything else belongs in local scratch or `codex-thinking/` notes, not in permanent tracked docs.

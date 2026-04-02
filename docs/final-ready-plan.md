@@ -1,146 +1,151 @@
-# Saaf Baat Final Ready Plan (Pre-Live)
+# Saaf Baat Final Ready Plan
 
-Status date: **February 15, 2026**
+Status date: **April 2, 2026**
 
 ## Objective
 
-Close all remaining backend, frontend, quality, and repository hygiene gaps so Saaf Baat is safe to run in production and clean to publish as open source.
+Ship a trustworthy Pakistan morning brief that reliably produces a finite set of must-know stories from fresh live data.
 
-## Current Readiness Snapshot
+This is no longer a generic pre-live checklist. It is the current release checklist for the product we actually have today.
 
-- Backend pipeline, DB integration, API, and frontend live-data integration are working.
-- Embeddings are fixed to `models/gemini-embedding-001` with `768` dimensions (DB-compatible).
-- Desktop and mobile UX refinements are in place, and test/build gates currently pass.
-- Remaining work is mostly production hardening, data quality tuning, observability, and OSS cleanup.
+## Current Snapshot
 
-## Critical Blockers (Must Fix Before Public Release)
+Working:
 
-- [x] **Secrets hygiene**
-  - Remove all real-looking keys/URLs from `backend/.env.example`; replace with placeholders.
-  - Rotate any keys that were ever committed historically (manual operator action).
-  - Add explicit secret-handling notes to README.
-  - **Acceptance:** no real secrets in repo; example env is safe for public use.
+- backend pipeline is wired end-to-end
+- Supabase integration is working
+- Gemini embeddings are working with `768` dimensions
+- clustering and deterministic analysis are active
+- Groq editorial review is integrated for bounded story selection and card framing
+- API and frontend are connected to live data
+- Geo source coverage bug is fixed
 
-- [x] **SDK deprecation migration**
-  - Migrate backend embeddings client from deprecated `google.generativeai` to `google.genai`.
-  - Keep output dimensionality fixed at `768`.
-  - **Acceptance:** pipeline works end-to-end with new SDK, tests updated.
+Not finished:
 
-- [x] **Production CORS lock-down**
-  - Configure and verify `BACKEND_CORS_ALLOW_ORIGINS` with exact production domains.
-  - Add staging/local entries explicitly (no wildcard in production runtime).
-  - **Acceptance:** browser requests succeed from allowed origins and fail from others.
+- live story yield is too low for the intended morning brief
+- source coverage is not broad enough beyond the reliable core set
+- freshness and publish-date trust need more validation
+- full live acceptance from scrape to frontend still needs a clean pass
 
-## Backend Finalization
+## Release Definition
 
-- [x] **Pipeline reliability + observability**
-  - Add run-level logging summary (inserted, embedded, clustered, feed inserted/skipped).
-  - Add clear failure logs for scrape/embed/analyze stages.
-  - Add health/staleness signal (last successful pipeline run time).
-  - **Acceptance:** one command/check shows if data is fresh and where failures occurred.
+The project is ready to ship only when all of the following are true:
 
-- [x] **Rate-limit and cost controls**
-  - Re-check `max_articles_per_source`, `embedding_backfill_limit`, and schedule frequency against Gemini quota.
-  - Add safe defaults for low-cost mode.
-  - **Acceptance:** no quota spikes in normal hourly operation.
+- a fresh live run produces `5-9` distinct meaningful story cards
+- cards are on-mission for Pakistan morning relevance
+- duplicate event variants are merged well
+- source attribution is credible and inspectable
+- stale or suspicious dates do not drive the brief blindly
+- the frontend presents the feed clearly on desktop and mobile
 
-- [ ] **Data quality refinement**
-  - Review latest live rows for noisy entities and category misclassification.
-  - Tune classifier/consensus thresholds minimally (avoid overfitting).
-  - **Acceptance:** feed cards show concise, meaningful facts/claims across multiple stories.
+## Product Decisions Locked For This Phase
 
-- [x] **API contract hardening**
-  - Add/confirm response constraints for edge cases (empty feed, missing publish dates, missing source attribution).
-  - Add API contract tests for those cases.
-  - **Acceptance:** frontend never breaks on null/empty/partial payloads.
+- Use a tiered source policy: core sources only if they are reliable
+- Morning brief size is flexible `5-9`
+- Strong single-source civic/public-interest stories may publish
+- LLM use stays bounded to editorial selection and presentation support
+- Suspicious dates are low-confidence, not trusted by default
+- Card shape should emphasize `why_it_matters` and `what_to_watch`
 
-## Frontend Finalization
+## Source Status
 
-- [x] **Live-data UX hardening**
-  - Keep strict live mode enabled for production (`NEXT_PUBLIC_STRICT_LIVE_DATA=1`).
-  - Validate stale-data banner behavior with real timestamps.
-  - **Acceptance:** clear user messaging for live, stale, and unavailable states.
+Core sources:
 
-- [x] **Accessibility polish**
-  - Audit keyboard navigation for cards, filters, and expandable lists.
-  - Verify focus visibility and semantic landmarks on home/detail pages.
-  - **Acceptance:** basic keyboard-only navigation passes manually.
+- `dawn`
+- `tribune`
+- `geo`
 
-- [ ] **UI refinement pass**
-  - Review typography/spacing consistency on desktop and mobile.
-  - Ensure source chips/badges are consistent for all configured sources.
-  - **Acceptance:** no obvious visual regressions at common breakpoints.
+Disabled for now:
 
-- [x] **Frontend performance sanity**
-  - Verify no unnecessary rerenders for large feed lists.
-  - Keep bundle growth controlled after refinements.
-  - **Acceptance:** build succeeds; no major runtime lag in local manual test.
+- `ary`
 
-## Testing and Verification
+Reason:
 
-- [x] **Backend verification pack**
-  - Run focused pytest suites for API, analysis, pipeline.
-  - Run one constrained live pipeline smoke against Supabase.
-  - Progress (February 15, 2026): focused API + analysis + embeddings + pipeline tests passed locally; constrained live smoke run completed against Supabase.
-  - **Acceptance:** tests green + smoke run completes with fresh `analyzed_feed` rows.
+- `geo` had a real URL-pattern bug and is now fixed
+- `ary` remains unreliable for discovery and extraction, so it should not remain a core source
 
-- [x] **Frontend verification pack**
-  - Run Jest + Next build.
-  - Manual browser checks for home, detail, strict-live failure mode, stale mode.
-  - Progress (February 15, 2026): `npm test` and `npm run build` passed locally.
-  - **Acceptance:** no runtime errors, all primary journeys functional.
+## Work Completed Recently
 
-- [x] **End-to-end journey checks**
-  - Verify flow: `pipeline -> Supabase -> API -> frontend`.
-  - Confirm newest stories visible in UI after pipeline run and cache window.
-  - Progress (February 15, 2026): live smoke inserted fresh rows; `/health` reports connected DB + fresh run timestamp.
-  - **Acceptance:** real story inserted by pipeline appears in frontend within expected interval.
+- tightened source scoping to reduce off-mission raw input
+- added Groq structured-output editorial review
+- added editorial metadata into published feed rows
+- added stage-level pipeline logging
+- fixed Geo article URL recognition
+- added tests for editorial parsing/gating and Geo scraping
+- verified provider-level Gemini and Groq behavior
+- verified DB-backed improvement on at least one coherent published row
 
-## Repository Cleanup for Open Source
+## Must Fix Before Ship
 
-- [x] **Remove/organize non-essential files**
-  - Move/archive old planning or scratch files if not needed.
-  - Ensure only relevant docs remain top-level in `docs/`.
-  - **Acceptance:** repo root and docs structure are clean and intentional.
+- [ ] Run a fresh constrained live pipeline and verify the DB reflects it
+- [ ] Confirm core sources appear in recent raw rows as expected
+- [ ] Raise publishable story yield to a consistent `5-9` strong cards
+- [ ] Inspect suspicious `publish_date` rows and tighten trust handling
+- [ ] Re-check duplicate suppression and clustering on the newest live batch
+- [ ] Confirm the frontend shows the improved live brief cleanly
 
-- [x] **Dead code and unused assets cleanup**
-  - Remove unused components/helpers/styles/assets discovered by search and test coverage.
-  - **Acceptance:** no obvious dead files; imports and exports are purposeful.
+## Should Fix Soon After Ship
 
-- [x] **Open-source readiness docs**
-  - Add issue/PR templates.
-  - **Acceptance:** community contributors have clear project standards and process.
+- [ ] Add one more reliable core source if it improves coverage without hurting trust
+- [ ] Tighten category consistency into a smaller user-facing set
+- [ ] Refine card presentation for faster scanning and stronger visual hierarchy
+- [ ] Improve scraper observability where long-running fetches are still opaque
 
-- [x] **README professionalization (final pass)**
-  - Clarify architecture, quick start, env setup, runbook, and troubleshooting.
-  - Document production/staging env variable matrix.
-  - **Acceptance:** new contributor can run project without guessing steps.
+## Can Wait
 
-## Deployment-Readiness Checklist (Pre-Go-Live)
+- [ ] richer point-form explanation styles on cards
+- [ ] broader source expansion beyond the reliable core
+- [ ] deeper historical analytics or editorial tooling
 
-- [ ] Production env vars configured and validated (frontend + backend + GitHub Actions secrets).
-- [ ] Hourly pipeline schedule confirmed and manual dispatch verified.
-- [ ] Health endpoint checked for `database=connected` and fresh feed timestamp.
-- [ ] Strict live mode confirmed in production frontend.
-- [ ] Rollback plan documented (disable schedule + revert frontend API URL if needed).
+## Immediate Next Execution Order
 
-Notes:
-- Local verification is complete; remaining items are production environment confirmations.
+1. Run a constrained live pipeline pass.
+2. Inspect Supabase recent rows, clusters, and analyzed feed output.
+3. Identify why the candidate-to-published yield is still low.
+4. Fix the highest-leverage cause with the smallest clean change.
+5. Re-run verification.
+6. Only then do final frontend polish.
 
-## Suggested Execution Order (Next Session)
+## Verification Commands
 
-1. Secrets hygiene + `.env.example` sanitation + key rotation plan.
-2. Migrate Gemini SDK (`google.genai`) and re-run pipeline smoke.
-3. Final backend data-quality tuning + API contract tests.
-4. Frontend a11y and UI polish pass + strict-live/stale behavior validation.
-5. OSS cleanup (dead files/docs/licenses/templates) + final README rewrite.
-6. Full verification run and release checklist sign-off.
+Backend tests:
 
-## Done Definition
+```bash
+cd backend
+source venv/bin/activate
+pytest
+```
 
-This plan is complete when:
+Constrained live pipeline:
 
-- All checkboxes above are marked done.
-- Backend and frontend quality gates pass from a clean checkout.
-- One full live pipeline run populates good-quality feed data.
-- Project documentation is clear, safe (no secrets), and ready for public contributors.
+```bash
+cd backend
+source venv/bin/activate
+python run_pipeline.py --disable-playwright --log-level INFO --max-articles-per-source 12
+```
+
+Quality report:
+
+```bash
+cd backend
+source venv/bin/activate
+python scripts/quality_report.py --limit 20
+```
+
+Frontend sanity:
+
+```bash
+cd frontend
+npm test
+npm run build
+```
+
+## Current Confidence Estimate
+
+- technical foundation: `75-80%`
+- actual product readiness for the intended morning brief: `55-65%`
+
+Reason:
+
+- the architecture is largely in place
+- the live outcome is still not consistently at the quality bar
