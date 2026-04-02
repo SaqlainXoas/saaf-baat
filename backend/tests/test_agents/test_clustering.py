@@ -4,9 +4,14 @@ Tests for clustering module.
 TDD approach: Tests written BEFORE implementation.
 Phase 4: Clustering Pipeline (HDBSCAN + DBSCAN)
 """
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
 import numpy as np
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+from src.db.models import RawArticle
 
 # These imports will fail until we implement the module
 # That's expected for TDD - write tests first!
@@ -110,6 +115,28 @@ def loose_cluster_embeddings():
     cluster = center + np.random.randn(5, 4) * 0.5  # Very loose
     norms = np.linalg.norm(cluster, axis=1, keepdims=True)
     return (cluster / norms).astype(np.float32)
+
+
+def _article(
+    idx: int,
+    headline: str,
+    body: str,
+    *,
+    source: str = "dawn",
+    publish_date: datetime | None = None,
+    scraped_at: datetime | None = None,
+    embedding: list[float] | None = None,
+) -> RawArticle:
+    return RawArticle(
+        id=uuid4(),
+        source=source,
+        url=f"https://example.com/article-{idx}",
+        headline=headline,
+        main_text=body,
+        publish_date=publish_date,
+        scraped_at=scraped_at or datetime.now(timezone.utc),
+        embedding=embedding,
+    )
 
 
 # ============================================================================
@@ -404,6 +431,164 @@ class TestClusteringService:
         service = ClusteringService(max_noise_ratio=0.2)
         
         assert service.max_noise_ratio == 0.2
+
+
+class TestEventGroupingService:
+    def test_groups_same_event_across_sources(self):
+        from src.agents.clustering import EventGroupingService
+
+        now = datetime(2026, 4, 2, 9, 0, tzinfo=timezone.utc)
+        articles = [
+            _article(
+                1,
+                "IMF approves tranche for Pakistan",
+                "Pakistan IMF tranche approved in Washington after talks.",
+                source="dawn",
+                publish_date=now,
+                embedding=[1.0, 0.0, 0.0],
+            ),
+            _article(
+                2,
+                "Pakistan wins IMF tranche approval",
+                "Finance officials say the IMF programme review ended positively.",
+                source="tribune",
+                publish_date=now + timedelta(hours=1),
+                embedding=[0.98, 0.05, 0.0],
+            ),
+            _article(
+                3,
+                "Karachi rain emergency declared after heavy showers",
+                "Karachi authorities declared an emergency after rain hit the city.",
+                source="geo",
+                publish_date=now + timedelta(hours=1),
+                embedding=[0.0, 1.0, 0.0],
+            ),
+        ]
+
+        service = EventGroupingService(min_cluster_size=2)
+        result = service.group_articles(articles)
+
+        assert result.algorithm_used == "event_graph"
+        assert result.num_clusters == 1
+        assert len(result.groups[0].indices) == 2
+        assert set(result.groups[0].indices) == {0, 1}
+        assert result.labels[2] == -1
+
+    def test_does_not_chain_related_but_distinct_events(self):
+        from src.agents.clustering import EventGroupingService
+
+        now = datetime(2026, 4, 2, 9, 0, tzinfo=timezone.utc)
+        articles = [
+            _article(
+                1,
+                "Karachi rain emergency declared in city",
+                "Karachi rain triggers emergency measures in low-lying areas.",
+                source="dawn",
+                publish_date=now,
+                embedding=[1.0, 0.0, 0.0],
+            ),
+            _article(
+                2,
+                "Heavy Karachi rain disrupts traffic after emergency",
+                "Traffic slowed after heavy rain in Karachi and officials warned residents.",
+                source="tribune",
+                publish_date=now + timedelta(hours=1),
+                embedding=[0.96, 0.18, 0.0],
+            ),
+            _article(
+                3,
+                "Karachi stock market gains after banking rally",
+                "Banking stocks lifted the Karachi market during a volatile session.",
+                source="geo",
+                publish_date=now + timedelta(hours=2),
+                embedding=[0.90, 0.30, 0.0],
+            ),
+        ]
+
+        service = EventGroupingService(min_cluster_size=2, min_pair_similarity=0.75)
+        result = service.group_articles(articles)
+
+        assert result.num_clusters == 1
+        assert set(result.groups[0].indices) == {0, 1}
+        assert result.labels[2] == -1
+
+    def test_ignores_stale_publish_date_when_grouping(self):
+        from src.agents.clustering import EventGroupingService
+
+        now = datetime(2026, 4, 2, 9, 0, tzinfo=timezone.utc)
+        stale_publish = now - timedelta(days=30)
+        articles = [
+            _article(
+                1,
+                "IMF approves review for Pakistan",
+                "The IMF approved a review for Pakistan in Washington.",
+                source="dawn",
+                publish_date=stale_publish,
+                scraped_at=now,
+                embedding=[1.0, 0.0, 0.0],
+            ),
+            _article(
+                2,
+                "Pakistan clears IMF review",
+                "Officials said the IMF review was cleared after talks in Washington.",
+                source="tribune",
+                publish_date=now + timedelta(hours=1),
+                scraped_at=now + timedelta(hours=1),
+                embedding=[0.99, 0.03, 0.0],
+            ),
+        ]
+
+        service = EventGroupingService(min_cluster_size=2)
+        result = service.group_articles(articles)
+
+        assert result.num_clusters == 1
+        assert set(result.groups[0].indices) == {0, 1}
+
+    def test_large_group_requires_support_from_multiple_members(self):
+        from src.agents.clustering import EventGroupingService
+
+        now = datetime(2026, 4, 2, 9, 0, tzinfo=timezone.utc)
+        articles = [
+            _article(
+                1,
+                "Karachi rain emergency declared after heavy downpour",
+                "Karachi emergency declared after heavy rain flooded roads and drains.",
+                source="dawn",
+                publish_date=now,
+                embedding=[1.0, 0.0, 0.0],
+            ),
+            _article(
+                2,
+                "Heavy rain puts Karachi on emergency footing",
+                "Officials put Karachi on emergency footing as rain disrupted traffic.",
+                source="tribune",
+                publish_date=now + timedelta(minutes=30),
+                embedding=[0.99, 0.05, 0.0],
+            ),
+            _article(
+                3,
+                "Karachi emergency centres activated after rain spell",
+                "Emergency centres were activated in Karachi after another rain spell.",
+                source="geo",
+                publish_date=now + timedelta(hours=1),
+                embedding=[0.98, 0.08, 0.0],
+            ),
+            _article(
+                4,
+                "Karachi budget meeting reviews tax plan",
+                "Officials in Karachi reviewed a tax plan and budget targets during a meeting.",
+                source="dawn",
+                publish_date=now + timedelta(hours=1),
+                embedding=[0.94, 0.20, 0.0],
+            ),
+        ]
+
+        service = EventGroupingService(min_cluster_size=2, min_pair_similarity=0.80)
+        result = service.group_articles(articles)
+
+        assert result.num_clusters == 1
+        assert set(result.groups[0].indices) == {0, 1, 2}
+        assert result.labels[3] == -1
 
 
 # ============================================================================

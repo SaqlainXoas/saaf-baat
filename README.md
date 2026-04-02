@@ -27,13 +27,17 @@ These decisions are currently intentional and active:
 - Prefer one clean card per real story over multiple headline variants.
 - Keep deterministic extraction for evidence, attribution, and clustering support.
 - Use the LLM layer only for bounded editorial selection and card framing, not for free-form rewriting of the whole product.
+- Story grouping should move toward a deterministic event graph, not whole-batch HDBSCAN/DBSCAN as the main truth source.
+- Use LLM only for bounded split or merge adjudication when deterministic grouping is genuinely ambiguous.
+- Event links should be strict, not loose: use strong embedding similarity plus headline/entity overlap plus time closeness.
+- The new event-grouping path should replace legacy whole-batch clustering directly; do not keep the old clustering logic as an active fallback path.
 - Allow a strong single-source story only when the civic or public-impact signal is clearly high.
 - Treat suspicious publish dates as low-confidence data, not as automatically trustworthy.
 - Prefer a small set of reliable Pakistani sources over a large unreliable source list.
 
 ## Current Status
 
-As of `2026-04-02`, the architecture is in place but the live product is not yet production-trustworthy.
+As of `2026-04-02`, the architecture is in place and the live product is close, but not yet production-trustworthy.
 
 Working:
 
@@ -43,11 +47,15 @@ Working:
 - Groq structured-output editorial review is integrated
 - API and frontend are already wired to live data
 - Geo source discovery bug is fixed
+- deterministic event grouping replaced whole-batch density clustering in production
+- recent live runs now reach the `5-9` story target range
 
 Not done yet:
 
-- the live morning brief does not yet reliably produce `5-9` strong stories
+- story count is now in range, but final story quality is not yet consistent enough
 - source coverage is still limited to the currently reliable core set
+- `dawn` discovery still needs cleanup because some runs surface `images.dawn.com` lifestyle links instead of hard news
+- Groq editorial still needs hardening against schema failures and `429` rate limits
 - freshness and publish-date trust still need more validation
 - full live acceptance from scrape to frontend quality still needs a clean pass
 
@@ -100,15 +108,20 @@ This is intentionally bounded. The system is not meant to become an opaque LLM-o
 
 ## Main Problem We Are Solving Now
 
-The core challenge is no longer basic plumbing. The remaining challenge is live feed quality.
+The core challenge is no longer basic plumbing or story formation. The remaining challenge is live brief quality and reliability.
 
-The project previously leaned too much on embeddings plus lexical methods alone. That was not enough to reliably:
+The main architecture issue is already fixed:
 
-- merge duplicate story variants well
-- distinguish meaningful public-interest stories from filler
-- present morning cards in a crisp, useful way
+- global density clustering is no longer the production grouping method
+- deterministic event grouping now produces distinct story clusters instead of one news blob
 
-The new editorial layer fixes part of that, but the product still needs better live yield and freshness discipline before launch.
+The remaining live issues are narrower:
+
+- keep the surviving `5-9` stories on-mission for a must-know Pakistan morning brief
+- stop softer feature/lifestyle stories from consuming brief slots
+- make `dawn` consistently surface hard-news links
+- make the Groq editorial path reliable enough that deterministic fallback is exceptional, not routine
+- keep freshness and publish-date handling trustworthy
 
 ## Next Phase
 
@@ -116,10 +129,10 @@ The current phase is `live-quality hardening`.
 
 The next work items are:
 
-1. Run and verify a constrained live pipeline pass.
-2. Confirm recent DB rows include the intended core sources.
-3. Improve candidate yield so the feed reliably reaches `5-9` strong stories.
-4. Tighten publish-date and freshness handling.
+1. Fix `dawn` source discovery so hard-news pages dominate and `images.dawn.com` lifestyle links do not leak into the morning run.
+2. Harden Groq editorial fallback behavior around schema validation and rate limits.
+3. Tighten deterministic importance ranking so weaker feature stories lose to stronger civic and public-interest stories.
+4. Re-check publish-date and freshness handling on live rows.
 5. Do final frontend polish only after backend output is stable.
 
 ## Repository Layout

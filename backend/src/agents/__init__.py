@@ -3,7 +3,7 @@ Agents module for Saaf Baat news intelligence pipeline.
 
 Contains:
 - embeddings: Text embedding generation (Gemini)
-- clustering: Article clustering into stories (HDBSCAN + DBSCAN)
+- clustering: Event grouping + legacy clustering utilities
 - analysis: Entity extraction, consensus detection, and classification (spaCy + rules)
 """
 from src.agents.embeddings import (
@@ -13,6 +13,9 @@ from src.agents.embeddings import (
 )
 
 from src.agents.clustering import (
+    EventGroup,
+    EventGroupingResult,
+    EventGroupingService,
     HDBSCANClusterer,
     DBSCANClusterer,
     ClusteringService,
@@ -37,6 +40,9 @@ __all__ = [
     "EmbeddingResult",
     "EmbeddingError",
     # Clustering
+    "EventGroup",
+    "EventGroupingResult",
+    "EventGroupingService",
     "HDBSCANClusterer",
     "DBSCANClusterer",
     "ClusteringService",

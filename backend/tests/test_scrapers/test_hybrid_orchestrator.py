@@ -600,6 +600,44 @@ class TestHybridOrchestratorFeedDiscovery:
         assert len(results) == 1
 
 
+class TestHybridOrchestratorKnownUrlSkipping:
+    """Tests for skipping already-known article URLs before content scraping."""
+
+    def test_scrape_source_skips_known_urls(self):
+        from src.scrapers.hybrid_orchestrator import HybridOrchestrator
+        from src.db.models import RawArticle
+
+        orchestrator = HybridOrchestrator()
+
+        kept_article = RawArticle(
+            source="dawn",
+            url="https://www.dawn.com/news/1002",
+            headline="Fresh article headline",
+            main_text="Fresh article body " * 50,
+        )
+
+        with patch.object(orchestrator, "_stealth_fetcher") as mock_fetcher:
+            section_html = """
+            <html><body>
+                <a href="/news/1001/known-article">Known</a>
+                <a href="/news/1002/fresh-article">Fresh</a>
+            </body></html>
+            """
+            mock_fetcher.fetch.return_value = section_html
+
+            with patch.object(orchestrator, "scrape_url", return_value=kept_article) as mock_scrape:
+                results = orchestrator.scrape_source(
+                    source="dawn",
+                    base_url="https://www.dawn.com",
+                    sections=["latest-news"],
+                    max_articles=2,
+                    skip_urls={"https://www.dawn.com/news/1001/known-article"},
+                )
+
+        mock_scrape.assert_called_once_with("https://www.dawn.com/news/1002/fresh-article", source="dawn")
+        assert len(results) == 1
+
+
 class TestHybridOrchestratorPlaywrightSessionReuse:
     """Tests for Playwright browser session reuse and scrolling."""
 

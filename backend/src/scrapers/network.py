@@ -55,34 +55,34 @@ class StealthFetcher:
         Args:
             max_retries: Maximum retry attempts on failure (default: 3)
             base_delay: Base delay for exponential backoff in seconds (default: 1.0)
-            min_delay: Minimum delay between requests in seconds (default: 1.0)
-            max_delay: Maximum delay between requests in seconds (default: 3.0)
-            timeout: Request timeout in seconds (default: 30.0)
+            min_delay: Minimum delay between requests in seconds (default: 0.25)
+            max_delay: Maximum delay between requests in seconds (default: 0.75)
+            timeout: Request timeout in seconds (default: 20.0)
         """
         self.max_retries = int(
             max_retries
             if max_retries is not None
-            else _env_int("SAAF_SCRAPER_MAX_RETRIES", 3)
+            else _env_int("SAAF_SCRAPER_MAX_RETRIES", 2)
         )
         self.base_delay = float(
             base_delay
             if base_delay is not None
-            else _env_float("SAAF_SCRAPER_BASE_DELAY", 1.0)
+            else _env_float("SAAF_SCRAPER_BASE_DELAY", 0.75)
         )
         self.min_delay = float(
             min_delay
             if min_delay is not None
-            else _env_float("SAAF_SCRAPER_MIN_DELAY", 1.0)
+            else _env_float("SAAF_SCRAPER_MIN_DELAY", 0.25)
         )
         self.max_delay = float(
             max_delay
             if max_delay is not None
-            else _env_float("SAAF_SCRAPER_MAX_DELAY", 3.0)
+            else _env_float("SAAF_SCRAPER_MAX_DELAY", 0.75)
         )
         self.timeout = float(
             timeout
             if timeout is not None
-            else _env_float("SAAF_SCRAPER_TIMEOUT", 30.0)
+            else _env_float("SAAF_SCRAPER_TIMEOUT", 20.0)
         )
 
         if self.max_retries <= 0:
