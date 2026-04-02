@@ -1,6 +1,7 @@
 """
 Shared pytest fixtures for all tests.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -15,6 +16,42 @@ load_dotenv(env_path)
 # Add src to path for imports
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir / "src"))
+
+def _truthy_env(name: str) -> bool:
+    value = (os.getenv(name) or "").strip().lower()
+    return value in {"1", "true", "yes", "y", "on"}
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """
+    Make network/credentialed suites opt-in.
+
+    We load `backend/.env` for local dev convenience, which can set real
+    SUPABASE/GEMINI keys. Without an opt-in guard, `pytest` would attempt live
+    calls and fail/flap on machines without network access.
+    """
+    markexpr = (getattr(config.option, "markexpr", None) or "").strip().lower()
+    wants_integration = "integration" in markexpr
+    wants_slow = "slow" in markexpr
+
+    run_integration = _truthy_env("SAAF_RUN_INTEGRATION_TESTS") or wants_integration
+    run_slow = _truthy_env("SAAF_RUN_SLOW_TESTS") or wants_slow
+
+    if not run_integration:
+        skip_integration = pytest.mark.skip(
+            reason="integration tests disabled (set SAAF_RUN_INTEGRATION_TESTS=1 or run with -m integration)"
+        )
+        for item in items:
+            if "integration" in item.keywords:
+                item.add_marker(skip_integration)
+
+    if not run_slow:
+        skip_slow = pytest.mark.skip(
+            reason="slow tests disabled (set SAAF_RUN_SLOW_TESTS=1 or run with -m slow)"
+        )
+        for item in items:
+            if "slow" in item.keywords:
+                item.add_marker(skip_slow)
 
 
 @pytest.fixture

@@ -16,7 +16,7 @@ export default async function StoryDetail({
   params: Promise<{ cluster_id: string }>;
 }) {
   const { cluster_id } = await params;
-  const { story, status, message } = await fetchStoryWithMeta(cluster_id);
+  const { story, status, message, latestPipelineRunAt } = await fetchStoryWithMeta(cluster_id);
 
   if (!story) {
     const isLiveModeError = status === "error-live-required";
@@ -47,7 +47,7 @@ export default async function StoryDetail({
   }
 
   const primaryLabel = story.impact_labels?.[0] || "UPDATE";
-  const sourceCount = story.articles?.length || story.sources?.length || 0;
+  const sourceCount = story.sources?.length || 0;
   const sourceNames = story.sources.map((s) => capitalise(s.source));
 
   return (
@@ -71,7 +71,7 @@ export default async function StoryDetail({
           <span>Back to brief</span>
         </Link>
         <div className="mt-3">
-          <DataStatusBanner status={status} message={message} latestCreatedAt={story.created_at} />
+          <DataStatusBanner status={status} message={message} latestCreatedAt={latestPipelineRunAt} />
         </div>
 
         <div className="mt-4">

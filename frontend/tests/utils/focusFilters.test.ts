@@ -30,7 +30,7 @@ describe("focusFilters", () => {
     expect(s.sources).toBe("dawn,geo");
   });
 
-  it("filters stories by primary impact label and sources (OR within each group)", () => {
+  it("filters stories by impact labels and sources (OR within each group)", () => {
     const stories = [
       story({ story_id: "a", impact_labels: ["💳 WALLET"], sources: [{ source: "dawn", count: 1 }] }),
       story({ story_id: "b", impact_labels: ["🛡️ SAFETY"], sources: [{ source: "geo", count: 1 }] }),
@@ -40,6 +40,16 @@ describe("focusFilters", () => {
     const filters = parseFilters(new URLSearchParams("impact=WALLET,SAFETY&sources=geo"));
     const out = applyFilters(stories, filters);
     expect(out.map((s) => s.story_id)).toEqual(["b"]);
+  });
+
+  it("matches any impact label, not only the first", () => {
+    const stories = [
+      story({ story_id: "a", impact_labels: ["🏛️ GOVERNANCE", "🛡️ SAFETY"], sources: [{ source: "dawn", count: 1 }] }),
+      story({ story_id: "b", impact_labels: ["💳 WALLET"], sources: [{ source: "dawn", count: 1 }] }),
+    ];
+    const filters = parseFilters(new URLSearchParams("impact=SAFETY"));
+    const out = applyFilters(stories, filters);
+    expect(out.map((s) => s.story_id)).toEqual(["a"]);
   });
 
   it("derives available sources with stable ordering", () => {
@@ -52,4 +62,3 @@ describe("focusFilters", () => {
     expect(deriveAvailableSources(stories)).toEqual(["dawn", "geo", "tribune", "other"]);
   });
 });
-

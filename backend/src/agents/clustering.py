@@ -237,8 +237,12 @@ class ClusteringService:
     
     def __init__(
         self,
-        min_clusters: int = 2,
-        max_noise_ratio: float = 0.3,
+        # For a small news aggregator (tens-hundreds of docs/run), it is normal to
+        # produce just 1 coherent cluster and lots of noise. Downstream pipeline
+        # guardrails enforce story coherence, so these checks should not zero out
+        # all labels.
+        min_clusters: int = 1,
+        max_noise_ratio: float = 0.95,
         min_cluster_size: int = 3,
         hdbscan_params: Optional[Dict] = None,
         dbscan_params: Optional[Dict] = None,
@@ -325,34 +329,50 @@ class ClusteringService:
         """
         if len(embeddings) == 0:
             raise ClusteringError("Cannot cluster empty embeddings array")
-        
+
+        hdbscan_labels: Optional[NDArray[np.int64]] = None
+
         # Try primary algorithm (HDBSCAN)
         try:
             labels = self._hdbscan.fit_predict(embeddings)
-            
+            hdbscan_labels = labels
+
             if self._is_quality_clustering(labels):
                 logger.info(
                     f"HDBSCAN clustering successful: "
                     f"{len(set(labels)) - (1 if -1 in labels else 0)} clusters"
                 )
                 return ClusteringResult.from_labels(labels, self.primary_algorithm)
-            
-            logger.info("HDBSCAN quality check failed, trying DBSCAN fallback")
-            
+
+            logger.info("HDBSCAN clustering produced low-quality output, trying DBSCAN fallback")
+
         except Exception as e:
             logger.warning(f"HDBSCAN failed: {e}, trying DBSCAN fallback")
-        
+
         # Fallback to DBSCAN
         try:
             labels = self._dbscan.fit_predict(embeddings)
-            
-            logger.info(
-                f"DBSCAN fallback: "
-                f"{len(set(labels)) - (1 if -1 in labels else 0)} clusters"
+            if self._is_quality_clustering(labels):
+                logger.info(
+                    f"DBSCAN fallback accepted: "
+                    f"{len(set(labels)) - (1 if -1 in labels else 0)} clusters"
+                )
+                return ClusteringResult.from_labels(labels, self.fallback_algorithm)
+
+            # Do not discard the labels. Downstream pipeline guardrails enforce semantic
+            # coherence and will reject mixed-topic clusters.
+            logger.warning(
+                "DBSCAN output failed quality checks (clusters=%d, noise=%.2f). Returning labels anyway.",
+                len(set(labels)) - (1 if -1 in set(labels) else 0),
+                float(np.sum(labels == -1) / len(labels)),
             )
-            return ClusteringResult.from_labels(labels, self.fallback_algorithm)
-            
+            return ClusteringResult.from_labels(labels, f"{self.fallback_algorithm}_low_quality")
+
         except Exception as e:
+            if hdbscan_labels is not None:
+                logger.warning("DBSCAN failed (%s); returning HDBSCAN labels anyway", e)
+                return ClusteringResult.from_labels(hdbscan_labels, f"{self.primary_algorithm}_unvalidated")
+
             logger.error(f"Both clustering algorithms failed: {e}")
             raise ClusteringError(f"Clustering failed: {e}")
 

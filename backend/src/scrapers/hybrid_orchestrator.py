@@ -19,17 +19,20 @@ from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 try:
-    from playwright_stealth import Stealth
+    # Some playwright-stealth releases expose a `Stealth` class.
+    from playwright_stealth import Stealth  # type: ignore
+except ImportError:  # pragma: no cover
+    # Other releases expose `stealth_sync` instead. Keep a stable local name so
+    # tests (and callers) can always patch `src.scrapers.hybrid_orchestrator.Stealth`.
+    from playwright_stealth import stealth_sync  # type: ignore
 
-    def _apply_stealth(page) -> None:
-        stealth = Stealth()
-        stealth.apply_stealth_sync(page)
+    class Stealth:  # type: ignore
+        def apply_stealth_sync(self, page) -> None:
+            stealth_sync(page)
 
-except ImportError:
-    from playwright_stealth import stealth_sync
 
-    def _apply_stealth(page) -> None:
-        stealth_sync(page)
+def _apply_stealth(page) -> None:
+    Stealth().apply_stealth_sync(page)
 
 
 from src.scrapers.network import StealthFetcher
@@ -67,6 +70,7 @@ class HybridOrchestrator:
     ARTICLE_URL_PATTERNS = [
         r"/news/\d+",  # Dawn: /news/12345
         r"/story/\d+",  # Tribune: /story/12345
+        r"/latest/\d+",  # Geo: /latest/12345-article-slug
         r"/\d{4}/\d{2}/\d{2}/",  # Date-based: /2026/02/04/
         r"-\d+\.html?$",  # Numeric suffix: article-12345.html
         r"/post/\d+",  # Generic post

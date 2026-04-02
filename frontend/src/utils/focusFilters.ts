@@ -49,9 +49,9 @@ export function applyFilters(stories: StoryCardData[], filters: FocusFilters): S
 
   return stories.filter((story) => {
     if (hasImpact) {
-      const primary = normaliseImpact(story.impact_labels?.[0] || "");
-      if (primary === "UPDATE") return false;
-      if (!filters.impacts.has(primary)) return false;
+      const labels = story.impact_labels || [];
+      const normalised = labels.map((lbl) => normaliseImpact(lbl)).filter((x) => x !== "UPDATE");
+      if (!normalised.some((lbl) => filters.impacts.has(lbl))) return false;
     }
 
     if (hasSources) {

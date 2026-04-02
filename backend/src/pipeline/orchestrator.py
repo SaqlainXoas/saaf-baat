@@ -18,11 +18,25 @@ from src.agents.analysis import (
     EntityExtractor,
     RuleBasedClassifier,
 )
+from src.agents.dedup import (
+    SimHashIndex,
+    SimHashIndexConfig,
+    hamming_distance64,
+    jaccard,
+    shingle_hashes,
+    simhash64,
+)
 from src.agents.clustering import (
     ClusteringResult,
     ClusteringService,
     calculate_centroid,
     calculate_intra_cluster_similarity,
+)
+from src.agents.editorial import (
+    ClusterEditorialCandidate,
+    EditorialError,
+    GroqMorningBriefService,
+    merge_editorial_story,
 )
 from src.agents.embeddings import GeminiEmbeddingProvider
 from src.db.client import DuplicateArticleError, SupabaseClient
@@ -49,7 +63,23 @@ class PipelineConfig:
     max_debated_claims: int = 12
     analyze_recent_clusters_limit: int = 200
     cluster_lookback_hours: int = 24
+    recluster_recent_window: bool = True
+    recluster_limit: int = 500
+    refresh_existing_feeds: bool = True
     retention_days: int = 7
+    # Near-duplicate guardrails to keep clustering clean.
+    dedup_lookback_hours: int = 72
+    dedup_hamming_threshold: int = 18
+    dedup_bands: int = 4
+    dedup_min_jaccard: float = 0.7
+    # Cluster quality guardrails (semantic coherence).
+    min_intra_cluster_similarity: float = 0.65
+    min_member_similarity_to_centroid: float = 0.70
+    max_cluster_articles: int = 30
+    max_cluster_articles_per_source: int = 2
+    enable_editorial_llm: bool = False
+    editorial_candidate_limit: int = 15
+    editorial_max_stories: int = 9
 
 
 @dataclass
@@ -57,14 +87,20 @@ class PipelineStats:
     scraped: int = 0
     inserted: int = 0
     duplicates: int = 0
+    near_duplicates: int = 0
     insert_failures: int = 0
     embedded: int = 0
     embed_failures: int = 0
     clustered_articles: int = 0
     clusters_created: int = 0
+    clusters_rejected_low_similarity: int = 0
     cluster_failures: int = 0
+    clusters_removed_for_recluster: int = 0
+    cluster_assignments_cleared: int = 0
     feeds_inserted: int = 0
     feeds_skipped_existing: int = 0
+    feeds_replaced: int = 0
+    feeds_rejected_editorial: int = 0
     analyze_failures: int = 0
     pruned_articles: int = 0
     pruned_clusters: int = 0
@@ -78,14 +114,20 @@ class PipelineStats:
             "scraped": self.scraped,
             "inserted": self.inserted,
             "duplicates": self.duplicates,
+            "near_duplicates": self.near_duplicates,
             "insert_failures": self.insert_failures,
             "embedded": self.embedded,
             "embed_failures": self.embed_failures,
             "clustered_articles": self.clustered_articles,
             "clusters_created": self.clusters_created,
+            "clusters_rejected_low_similarity": self.clusters_rejected_low_similarity,
             "cluster_failures": self.cluster_failures,
+            "clusters_removed_for_recluster": self.clusters_removed_for_recluster,
+            "cluster_assignments_cleared": self.cluster_assignments_cleared,
             "feeds_inserted": self.feeds_inserted,
             "feeds_skipped_existing": self.feeds_skipped_existing,
+            "feeds_replaced": self.feeds_replaced,
+            "feeds_rejected_editorial": self.feeds_rejected_editorial,
             "analyze_failures": self.analyze_failures,
             "pruned_articles": self.pruned_articles,
             "pruned_clusters": self.pruned_clusters,
@@ -118,6 +160,7 @@ class PipelineOrchestrator:
         embedder: Optional[GeminiEmbeddingProvider] = None,
         clusterer: Optional[ClusteringService] = None,
         analyzer: Optional[AnalysisService] = None,
+        editorial_service: Optional[GroqMorningBriefService] = None,
     ):
         self.config = config
         self.db = db
@@ -125,6 +168,7 @@ class PipelineOrchestrator:
         self.embedder = embedder
         self.clusterer = clusterer
         self.analyzer = analyzer
+        self.editorial_service = editorial_service
 
     # ---------------------------------------------------------------------
     # Config / construction
@@ -197,12 +241,42 @@ class PipelineOrchestrator:
             )
         return self.analyzer
 
+    def _get_editorial_service(self) -> Optional[GroqMorningBriefService]:
+        if self.editorial_service is not None:
+            return self.editorial_service
+        if not self.config.enable_editorial_llm:
+            return None
+
+        api_key = (os.getenv("GROQ_API_KEY") or "").strip()
+        if not api_key:
+            return None
+
+        try:
+            self.editorial_service = GroqMorningBriefService(api_key=api_key)
+        except EditorialError as exc:
+            logger.warning("Editorial service unavailable: %s", exc)
+            return None
+        return self.editorial_service
+
     # ---------------------------------------------------------------------
     # Phases
     # ---------------------------------------------------------------------
 
     def scrape_and_insert(self) -> tuple[PipelineStats, List[RawArticle]]:
         stats = PipelineStats()
+        dedup_index = SimHashIndex(SimHashIndexConfig(bands=self.config.dedup_bands))
+        shingles_by_id: Dict[str, set[int]] = {}
+        try:
+            since = datetime.now(timezone.utc) - timedelta(hours=self.config.dedup_lookback_hours)
+            recent = self.db.get_articles_since(since=since, limit=2000)
+            for a in recent:
+                doc_id = str(a.id)
+                text = f"{a.headline}. {a.main_text[:1000]}"
+                fp = simhash64(text)
+                dedup_index.add(doc_id, fp)
+                shingles_by_id[doc_id] = shingle_hashes(text)
+        except Exception as e:
+            logger.warning("Dedup index build skipped (fetch failed): %s", e)
         sources_cfg = self.load_sources_config(self.config.sources_yaml)
         sources = sources_cfg.get("sources") or {}
         max_per_source = int(
@@ -244,10 +318,30 @@ class PipelineOrchestrator:
                 if not self._host_allowed(article.url, base_url):
                     logger.warning("Skipping off-domain url for %s: %s", source_name, article.url)
                     continue
+                text = f"{article.headline}. {article.main_text[:1000]}"
+                fp = simhash64(text)
+                article_shingles = shingle_hashes(text)
+                is_near_dup = False
+                for _doc_id, other_fp in dedup_index.candidates(fp):
+                    if hamming_distance64(fp, other_fp) > self.config.dedup_hamming_threshold:
+                        continue
+                    other_shingles = shingles_by_id.get(_doc_id)
+                    if other_shingles is None:
+                        continue
+                    if jaccard(article_shingles, other_shingles) < self.config.dedup_min_jaccard:
+                        continue
+                    stats.near_duplicates += 1
+                    is_near_dup = True
+                    break
+                if is_near_dup:
+                    continue
                 try:
                     self.db.insert_article(article)
                     inserted_articles.append(article)
                     stats.inserted += 1
+                    doc_id = str(article.id)
+                    dedup_index.add(doc_id, fp)
+                    shingles_by_id[doc_id] = article_shingles
                 except DuplicateArticleError:
                     stats.duplicates += 1
                 except Exception as e:
@@ -322,19 +416,57 @@ class PipelineOrchestrator:
                 continue
 
             indices = np.where(result.labels == label)[0]
-            cluster_articles = [candidates[i] for i in indices]
-            if len(cluster_articles) < self.config.min_cluster_size:
+            cluster_articles_all = [candidates[i] for i in indices]
+            if len(cluster_articles_all) < self.config.min_cluster_size:
                 continue
 
             cluster_id = uuid4()
-            cluster_embeddings = embeddings[indices]
-            centroid = calculate_centroid(cluster_embeddings).tolist()
-            similarity = calculate_intra_cluster_similarity(cluster_embeddings)
+            cluster_embeddings_raw = embeddings[indices].astype(np.float32)
+            norms = np.linalg.norm(cluster_embeddings_raw, axis=1, keepdims=True)
+            norms = np.where(norms <= 0, 1.0, norms)
+            cluster_embeddings = cluster_embeddings_raw / norms
+
+            centroid_vec = calculate_centroid(cluster_embeddings)
+            member_sims = cluster_embeddings @ centroid_vec
+            keep_local = np.where(member_sims >= self.config.min_member_similarity_to_centroid)[0]
+            if len(keep_local) < self.config.min_cluster_size:
+                stats.clusters_rejected_low_similarity += 1
+                continue
+
+            # Prefer the most centroid-aligned members, while capping per-source
+            # and overall cluster size to keep stories tight and credible.
+            ranked_local = sorted(
+                (int(i) for i in keep_local),
+                key=lambda i: (-float(member_sims[i]), cluster_articles_all[i].source, cluster_articles_all[i].url),
+            )
+            per_source: Dict[str, int] = {}
+            kept_local: List[int] = []
+            for i in ranked_local:
+                if len(kept_local) >= int(self.config.max_cluster_articles):
+                    break
+                src = cluster_articles_all[i].source
+                if per_source.get(src, 0) >= int(self.config.max_cluster_articles_per_source):
+                    continue
+                per_source[src] = per_source.get(src, 0) + 1
+                kept_local.append(i)
+
+            if len(kept_local) < self.config.min_cluster_size:
+                stats.clusters_rejected_low_similarity += 1
+                continue
+
+            kept_embeddings = cluster_embeddings[np.array(kept_local, dtype=np.int64)]
+            similarity = calculate_intra_cluster_similarity(kept_embeddings)
+            if similarity < float(self.config.min_intra_cluster_similarity):
+                stats.clusters_rejected_low_similarity += 1
+                continue
+
+            centroid = calculate_centroid(kept_embeddings).tolist()
+            kept_articles = [cluster_articles_all[i] for i in kept_local]
 
             try:
                 self.db.create_cluster(
                     cluster_id=cluster_id,
-                    article_ids=[a.id for a in cluster_articles],
+                    article_ids=[a.id for a in kept_articles],
                     centroid_embedding=centroid,
                     algorithm_used=result.algorithm_used,
                 )
@@ -345,7 +477,7 @@ class PipelineOrchestrator:
                 logger.exception("Failed creating cluster %s: %s", cluster_id, e)
                 continue
 
-            for article in cluster_articles:
+            for article in kept_articles:
                 try:
                     self.db.assign_to_cluster(article.id, cluster_id)
                 except Exception as e:
@@ -354,39 +486,208 @@ class PipelineOrchestrator:
             # Persist similarity for observability without schema changes.
             # We store it on the feed metadata later; keep local for now.
             logger.info(
-                "Cluster %s: %d articles, similarity=%.3f", cluster_id, len(indices), similarity
+                "Cluster %s: %d articles (kept=%d), similarity=%.3f",
+                cluster_id,
+                len(indices),
+                len(kept_articles),
+                similarity,
             )
 
         return created_cluster_ids
 
+    def remediate_recent_clusters(self, stats: PipelineStats) -> None:
+        """Re-cluster recent embedded articles to recover from poor historical clusters."""
+        if not self.config.recluster_recent_window:
+            return
+
+        since = datetime.now(timezone.utc) - timedelta(hours=self.config.cluster_lookback_hours)
+        try:
+            recent_embedded = self.db.get_articles_with_embeddings_since(
+                since=since, limit=self.config.recluster_limit
+            )
+        except Exception as e:
+            logger.warning("Recent cluster remediation skipped (fetch failed): %s", e)
+            return
+
+        affected_cluster_ids = {
+            article.cluster_id for article in recent_embedded if article.cluster_id is not None
+        }
+        if not affected_cluster_ids:
+            return
+
+        try:
+            stats.cluster_assignments_cleared += int(self.db.clear_cluster_assignments_since(since))
+        except Exception as e:
+            logger.warning("Failed clearing recent cluster assignments: %s", e)
+            return
+
+        for cluster_id in affected_cluster_ids:
+            try:
+                replaced = int(self.db.delete_analyzed_feed_by_cluster_id(cluster_id))
+                stats.feeds_replaced += replaced
+            except Exception as e:
+                logger.warning("Failed deleting feeds for cluster %s: %s", cluster_id, e)
+            try:
+                self.db.delete_cluster(cluster_id)
+                stats.clusters_removed_for_recluster += 1
+            except Exception as e:
+                logger.warning("Failed deleting cluster %s during remediation: %s", cluster_id, e)
+
     def analyze_clusters_missing_feed(self, stats: PipelineStats) -> List[UUID]:
         analyzer = self._get_analyzer()
+        editorial = self._get_editorial_service()
 
         clusters = self.db.get_all_clusters(limit=self.config.analyze_recent_clusters_limit)
         inserted_feed_ids: List[UUID] = []
+        candidates: List[ClusterEditorialCandidate] = []
+        cutoff: Optional[datetime] = None
+        days = int(self.config.retention_days)
+        if days > 0:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         for cluster in clusters:
+            # Avoid analyzing clusters that will be pruned in the same run (prevents
+            # orphan analyzed_feed rows pointing at deleted clusters/articles).
+            if cutoff is not None:
+                created_at = cluster.created_at
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                if created_at < cutoff:
+                    continue
+
             if cluster.cluster_size < self.config.min_cluster_size:
                 continue
 
+            has_existing_feed = False
             try:
-                if self.db.analyzed_feed_exists(cluster.id):
-                    stats.feeds_skipped_existing += 1
-                    continue
+                has_existing_feed = self.db.analyzed_feed_exists(cluster.id)
             except Exception as e:
                 logger.warning("Feed-exists check failed for %s: %s", cluster.id, e)
+            if has_existing_feed:
+                if not self.config.refresh_existing_feeds:
+                    stats.feeds_skipped_existing += 1
+                    continue
+                try:
+                    replaced = int(self.db.delete_analyzed_feed_by_cluster_id(cluster.id))
+                    stats.feeds_replaced += replaced
+                except Exception as e:
+                    logger.warning("Failed deleting existing feed rows for %s: %s", cluster.id, e)
 
             try:
                 articles = self.db.get_articles_by_ids(cluster.article_ids)
                 feed = analyzer.analyze_cluster(cluster.id, articles)
-                feed_id = self.db.insert_analyzed_feed(feed)
-                inserted_feed_ids.append(feed_id)
-                stats.feeds_inserted += 1
+                candidates.append(
+                    ClusterEditorialCandidate(
+                        cluster_id=cluster.id,
+                        base_feed=feed,
+                        representative_article=analyzer.choose_representative_article(articles),
+                        articles=tuple(articles),
+                        algorithm_used=cluster.algorithm_used,
+                        avg_similarity=self._compute_cluster_avg_similarity(articles),
+                        min_member_similarity=self._compute_cluster_min_similarity(articles),
+                    )
+                )
             except Exception as e:
                 stats.analyze_failures += 1
                 logger.exception("Failed analyzing cluster %s: %s", cluster.id, e)
 
+        editorial_result: Dict[UUID, Any] | None = None
+        if editorial and candidates:
+            ranked_candidates = sorted(
+                candidates,
+                key=lambda candidate: (
+                    -max(list(candidate.base_feed.source_attribution.values()) or [0]),
+                    -len(candidate.articles),
+                    candidate.cluster_id.hex,
+                ),
+            )
+            limited_candidates = ranked_candidates[: max(1, int(self.config.editorial_candidate_limit))]
+            try:
+                editorial_result = editorial.review_clusters(
+                    limited_candidates,
+                    max_stories=self.config.editorial_max_stories,
+                )
+            except EditorialError as exc:
+                logger.warning("Editorial review failed, falling back to deterministic feed: %s", exc)
+
+        if editorial_result is not None:
+            selected_candidates = []
+            for candidate in candidates:
+                story = editorial_result.get(candidate.cluster_id)
+                if story is None:
+                    stats.feeds_rejected_editorial += 1
+                    continue
+                selected_candidates.append((candidate, story))
+
+            selected_candidates.sort(
+                key=lambda row: (int(row[1].priority), len(row[0].articles), row[0].cluster_id.hex)
+            )
+
+            for candidate, story in selected_candidates:
+                try:
+                    merged_feed = merge_editorial_story(
+                        candidate,
+                        story,
+                        model_name=editorial.model,
+                    )
+                    merged_feed.created_at = datetime.now(timezone.utc)
+                    feed_id = self.db.insert_analyzed_feed(merged_feed)
+                    inserted_feed_ids.append(feed_id)
+                    stats.feeds_inserted += 1
+                except Exception as e:
+                    stats.analyze_failures += 1
+                    logger.exception("Failed inserting editorial feed for cluster %s: %s", candidate.cluster_id, e)
+            return inserted_feed_ids
+
+        for candidate in candidates:
+            try:
+                candidate.base_feed.created_at = datetime.now(timezone.utc)
+                feed_id = self.db.insert_analyzed_feed(candidate.base_feed)
+                inserted_feed_ids.append(feed_id)
+                stats.feeds_inserted += 1
+            except Exception as e:
+                stats.analyze_failures += 1
+                logger.exception("Failed inserting deterministic feed for cluster %s: %s", candidate.cluster_id, e)
+
         return inserted_feed_ids
+
+    @staticmethod
+    def _normalized_embedding_matrix(articles: Sequence[RawArticle]) -> Optional[np.ndarray]:
+        rows: List[np.ndarray] = []
+        dims: Optional[int] = None
+        for article in articles:
+            if article.embedding is None:
+                return None
+            vec = np.asarray(article.embedding, dtype=np.float32)
+            if vec.ndim != 1 or vec.size == 0:
+                return None
+            if dims is None:
+                dims = int(vec.size)
+            elif int(vec.size) != dims:
+                return None
+            norm = float(np.linalg.norm(vec))
+            if norm <= 0:
+                return None
+            rows.append(vec / norm)
+        if not rows:
+            return None
+        return np.vstack(rows)
+
+    def _compute_cluster_avg_similarity(self, articles: Sequence[RawArticle]) -> Optional[float]:
+        matrix = self._normalized_embedding_matrix(articles)
+        if matrix is None:
+            return None
+        return float(calculate_intra_cluster_similarity(matrix))
+
+    def _compute_cluster_min_similarity(self, articles: Sequence[RawArticle]) -> Optional[float]:
+        matrix = self._normalized_embedding_matrix(articles)
+        if matrix is None:
+            return None
+        centroid = calculate_centroid(matrix)
+        similarities = (matrix @ centroid).astype(np.float32)
+        if not len(similarities):
+            return None
+        return float(np.min(similarities))
 
     def prune_old_data(self, stats: PipelineStats) -> None:
         days = int(self.config.retention_days)
@@ -419,17 +720,46 @@ class PipelineOrchestrator:
             self.config.cluster_lookback_hours,
         )
         stats, inserted_articles = self.scrape_and_insert()
+        logger.info(
+            "Scrape+insert complete: scraped=%d inserted=%d duplicates=%d near_duplicates=%d failures=%d",
+            stats.scraped,
+            stats.inserted,
+            stats.duplicates,
+            stats.near_duplicates,
+            stats.insert_failures,
+        )
 
         # Embedding only for newly inserted articles.
         self.embed_articles(inserted_articles, stats)
         # Resume embeddings that failed in prior runs.
         self.embed_backfill(stats)
+        logger.info(
+            "Embedding complete: embedded=%d embed_failures=%d",
+            stats.embedded,
+            stats.embed_failures,
+        )
 
+        # Re-cluster recent window to remediate historical low-quality clusters.
+        self.remediate_recent_clusters(stats)
         # Clustering uses DB state so it can resume after partial failures.
         self.cluster_unclustered_articles(stats)
+        logger.info(
+            "Clustering complete: clustered_articles=%d clusters_created=%d cluster_failures=%d rejected_low_similarity=%d",
+            stats.clustered_articles,
+            stats.clusters_created,
+            stats.cluster_failures,
+            stats.clusters_rejected_low_similarity,
+        )
 
         # Analysis also uses DB state and avoids duplicate feed items per cluster.
         self.analyze_clusters_missing_feed(stats)
+        logger.info(
+            "Analysis complete: feeds_inserted=%d feeds_replaced=%d feeds_rejected_editorial=%d analyze_failures=%d",
+            stats.feeds_inserted,
+            stats.feeds_replaced,
+            stats.feeds_rejected_editorial,
+            stats.analyze_failures,
+        )
         self.prune_old_data(stats)
 
         try:
@@ -461,17 +791,29 @@ def default_config(
         "false",
         "no",
     }
+    enable_editorial_llm = os.getenv("SAAF_ENABLE_EDITORIAL_LLM", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
     low_cost_mode = os.getenv("SAAF_LOW_COST_MODE", "0").strip().lower() in {"1", "true", "yes"}
     max_articles_per_source = _env_int("SAAF_MAX_ARTICLES_PER_SOURCE", 30)
     embedding_backfill_limit = _env_int("SAAF_EMBEDDING_BACKFILL_LIMIT", 100)
+    editorial_candidate_limit = _env_int("SAAF_EDITORIAL_CANDIDATE_LIMIT", 15)
+    editorial_max_stories = _env_int("SAAF_EDITORIAL_MAX_STORIES", 9)
     if low_cost_mode:
         max_articles_per_source = min(max_articles_per_source, 20)
         embedding_backfill_limit = min(embedding_backfill_limit, 50)
+        editorial_candidate_limit = min(editorial_candidate_limit, 12)
+        editorial_max_stories = min(editorial_max_stories, 9)
 
     return PipelineConfig(
         sources_yaml=Path(sources_yaml),
         classification_yaml=Path(classification_yaml),
         enable_playwright_fallback=enable_playwright,
+        enable_editorial_llm=enable_editorial_llm,
         max_articles_per_source=max_articles_per_source,
         embedding_backfill_limit=embedding_backfill_limit,
+        editorial_candidate_limit=editorial_candidate_limit,
+        editorial_max_stories=editorial_max_stories,
     )

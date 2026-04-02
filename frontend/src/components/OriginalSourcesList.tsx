@@ -48,6 +48,11 @@ export default function OriginalSourcesList({
       <h3 className="text-sm font-bold tracking-tight mb-3" style={{ color: "var(--ink)" }}>
         Original sources
       </h3>
+      {canExpand ? (
+        <p className="text-xs mb-3" style={{ color: "var(--ink-muted)" }}>
+          Showing {visible.length} of {articles.length} reports.
+        </p>
+      ) : null}
 
       <div className="space-y-2">
         {visible.map((a) => (
@@ -99,7 +104,7 @@ export default function OriginalSourcesList({
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
         >
-          {expanded ? "Show less" : "View full coverage →"}
+          {expanded ? "Show fewer reports" : `View all ${articles.length} reports →`}
         </button>
       ) : null}
     </section>

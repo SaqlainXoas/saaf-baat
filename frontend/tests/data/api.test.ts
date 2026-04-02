@@ -26,15 +26,24 @@ describe("api data mode", () => {
 
   it("returns live status when API call succeeds", async () => {
     process.env.NEXT_PUBLIC_API_URL = "http://localhost:8000";
-    (global as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => [FEED[0]],
-    } as Response);
+    (global as { fetch: jest.Mock }).fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => [FEED[0]],
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          last_successful_pipeline_run_at: "2026-02-15T11:16:09Z",
+        }),
+      } as Response);
 
     const result = await fetchFeedWithMeta();
     expect(result.status).toBe("live");
     expect(result.stories).toHaveLength(1);
+    expect(result.latestPipelineRunAt).toBe("2026-02-15T11:16:09Z");
   });
 
   it("returns fallback status when API call fails", async () => {
@@ -53,6 +62,28 @@ describe("api data mode", () => {
     const result = await fetchStoryWithMeta(FEED[0].story_id);
     expect(result.status).toBe("mock-fallback");
     expect(result.story?.story_id).toBe(FEED[0].story_id);
+  });
+
+  it("returns story live metadata with pipeline freshness timestamp", async () => {
+    process.env.NEXT_PUBLIC_API_URL = "http://localhost:8000";
+    (global as { fetch: jest.Mock }).fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => FEED[0],
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          latest_feed_created_at: "2026-02-15T10:00:00Z",
+        }),
+      } as Response);
+
+    const result = await fetchStoryWithMeta(FEED[0].story_id);
+    expect(result.status).toBe("live");
+    expect(result.story?.story_id).toBe(FEED[0].story_id);
+    expect(result.latestPipelineRunAt).toBe("2026-02-15T10:00:00Z");
   });
 
   it("blocks mock fallback in strict live mode when API URL is missing", async () => {

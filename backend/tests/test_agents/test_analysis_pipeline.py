@@ -103,3 +103,52 @@ def test_analysis_service_caps_confirmed_and_debated_entities():
     assert len(feed.confirmed_facts) == 5
     assert len(feed.debated_claims) == 6
     assert len(feed.entity_counts) == 11
+
+
+def test_analysis_service_prefers_centroid_representative_for_story_text():
+    from src.agents.analysis import AnalysisService, ConsensusDetector, RuleBasedClassifier
+
+    class FakeExtractor:
+        def extract(self, text: str):
+            return []
+
+    rules_path = Path(__file__).resolve().parent.parent.parent / "config" / "classification_rules.yaml"
+    clf = RuleBasedClassifier.from_yaml(rules_path)
+    service = AnalysisService(
+        entity_extractor=FakeExtractor(),
+        consensus_detector=ConsensusDetector(min_agreement_ratio=1.0),
+        classifier=clf,
+    )
+
+    cluster_id = uuid4()
+    representative = RawArticle(
+        source="tribune",
+        url="https://tribune.com.pk/rep",
+        headline="Budget measures target inflation",
+        main_text=("budget inflation tax " * 30),
+        embedding=[1.0, 0.0, 0.0],
+    )
+    outlier = RawArticle(
+        source="dawn",
+        url="https://dawn.com/outlier",
+        headline="Sports outlier headline with much longer wording than representative",
+        main_text=("cricket tournament semifinal championship highlights " * 30),
+        embedding=[0.0, 1.0, 0.0],
+    )
+    near_representative = RawArticle(
+        source="geo",
+        url="https://geo.tv/near-rep",
+        headline="Inflation remains central to budget talks",
+        main_text=("budget inflation fiscal " * 30),
+        embedding=[0.98, 0.02, 0.0],
+    )
+
+    feed = service.analyze_cluster(cluster_id=cluster_id, articles=[representative, outlier, near_representative])
+
+    assert feed.headline != "Sports outlier headline with much longer wording than representative"
+    assert feed.headline in {
+        "Budget measures target inflation",
+        "Inflation remains central to budget talks",
+    }
+    assert feed.summary is not None and "budget inflation" in feed.summary.lower()
+    assert feed.category == "economy"

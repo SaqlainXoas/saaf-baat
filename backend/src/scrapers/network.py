@@ -5,6 +5,7 @@ Uses curl_cffi with Chrome browser impersonation to bypass
 Cloudflare and other anti-bot protections.
 """
 
+import os
 import random
 import time
 from typing import Dict, Optional
@@ -42,11 +43,11 @@ class StealthFetcher:
 
     def __init__(
         self,
-        max_retries: int = 3,
-        base_delay: float = 1.0,
-        min_delay: float = 1.0,
-        max_delay: float = 3.0,
-        timeout: float = 30.0,
+        max_retries: int | None = None,
+        base_delay: float | None = None,
+        min_delay: float | None = None,
+        max_delay: float | None = None,
+        timeout: float | None = None,
     ):
         """
         Initialize StealthFetcher.
@@ -58,11 +59,42 @@ class StealthFetcher:
             max_delay: Maximum delay between requests in seconds (default: 3.0)
             timeout: Request timeout in seconds (default: 30.0)
         """
-        self.max_retries = max_retries
-        self.base_delay = base_delay
-        self.min_delay = min_delay
-        self.max_delay = max_delay
-        self.timeout = timeout
+        self.max_retries = int(
+            max_retries
+            if max_retries is not None
+            else _env_int("SAAF_SCRAPER_MAX_RETRIES", 3)
+        )
+        self.base_delay = float(
+            base_delay
+            if base_delay is not None
+            else _env_float("SAAF_SCRAPER_BASE_DELAY", 1.0)
+        )
+        self.min_delay = float(
+            min_delay
+            if min_delay is not None
+            else _env_float("SAAF_SCRAPER_MIN_DELAY", 1.0)
+        )
+        self.max_delay = float(
+            max_delay
+            if max_delay is not None
+            else _env_float("SAAF_SCRAPER_MAX_DELAY", 3.0)
+        )
+        self.timeout = float(
+            timeout
+            if timeout is not None
+            else _env_float("SAAF_SCRAPER_TIMEOUT", 30.0)
+        )
+
+        if self.max_retries <= 0:
+            self.max_retries = 3
+        if self.base_delay < 0:
+            self.base_delay = 1.0
+        if self.min_delay < 0:
+            self.min_delay = 0.0
+        if self.max_delay < self.min_delay:
+            self.max_delay = self.min_delay
+        if self.timeout <= 0:
+            self.timeout = 30.0
 
         # Track last request time for rate limiting
         self._last_request_time: Optional[float] = None
@@ -238,3 +270,23 @@ class StealthFetcher:
         self._successful_requests = 0
         self._failed_requests = 0
         self._total_retries = 0
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
