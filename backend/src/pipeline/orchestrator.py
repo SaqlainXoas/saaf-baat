@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -28,7 +29,8 @@ from src.agents.dedup import (
 )
 from src.agents.clustering import (
     ClusteringResult,
-    ClusteringService,
+    EventGroupingResult,
+    EventGroupingService,
     calculate_centroid,
     calculate_intra_cluster_similarity,
 )
@@ -40,11 +42,42 @@ from src.agents.editorial import (
 )
 from src.agents.embeddings import GeminiEmbeddingProvider
 from src.db.client import DuplicateArticleError, SupabaseClient
-from src.db.models import AnalyzedFeed, RawArticle
+from src.db.models import RawArticle
 from src.scrapers.hybrid_orchestrator import HybridOrchestrator
 from src.utils.validators import validate_sources_config
 
 logger = logging.getLogger(__name__)
+
+_CATEGORY_IMPORTANCE: Dict[str, int] = {
+    "security": 28,
+    "economy": 24,
+    "politics": 22,
+    "city": 20,
+    "health": 20,
+    "education": 16,
+    "international": 10,
+    "technology": 8,
+    "other": 4,
+    "sports": 0,
+    "entertainment": 0,
+}
+_IMPACT_IMPORTANCE: Dict[str, int] = {
+    "🛡️ SAFETY": 14,
+    "⚡ UTILITIES": 13,
+    "💳 WALLET": 12,
+    "🚦 COMMUTE": 10,
+    "🏛️ GOVERNANCE": 9,
+    "🏢 WORK": 8,
+}
+_SINGLE_SOURCE_ALLOWED_CATEGORIES = {
+    "security",
+    "economy",
+    "politics",
+    "city",
+    "health",
+    "education",
+}
+_HIGH_IMPACT_LABELS = {"🛡️ SAFETY", "⚡ UTILITIES", "💳 WALLET", "🚦 COMMUTE", "🏛️ GOVERNANCE"}
 
 
 @dataclass(frozen=True)
@@ -77,6 +110,11 @@ class PipelineConfig:
     min_member_similarity_to_centroid: float = 0.70
     max_cluster_articles: int = 30
     max_cluster_articles_per_source: int = 2
+    # Deterministic event-grouping gates.
+    event_group_max_time_delta_hours: int = 18
+    event_group_min_pair_similarity: float = 0.80
+    event_group_min_headline_overlap: float = 0.20
+    event_group_min_entity_overlap: float = 0.15
     enable_editorial_llm: bool = False
     editorial_candidate_limit: int = 15
     editorial_max_stories: int = 9
@@ -158,7 +196,7 @@ class PipelineOrchestrator:
         db: SupabaseClient,
         scraper: Optional[HybridOrchestrator] = None,
         embedder: Optional[GeminiEmbeddingProvider] = None,
-        clusterer: Optional[ClusteringService] = None,
+        clusterer: Optional[object] = None,
         analyzer: Optional[AnalysisService] = None,
         editorial_service: Optional[GroqMorningBriefService] = None,
     ):
@@ -210,13 +248,16 @@ class PipelineOrchestrator:
             self.embedder = GeminiEmbeddingProvider()
         return self.embedder
 
-    def _get_clusterer(self) -> ClusteringService:
+    def _get_grouping_service(self) -> object:
         if self.clusterer is None:
-            self.clusterer = ClusteringService(
-                min_clusters=self.config.min_clusters,
-                max_noise_ratio=self.config.max_noise_ratio,
+            self.clusterer = EventGroupingService(
                 min_cluster_size=self.config.min_cluster_size,
-                hdbscan_params={"min_cluster_size": self.config.min_cluster_size},
+                max_time_delta_hours=self.config.event_group_max_time_delta_hours,
+                min_pair_similarity=self.config.event_group_min_pair_similarity,
+                min_group_centroid_similarity=self.config.min_member_similarity_to_centroid,
+                min_group_avg_similarity=self.config.min_intra_cluster_similarity,
+                min_headline_overlap=self.config.event_group_min_headline_overlap,
+                min_entity_overlap=self.config.event_group_min_entity_overlap,
             )
         return self.clusterer
 
@@ -266,6 +307,8 @@ class PipelineOrchestrator:
         stats = PipelineStats()
         dedup_index = SimHashIndex(SimHashIndexConfig(bands=self.config.dedup_bands))
         shingles_by_id: Dict[str, set[int]] = {}
+        recent_urls: set[str] = set()
+        dedup_started_at = time.perf_counter()
         try:
             since = datetime.now(timezone.utc) - timedelta(hours=self.config.dedup_lookback_hours)
             recent = self.db.get_articles_since(since=since, limit=2000)
@@ -275,14 +318,26 @@ class PipelineOrchestrator:
                 fp = simhash64(text)
                 dedup_index.add(doc_id, fp)
                 shingles_by_id[doc_id] = shingle_hashes(text)
+                recent_urls.add(str(a.url))
+            logger.info(
+                "Dedup preload complete: recent_articles=%d lookback_hours=%d duration=%.2fs",
+                len(recent),
+                self.config.dedup_lookback_hours,
+                time.perf_counter() - dedup_started_at,
+            )
         except Exception as e:
             logger.warning("Dedup index build skipped (fetch failed): %s", e)
         sources_cfg = self.load_sources_config(self.config.sources_yaml)
         sources = sources_cfg.get("sources") or {}
-        max_per_source = int(
-            (sources_cfg.get("scraping_config") or {}).get(
-                "max_articles_per_source", self.config.max_articles_per_source
-            )
+        configured_default_max = int(
+            (sources_cfg.get("scraping_config") or {}).get("max_articles_per_source", 0) or 0
+        )
+        max_per_source = int(self.config.max_articles_per_source or configured_default_max or 30)
+        logger.info(
+            "Scrape stage starting: enabled_sources=%d max_articles_per_source=%d yaml_default=%d",
+            sum(1 for source in sources.values() if source.get("enabled", False)),
+            max_per_source,
+            configured_default_max,
         )
 
         scraper = self._get_scraper()
@@ -296,6 +351,17 @@ class PipelineOrchestrator:
             base_url = str(source.get("url"))
             sections = list(source.get("sections") or [])
             feed_url = source.get("feed_url")
+            logger.info(
+                "Scraping source %s: sections=%d feed=%s max_articles=%d",
+                source_name,
+                len(sections),
+                "yes" if feed_url else "no",
+                max_per_source,
+            )
+            source_started_at = time.perf_counter()
+            source_inserted = 0
+            source_duplicates = 0
+            source_near_duplicates = 0
 
             try:
                 scraped = scraper.scrape_source(
@@ -304,6 +370,7 @@ class PipelineOrchestrator:
                     sections=sections,
                     max_articles=max_per_source,
                     feed_url=feed_url,
+                    skip_urls=recent_urls,
                 )
             except Exception as e:
                 logger.exception("Scrape failed for %s: %s", source_name, e)
@@ -311,6 +378,12 @@ class PipelineOrchestrator:
                 continue
             else:
                 stats.sources_succeeded += 1
+                logger.info(
+                    "Scrape fetch complete for %s: fetched=%d duration=%.2fs",
+                    source_name,
+                    len(scraped),
+                    time.perf_counter() - source_started_at,
+                )
 
             stats.scraped += len(scraped)
 
@@ -331,6 +404,7 @@ class PipelineOrchestrator:
                     if jaccard(article_shingles, other_shingles) < self.config.dedup_min_jaccard:
                         continue
                     stats.near_duplicates += 1
+                    source_near_duplicates += 1
                     is_near_dup = True
                     break
                 if is_near_dup:
@@ -339,14 +413,27 @@ class PipelineOrchestrator:
                     self.db.insert_article(article)
                     inserted_articles.append(article)
                     stats.inserted += 1
+                    source_inserted += 1
                     doc_id = str(article.id)
                     dedup_index.add(doc_id, fp)
                     shingles_by_id[doc_id] = article_shingles
+                    recent_urls.add(str(article.url))
                 except DuplicateArticleError:
                     stats.duplicates += 1
+                    source_duplicates += 1
                 except Exception as e:
                     stats.insert_failures += 1
                     logger.warning("Insert failed (%s): %s", article.url, e)
+
+            logger.info(
+                "Source %s complete: fetched=%d inserted=%d duplicates=%d near_duplicates=%d duration=%.2fs",
+                source_name,
+                len(scraped),
+                source_inserted,
+                source_duplicates,
+                source_near_duplicates,
+                time.perf_counter() - source_started_at,
+            )
 
         return stats, inserted_articles
 
@@ -391,6 +478,36 @@ class PipelineOrchestrator:
 
         self.embed_articles(pending, stats)
 
+    @staticmethod
+    def _labels_to_groups(result: ClusteringResult) -> List[List[int]]:
+        groups: List[List[int]] = []
+        for label in sorted(set(int(x) for x in result.labels)):
+            if label == -1:
+                continue
+            indices = np.where(result.labels == label)[0]
+            groups.append([int(index) for index in indices])
+        return groups
+
+    def _group_candidates(
+        self,
+        grouping_service: object,
+        candidates: Sequence[RawArticle],
+    ) -> tuple[str, List[List[int]]]:
+        if hasattr(grouping_service, "group_articles"):
+            result = grouping_service.group_articles(candidates)
+            if not isinstance(result, EventGroupingResult):
+                raise TypeError("group_articles() must return EventGroupingResult")
+            return result.algorithm_used, [list(group.indices) for group in result.groups]
+
+        if hasattr(grouping_service, "cluster"):
+            embeddings = np.array([article.embedding for article in candidates], dtype=np.float32)
+            result = grouping_service.cluster(embeddings)
+            if not isinstance(result, ClusteringResult):
+                raise TypeError("cluster() must return ClusteringResult")
+            return result.algorithm_used, self._labels_to_groups(result)
+
+        raise TypeError("Grouping service must define group_articles() or cluster()")
+
     def cluster_unclustered_articles(self, stats: PipelineStats, limit: int = 500) -> List[UUID]:
         """
         Cluster DB articles with embeddings but no cluster_id.
@@ -404,27 +521,23 @@ class PipelineOrchestrator:
         if len(candidates) < 2:
             return []
 
-        embeddings = np.array([a.embedding for a in candidates], dtype=np.float32)
-        clusterer = self._get_clusterer()
-        result = clusterer.cluster(embeddings)
+        embeddings_raw = np.array([a.embedding for a in candidates], dtype=np.float32)
+        norms = np.linalg.norm(embeddings_raw, axis=1, keepdims=True)
+        norms = np.where(norms <= 0, 1.0, norms)
+        embeddings = embeddings_raw / norms
+        grouping_service = self._get_grouping_service()
+        algorithm_used, grouped_indices = self._group_candidates(grouping_service, candidates)
 
         created_cluster_ids: List[UUID] = []
         stats.clustered_articles += len(candidates)
 
-        for label in sorted(set(int(x) for x in result.labels)):
-            if label == -1:
-                continue
-
-            indices = np.where(result.labels == label)[0]
+        for indices in grouped_indices:
             cluster_articles_all = [candidates[i] for i in indices]
             if len(cluster_articles_all) < self.config.min_cluster_size:
                 continue
 
             cluster_id = uuid4()
-            cluster_embeddings_raw = embeddings[indices].astype(np.float32)
-            norms = np.linalg.norm(cluster_embeddings_raw, axis=1, keepdims=True)
-            norms = np.where(norms <= 0, 1.0, norms)
-            cluster_embeddings = cluster_embeddings_raw / norms
+            cluster_embeddings = embeddings[np.array(indices, dtype=np.int64)].astype(np.float32)
 
             centroid_vec = calculate_centroid(cluster_embeddings)
             member_sims = cluster_embeddings @ centroid_vec
@@ -468,7 +581,7 @@ class PipelineOrchestrator:
                     cluster_id=cluster_id,
                     article_ids=[a.id for a in kept_articles],
                     centroid_embedding=centroid,
-                    algorithm_used=result.algorithm_used,
+                    algorithm_used=algorithm_used,
                 )
                 stats.clusters_created += 1
                 created_cluster_ids.append(cluster_id)
@@ -486,11 +599,12 @@ class PipelineOrchestrator:
             # Persist similarity for observability without schema changes.
             # We store it on the feed metadata later; keep local for now.
             logger.info(
-                "Cluster %s: %d articles (kept=%d), similarity=%.3f",
+                "Cluster %s: %d grouped articles (kept=%d), similarity=%.3f algorithm=%s",
                 cluster_id,
                 len(indices),
                 len(kept_articles),
                 similarity,
+                algorithm_used,
             )
 
         return created_cluster_ids
@@ -540,6 +654,7 @@ class PipelineOrchestrator:
         clusters = self.db.get_all_clusters(limit=self.config.analyze_recent_clusters_limit)
         inserted_feed_ids: List[UUID] = []
         candidates: List[ClusterEditorialCandidate] = []
+        rejected_by_publish_gate = 0
         cutoff: Optional[datetime] = None
         days = int(self.config.retention_days)
         if days > 0:
@@ -591,12 +706,39 @@ class PipelineOrchestrator:
                 stats.analyze_failures += 1
                 logger.exception("Failed analyzing cluster %s: %s", cluster.id, e)
 
+        publishable_candidates: List[ClusterEditorialCandidate] = []
+        for candidate in candidates:
+            score = self._candidate_publish_score(candidate)
+            metadata = dict(candidate.base_feed.metadata or {})
+            metadata["deterministic_publish_score"] = score
+            candidate.base_feed.metadata = metadata
+            if not self._is_publishable_candidate(candidate, score):
+                rejected_by_publish_gate += 1
+                logger.info(
+                    "Rejecting candidate %s before editorial: category=%s sources=%d score=%d headline=%s",
+                    candidate.cluster_id,
+                    candidate.base_feed.category,
+                    len(candidate.base_feed.source_attribution or {}),
+                    score,
+                    candidate.base_feed.headline,
+                )
+                continue
+            publishable_candidates.append(candidate)
+
+        if rejected_by_publish_gate:
+            logger.info(
+                "Publish gate filtered %d/%d analyzed candidates before editorial review",
+                rejected_by_publish_gate,
+                len(candidates),
+            )
+
         editorial_result: Dict[UUID, Any] | None = None
-        if editorial and candidates:
+        if editorial and publishable_candidates:
             ranked_candidates = sorted(
-                candidates,
+                publishable_candidates,
                 key=lambda candidate: (
-                    -max(list(candidate.base_feed.source_attribution.values()) or [0]),
+                    -self._candidate_publish_score(candidate),
+                    -len(candidate.base_feed.source_attribution or {}),
                     -len(candidate.articles),
                     candidate.cluster_id.hex,
                 ),
@@ -612,7 +754,7 @@ class PipelineOrchestrator:
 
         if editorial_result is not None:
             selected_candidates = []
-            for candidate in candidates:
+            for candidate in publishable_candidates:
                 story = editorial_result.get(candidate.cluster_id)
                 if story is None:
                     stats.feeds_rejected_editorial += 1
@@ -639,7 +781,7 @@ class PipelineOrchestrator:
                     logger.exception("Failed inserting editorial feed for cluster %s: %s", candidate.cluster_id, e)
             return inserted_feed_ids
 
-        for candidate in candidates:
+        for candidate in publishable_candidates:
             try:
                 candidate.base_feed.created_at = datetime.now(timezone.utc)
                 feed_id = self.db.insert_analyzed_feed(candidate.base_feed)
@@ -688,6 +830,73 @@ class PipelineOrchestrator:
         if not len(similarities):
             return None
         return float(np.min(similarities))
+
+    @staticmethod
+    def _candidate_latest_timestamp(candidate: ClusterEditorialCandidate) -> datetime:
+        timestamps = [
+            article.publish_date or article.scraped_at
+            for article in candidate.articles
+        ]
+        latest = max(timestamps) if timestamps else candidate.representative_article.scraped_at
+        if latest.tzinfo is None:
+            latest = latest.replace(tzinfo=timezone.utc)
+        return latest
+
+    def _candidate_publish_score(self, candidate: ClusterEditorialCandidate) -> int:
+        feed = candidate.base_feed
+        category = str(feed.category)
+        sources = feed.source_attribution or {}
+        source_breadth = len(sources)
+        source_count = len(candidate.articles)
+        impact_score = max((_IMPACT_IMPORTANCE.get(label, 0) for label in feed.impact_labels or []), default=0)
+        category_score = _CATEGORY_IMPORTANCE.get(category, 0)
+        confidence_score = int(round(float(feed.classification_confidence or 0.0) * 12))
+        facts_score = min(len(feed.confirmed_facts or []), 4) * 2
+        breadth_score = min(source_breadth, 3) * 7
+        size_score = min(source_count, 5) * 3
+        recency_hours = (datetime.now(timezone.utc) - self._candidate_latest_timestamp(candidate)).total_seconds() / 3600.0
+        recency_penalty = 0
+        if recency_hours > 24:
+            recency_penalty = 6
+        elif recency_hours > 12:
+            recency_penalty = 3
+        single_source_penalty = 10 if source_breadth == 1 else 0
+        weak_category_penalty = 8 if category in {"other", "technology", "international"} else 0
+
+        score = (
+            category_score
+            + impact_score
+            + confidence_score
+            + facts_score
+            + breadth_score
+            + size_score
+            - recency_penalty
+            - single_source_penalty
+            - weak_category_penalty
+        )
+        return max(0, min(100, int(score)))
+
+    def _is_publishable_candidate(self, candidate: ClusterEditorialCandidate, score: int) -> bool:
+        feed = candidate.base_feed
+        category = str(feed.category)
+        if category in {"sports", "entertainment"}:
+            return False
+
+        source_breadth = len(feed.source_attribution or {})
+        impact_labels = set(feed.impact_labels or [])
+        confidence = float(feed.classification_confidence or 0.0)
+
+        if source_breadth <= 1:
+            if category not in _SINGLE_SOURCE_ALLOWED_CATEGORIES:
+                return False
+            if not (impact_labels & _HIGH_IMPACT_LABELS):
+                return False
+            return score >= 40 and confidence >= 0.2
+
+        if category == "other":
+            return score >= 18 or confidence >= 0.45 or len(candidate.articles) >= 3
+
+        return score >= 16
 
     def prune_old_data(self, stats: PipelineStats) -> None:
         days = int(self.config.retention_days)

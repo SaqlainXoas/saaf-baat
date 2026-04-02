@@ -152,6 +152,7 @@ class HybridOrchestrator:
         sections: List[str],
         max_articles: int = 50,
         feed_url: Optional[str] = None,
+        skip_urls: Optional[set[str]] = None,
     ) -> List[RawArticle]:
         """
         Scrape articles from a news source.
@@ -165,6 +166,7 @@ class HybridOrchestrator:
         articles: List[RawArticle] = []
         seen_urls: set = set()
         seen_hashes: set = set()
+        known_urls = set(skip_urls or set())
 
         # Tier 1: RSS feed discovery
         article_urls: List[str] = []
@@ -178,6 +180,8 @@ class HybridOrchestrator:
             for article_url in article_urls:
                 if len(articles) >= max_articles:
                     break
+                if article_url in known_urls:
+                    continue
                 if article_url in seen_urls:
                     continue
                 seen_urls.add(article_url)
@@ -203,6 +207,8 @@ class HybridOrchestrator:
                 for article_url in extracted_urls:
                     if len(articles) >= max_articles:
                         break
+                    if article_url in known_urls:
+                        continue
                     if article_url in seen_urls:
                         continue
                     seen_urls.add(article_url)

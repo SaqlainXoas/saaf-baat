@@ -34,6 +34,8 @@ _CATEGORY_IMPACT_FALLBACK: Dict[str, str] = {
     "politics": "🏛️ GOVERNANCE",
     "security": "🛡️ SAFETY",
     "city": "🚦 COMMUTE",
+    "education": "🏛️ GOVERNANCE",
+    "health": "🛡️ SAFETY",
     "international": "🏛️ GOVERNANCE",
 }
 
@@ -231,6 +233,9 @@ class ConsensusDetector:
 class RuleBasedClassifier:
     """Transparent keyword-based classifier (YAML-driven)."""
 
+    _CATEGORY_HEADLINE_WEIGHT = 2.0
+    _IMPACT_HEADLINE_WEIGHT = 1.5
+
     def __init__(self, rules: dict):
         self.rules = rules or {}
         self.categories = (self.rules.get("categories") or {}).copy()
@@ -264,12 +269,24 @@ class RuleBasedClassifier:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         return cls(rules=data)
 
-    def classify_text(self, text: str) -> ClassificationResult:
+    @staticmethod
+    def _match_count(patterns: Sequence[re.Pattern], text: str) -> int:
+        if not text:
+            return 0
+        return sum(1 for pattern in patterns if pattern.search(text))
+
+    def classify_parts(self, headline: str, text: str) -> ClassificationResult:
+        headline_l = (headline or "").lower()
         text_l = (text or "").lower()
 
         cat_scores: Dict[str, float] = {}
         for cat, (patterns, weight) in self._cat_patterns.items():
-            score = sum(1 for p in patterns if p.search(text_l)) * weight
+            headline_hits = self._match_count(patterns, headline_l)
+            body_hits = self._match_count(patterns, text_l)
+            score = (
+                headline_hits * self._CATEGORY_HEADLINE_WEIGHT
+                + body_hits
+            ) * weight
             if score > 0:
                 cat_scores[cat] = score
 
@@ -290,7 +307,12 @@ class RuleBasedClassifier:
 
         impact_scores: List[Tuple[str, float]] = []
         for label, (patterns, weight) in self._impact_patterns.items():
-            score = sum(1 for p in patterns if p.search(text_l)) * weight
+            headline_hits = self._match_count(patterns, headline_l)
+            body_hits = self._match_count(patterns, text_l)
+            score = (
+                headline_hits * self._IMPACT_HEADLINE_WEIGHT
+                + body_hits
+            ) * weight
             if score > 0:
                 impact_scores.append((label, score))
 
@@ -303,6 +325,9 @@ class RuleBasedClassifier:
             impacts = [_CATEGORY_IMPACT_FALLBACK[top_cat]]
 
         return ClassificationResult(category=top_cat, impact_labels=impacts, confidence=confidence)
+
+    def classify_text(self, text: str) -> ClassificationResult:
+        return self.classify_parts("", text)
 
 
 class AnalysisService:
@@ -416,10 +441,8 @@ class AnalysisService:
         other_headlines = " ".join(
             [a.headline for a in articles if a.id != representative.id and a.headline]
         )
-        classification_text = (
-            f"{representative.headline}. {representative.main_text} {other_headlines}"
-        )
-        cls = self.classifier.classify_text(classification_text)
+        classification_text = f"{representative.main_text} {other_headlines}"
+        cls = self.classifier.classify_parts(representative.headline, classification_text)
 
         # Entity extraction + consensus uses per-article entities.
         entities_by_article = [self.entity_extractor.extract(a.main_text or "") for a in articles]

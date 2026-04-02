@@ -29,6 +29,10 @@ These are active product decisions:
 - Prefer one card per real event over multiple headline variants.
 - Keep deterministic evidence extraction where it helps trust and explainability.
 - Use the LLM layer only for bounded editorial selection and presentation support.
+- Replace global density clustering with deterministic event-level grouping as the main story-formation step.
+- Use LLM only for ambiguous split or merge adjudication after deterministic grouping.
+- Make event links strict and multi-signal: strong embedding similarity plus headline/entity overlap plus time closeness.
+- Do not keep the legacy whole-batch clustering path as a live fallback after the new grouping path lands.
 - Allow a single-source story only when civic or public-impact value is clearly high.
 - Treat suspicious publish dates as low-confidence.
 - Keep the source list small and reliable rather than broad and flaky.
@@ -79,6 +83,19 @@ The remaining challenge is not architecture creation. The remaining challenge is
 - stable source coverage from reliable publishers
 - consistent final morning-brief quality
 
+The earlier main architectural failure has been addressed:
+
+- whole-batch density clustering is no longer the production story-formation path
+- deterministic event grouping now forms the recent-window stories
+
+The current issues are narrower:
+
+- category and impact rules still need live tuning for civic and public-service stories
+- publish selection now reaches the `5-9` range, but still needs consistency toward the best `5-9`
+- `dawn` discovery quality is inconsistent and can surface `images.dawn.com` lifestyle links instead of hard-news pages
+- Groq editorial fallback is still too easy to trigger under schema failure or `429` rate limits
+- core-source scraping is still slower than it should be for a bounded morning run
+
 ## Source Principles
 
 - Favor stable Pakistani publishers over source-count vanity.
@@ -94,6 +111,15 @@ The remaining challenge is not architecture creation. The remaining challenge is
 - Rank by public consequence, source credibility, source breadth, and cluster coherence.
 - Merge story variants aggressively when the underlying event is the same.
 - If a step keeps producing confusing output, simplify it instead of adding another heuristic layer.
+
+## Story Grouping Principles
+
+- Group by event identity, not by broad semantic similarity alone.
+- Prefer strict pairwise event links over whole-batch unsupervised clustering.
+- Use multiple signals together: embedding similarity, headline overlap, entity overlap, and time closeness.
+- Prevent chaining where article A links to B and B links to C even though A and C are different events.
+- Split or reject oversized mixed groups before editorial selection.
+- Keep the grouping system singular and legible. Do not leave two competing clustering systems active in production.
 
 ## Editorial LLM Principles
 
@@ -141,6 +167,16 @@ When in doubt, verify in this order:
 4. `backend/scripts/quality_report.py`
 5. Constrained live pipeline run
 6. Frontend manual sanity after payload or ranking changes
+
+## Current Next Targets
+
+The next improvements should stay within the current architecture:
+
+1. Verify the latest classifier and publish-gate tuning against one more clean live run.
+2. Fix `dawn` hard-news discovery quality before broadening sources again.
+3. Harden Groq editorial behavior so deterministic fallback is exceptional.
+4. Tighten category consistency and deterministic importance ranking so the surviving `5-9` cards are the right `5-9`, not just coherent clusters.
+5. Reduce scraper runtime without broadening source risk or adding opaque complexity.
 
 ## Hard Rules
 

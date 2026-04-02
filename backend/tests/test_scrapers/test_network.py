@@ -14,6 +14,17 @@ from typing import Optional
 class TestStealthFetcherBasicFunctionality:
     """Tests for basic StealthFetcher functionality."""
 
+    def test_default_settings_are_tuned_for_bounded_morning_runs(self):
+        from src.scrapers.network import StealthFetcher
+
+        fetcher = StealthFetcher()
+
+        assert fetcher.max_retries == 2
+        assert fetcher.base_delay == 0.75
+        assert fetcher.min_delay == 0.25
+        assert fetcher.max_delay == 0.75
+        assert fetcher.timeout == 20.0
+
     def test_fetch_returns_html_string_on_success(self):
         """fetch() should return HTML string when request succeeds."""
         from src.scrapers.network import StealthFetcher

@@ -23,7 +23,8 @@ Current state:
 - `ary` is disabled because live discovery and extraction were unreliable
 - deterministic extraction still matters for explainability
 - Groq is now allowed for editorial selection and card framing only
-- the main remaining work is yield, freshness, and feed trust
+- the main remaining work is source quality, editorial reliability, freshness, and feed trust
+- latest constrained live runs now reach the `5-9` target range, but some surviving stories are still softer than the product goal wants
 
 ## End Vision
 
@@ -48,6 +49,10 @@ These decisions are currently approved and should be treated as active constrain
 - Morning brief size should be flexible `5-9`, not forced to `9`
 - A single-source story may still publish if it has strong civic/public-impact value
 - LLM use should stay bounded to editorial selection and presentation support
+- Story grouping should use a deterministic event-graph approach, not global HDBSCAN/DBSCAN as the primary source of truth
+- LLM may assist only on ambiguous split/merge decisions after deterministic grouping
+- Event links should be strict and multi-signal, not loose semantic similarity alone
+- Do not preserve the current global clustering path as an operational fallback once the new event-grouping path is implemented
 - Suspicious publish dates should lower confidence, not be trusted blindly
 - Cards should emphasize `why_it_matters` and `what_to_watch`
 - Category surface should stay small and user-legible
@@ -66,10 +71,10 @@ These decisions are currently approved and should be treated as active constrain
 
 The order of work should be:
 
-1. Verify fresh live pipeline output.
-2. Improve candidate yield so the feed reaches `5-9` strong stories.
-3. Tighten freshness and publish-date trust.
-4. Keep duplicate story variants merged cleanly.
+1. Fix `dawn` discovery quality so hard-news links dominate and off-mission `images.dawn.com` links do not drive a run.
+2. Harden the Groq editorial path so schema validation or rate limits do not routinely force deterministic fallback.
+3. Tighten deterministic importance ranking so softer feature stories do not consume morning-brief slots.
+4. Tighten freshness and publish-date trust.
 5. Polish the frontend only after backend output is stable.
 
 ## Documentation Hygiene
@@ -134,9 +139,10 @@ Pre-ship confidence means:
 
 - fresh live rows come from the intended reliable sources
 - the feed consistently produces `5-9` distinct meaningful cards
-- duplicate events are merged well
+- duplicate events are merged well without collapsing different events into one blob
 - source attribution is trustworthy
 - dates are believable
+- the Groq editorial layer works reliably enough that deterministic fallback is exceptional
 - frontend presentation is clear and stable
 
 If those conditions are not true in live output, the product is not ready.
