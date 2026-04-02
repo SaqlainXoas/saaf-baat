@@ -1,59 +1,142 @@
 # Repository Guidelines
 
-## Current Phase (Final Checkup)
+## Current Phase
 
 - Working directory: `/Users/saqlain/projects/personal/saaf-baat`
-- Active release phase: final pre-ship cleanup and verification
-- Source-of-truth checklist: `docs/final-ready-plan.md`
-- Keep tracked docs minimal: `README.md`, `AGENTS.md`, and `docs/final-ready-plan.md`
-- Archive local/scratch/planning/design exploration material under `docs/extra/` (gitignored)
+- Active phase: `live-quality hardening` before ship
+- Core product target: a trustworthy Pakistan morning brief with `5-9` must-know stories
+- Source-of-truth docs:
+  - `README.md`
+  - `AGENTS.md`
+  - `program.md`
+  - `docs/final-ready-plan.md`
+
+## Product Reality Check
+
+The project is past the basic build stage. It already has scraping, embeddings, clustering, DB integration, API delivery, frontend rendering, and a bounded Groq editorial layer.
+
+The project is not done yet because the live morning brief still does not reliably produce the intended `5-9` strong cards from fresh data.
+
+Current state:
+
+- `dawn`, `tribune`, and `geo` are the active core sources
+- `ary` is disabled because live discovery and extraction were unreliable
+- deterministic extraction still matters for explainability
+- Groq is now allowed for editorial selection and card framing only
+- the main remaining work is yield, freshness, and feed trust
+
+## End Vision
+
+Saaf Baat should feel like a quick, modern, trustworthy morning briefing for Pakistan.
+
+When a user opens it, they should immediately understand:
+
+- what happened
+- why it matters to ordinary life or public affairs
+- what to watch next
+- which original publishers support the story
+
+The product should feel finite, calm, and selective. It should not become an infinite noisy feed.
+
+## Locked Product Decisions
+
+These decisions are currently approved and should be treated as active constraints unless explicitly changed by the user:
+
+- Use a tiered source model:
+  - core sources must work reliably every day
+  - flaky or partial sources should be disabled, not tolerated
+- Morning brief size should be flexible `5-9`, not forced to `9`
+- A single-source story may still publish if it has strong civic/public-impact value
+- LLM use should stay bounded to editorial selection and presentation support
+- Suspicious publish dates should lower confidence, not be trusted blindly
+- Cards should emphasize `why_it_matters` and `what_to_watch`
+- Category surface should stay small and user-legible
+
+## Working Principles
+
+- Read `program.md` before making architecture, scraper, ranking, or product-direction changes.
+- Prefer reliability, clarity, and fewer moving parts over feature accumulation.
+- Verify every meaningful claim with tests, DB inspection, API checks, or live pipeline output.
+- If a source is flaky, fix it properly or disable it.
+- If a heuristic chain becomes hard to reason about, simplify it.
+- Do not optimize for article volume. Optimize for morning-brief quality.
+- Do not revert unrelated user changes in a dirty worktree.
+
+## Current Priorities
+
+The order of work should be:
+
+1. Verify fresh live pipeline output.
+2. Improve candidate yield so the feed reaches `5-9` strong stories.
+3. Tighten freshness and publish-date trust.
+4. Keep duplicate story variants merged cleanly.
+5. Polish the frontend only after backend output is stable.
+
+## Documentation Hygiene
+
+- Keep tracked docs minimal.
+- Put scratch, experiments, abandoned plans, and temporary notes under `docs/extra/` or delete them if they are no longer useful.
+- Keep iterative evaluator notes in `codex-thinking/` as short dated `.md` files.
+- After each meaningful run, add a note with:
+  - hypothesis
+  - commands run
+  - findings
+  - keep/discard decision
+  - next step
 
 ## Project Structure
 
-- `backend/`: Python FastAPI API + news pipeline
-  - `backend/src/`: application code (`scrapers/`, `agents/`, `db/`, `api/`, `pipeline/`, `utils/`)
-  - `backend/config/`: YAML config (`sources.yaml`, `classification_rules.yaml`)
-  - `backend/tests/`: pytest suite (unit/integration/slow markers)
-  - Entrypoints: `backend/main.py` (API app), `backend/run_pipeline.py` (daily pipeline)
-- `frontend/`: Next.js (App Router) UI
-  - `frontend/src/app/`: routes (e.g. `stories/[cluster_id]`)
-  - `frontend/src/components/`: UI components
-  - `frontend/tests/`: Jest + Testing Library tests
-- Root docs/plans: `README.md`, `AGENTS.md`, `docs/final-ready-plan.md`
+- `backend/`: FastAPI API and news pipeline
+  - `backend/src/agents/`: embeddings, clustering, analysis, editorial
+  - `backend/src/pipeline/`: orchestration
+  - `backend/src/scrapers/`: source discovery and extraction
+  - `backend/src/db/`: Supabase integration
+  - `backend/src/api/`: API routes and app setup
+  - `backend/config/`: YAML config for sources and rules
+  - `backend/tests/`: pytest suite
+- `frontend/`: Next.js app
+  - `frontend/src/app/`: routes
+  - `frontend/src/components/`: UI
+  - `frontend/src/data/`: API client and adapters
+  - `frontend/tests/`: frontend tests
 
-## Build, Test, and Development Commands
+## Build, Test, and Run Commands
 
-Backend (run from `backend/`):
+Backend:
+
 - Install: `python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt`
 - Models: `python -m spacy download en_core_web_sm`
-- API: `uvicorn main:app --reload` (docs at `/docs`)
-- Pipeline: `python run_pipeline.py` (use `--disable-playwright` for faster CI installs)
-- Quality: `black src`, `ruff check src`, `mypy src`
-- Tests: `pytest` (coverage configured via `pytest.ini`)
+- API: `uvicorn main:app --reload`
+- Pipeline: `python run_pipeline.py --disable-playwright --log-level INFO --max-articles-per-source 12`
+- Quality report: `python scripts/quality_report.py --limit 20`
+- Tests: `pytest`
 
-Frontend (run from `frontend/`):
+Frontend:
+
 - Install: `npm ci`
 - Dev: `npm run dev`
-- Lint: `npm run lint`
 - Tests: `npm test`
-- Build/serve: `npm run build && npm run start`
+- Build: `npm run build`
 
-## Coding Style & Naming Conventions
+## Coding and Review Standards
 
-- Python: Black + Ruff, 100-char lines (`backend/pyproject.toml`); `snake_case` for functions/files, `PascalCase` for classes.
-- TypeScript/React: `PascalCase` components, `.tsx` for React; prefer `@/…` imports (Jest maps `@/` → `frontend/src/`).
-- Keep generated artifacts out of commits (e.g. `frontend/.next/`, `backend/htmlcov/`, local `backend/venv/`).
+- Python: Black + Ruff, `snake_case`, focused functions, minimal comments
+- React/TypeScript: preserve existing patterns unless there is a clear reason to change them
+- Keep new logic explainable from data and tests
+- Remove dead or bloated code when it does not improve product quality
+- KISS, DRY, and YAGNI apply by default
 
-## Testing Guidelines
+## Ship Criteria
 
-- Backend: name tests `test_*.py`; use markers (`@pytest.mark.unit|integration|slow`) and run subsets, e.g. `pytest -m unit`.
-- Frontend: name tests `*.test.tsx` under `frontend/tests/`; use Testing Library patterns.
+Do not consider the project ready just because tests pass.
 
-## Commit & Pull Request Guidelines
+Pre-ship confidence means:
 
-- Commits: concise, imperative summaries (examples in history: “Add …”, “Fix …”, “Refactor …”, “Restructure: …”); avoid mentioning AI tools.
-- PRs: include a clear description, linked issue/plan if applicable, and screenshots for UI changes; call out any config/env var changes.
+- fresh live rows come from the intended reliable sources
+- the feed consistently produces `5-9` distinct meaningful cards
+- duplicate events are merged well
+- source attribution is trustworthy
+- dates are believable
+- frontend presentation is clear and stable
 
-## Security & Configuration
-
-- Secrets live in `.env`/`.env.local` (gitignored). If adding new required variables, document them in `README.md` and/or provide a safe `.env.example`.
+If those conditions are not true in live output, the product is not ready.
