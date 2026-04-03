@@ -31,7 +31,7 @@ export default async function StoryDetail({
           </p>
           <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
             {isLiveModeError
-              ? (message || "Connect NEXT_PUBLIC_API_URL to a healthy backend and try again.")
+              ? (message || "Configure SUPABASE_URL + SUPABASE_ANON_KEY and try again.")
               : "This story may have been updated or removed."}
           </p>
           <Link
@@ -114,7 +114,7 @@ export default async function StoryDetail({
           sourceCount={sourceCount}
         />
 
-        <OriginalSourcesList articles={story.articles || []} />
+        {story.articles?.length ? <OriginalSourcesList articles={story.articles} /> : null}
       </main>
     </div>
   );

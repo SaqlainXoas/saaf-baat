@@ -7,6 +7,15 @@ function capitalise(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function getMetadataString(story: StoryCardData, key: string): string | null {
+  const raw = story.metadata?.[key];
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed ? trimmed : null;
+  }
+  return null;
+}
+
 export default function StoryCard({
   story,
   isBackground = false,
@@ -20,6 +29,8 @@ export default function StoryCard({
   const sourceNames = story.sources.map((s) => capitalise(s.source));
   const isCompact = variant === "compact";
   const isFeatured = variant === "featured";
+  const whyItMatters = getMetadataString(story, "why_it_matters");
+  const whatToWatch = getMetadataString(story, "what_to_watch");
 
   const headlineClass = isFeatured
     ? "sb-headline-featured"
@@ -47,6 +58,21 @@ export default function StoryCard({
       <p className={`${snippetClass} mt-2`}>
         {story.snippet}
       </p>
+
+      {isFeatured && (whyItMatters || whatToWatch) ? (
+        <div className="mt-3 space-y-2">
+          {whyItMatters ? (
+            <p className="text-sm" style={{ color: "var(--ink)" }}>
+              <span className="font-bold">Why it matters:</span> {whyItMatters}
+            </p>
+          ) : null}
+          {whatToWatch ? (
+            <p className="text-sm" style={{ color: "var(--ink)" }}>
+              <span className="font-bold">What to watch:</span> {whatToWatch}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <TrustPreview
         confirmedFacts={story.confirmed_facts}

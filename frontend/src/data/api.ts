@@ -1,4 +1,4 @@
-import type { StoryCardData, StoryDetailData } from "./types";
+import type { AnalyzedFeedRow, StoryCardData, StoryDetailData } from "./types";
 import { FEED, getMockDetail } from "./mock-data";
 
 export type DataStatus =
@@ -22,17 +22,14 @@ type StoryResult = {
   latestPipelineRunAt?: string;
 };
 
-type HealthResponse = {
-  latest_feed_created_at?: string | null;
-  last_successful_pipeline_run_at?: string | null;
-};
-
-function getApiBase() {
-  const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (configured) return configured;
-  // Local dev default so `npm run dev` works without manual env setup.
-  if (process.env.NODE_ENV === "development") return "http://127.0.0.1:8000";
-  return "";
+function getSupabaseConfig() {
+  const url = process.env.SUPABASE_URL?.trim() || process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
+  const anonKey =
+    process.env.SUPABASE_ANON_KEY?.trim() ||
+    process.env.SUPABASE_KEY?.trim() ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+    "";
+  return { url, anonKey };
 }
 
 function isStrictLiveMode() {
@@ -43,35 +40,27 @@ function isStrictLiveMode() {
 }
 
 export async function fetchFeedWithMeta(): Promise<FeedResult> {
-  const apiBase = getApiBase();
+  const { url: supabaseUrl, anonKey } = getSupabaseConfig();
   const strictLive = isStrictLiveMode();
-  if (!apiBase) {
+  if (!supabaseUrl || !anonKey) {
     if (strictLive) {
       return {
         stories: [],
         status: "error-live-required",
-        message: "Live data mode is enabled but NEXT_PUBLIC_API_URL is not configured.",
+        message:
+          "Live data mode is enabled but Supabase env is missing (SUPABASE_URL + SUPABASE_ANON_KEY).",
       };
     }
     return { stories: FEED, status: "mock-no-api" };
   }
 
   try {
-    const res = await fetch(`${apiBase}/api/feed`, {
-      next: { revalidate: 300, tags: ["feed"] },
+    const stories = await fetchSupabaseFeed({
+      supabaseUrl,
+      anonKey,
+      limit: 9,
     });
-    if (!res.ok) {
-      if (strictLive) {
-        return {
-          stories: [],
-          status: "error-live-required",
-          message: `Live feed request failed with HTTP ${res.status}.`,
-        };
-      }
-      throw new Error(`HTTP ${res.status}`);
-    }
-    const stories = (await res.json()) as StoryCardData[];
-    const latestPipelineRunAt = await fetchLatestPipelineRunAt(apiBase);
+    const latestPipelineRunAt = stories[0]?.created_at;
     return { stories, status: "live", latestPipelineRunAt };
   } catch {
     if (strictLive) {
@@ -91,14 +80,15 @@ export async function fetchFeed(): Promise<StoryCardData[]> {
 }
 
 export async function fetchStoryWithMeta(clusterId: string): Promise<StoryResult> {
-  const apiBase = getApiBase();
+  const { url: supabaseUrl, anonKey } = getSupabaseConfig();
   const strictLive = isStrictLiveMode();
-  if (!apiBase) {
+  if (!supabaseUrl || !anonKey) {
     if (strictLive) {
       return {
         story: null,
         status: "error-live-required",
-        message: "Live data mode is enabled but NEXT_PUBLIC_API_URL is not configured.",
+        message:
+          "Live data mode is enabled but Supabase env is missing (SUPABASE_URL + SUPABASE_ANON_KEY).",
       };
     }
     return {
@@ -108,28 +98,14 @@ export async function fetchStoryWithMeta(clusterId: string): Promise<StoryResult
   }
 
   try {
-    const res = await fetch(`${apiBase}/api/stories/${clusterId}`, {
-      next: { revalidate: 300, tags: [`story:${clusterId}`, "feed"] },
+    const story = await fetchSupabaseStoryDetail({
+      supabaseUrl,
+      anonKey,
+      clusterId,
     });
-
-    if (res.ok) {
-      const story = (await res.json()) as StoryDetailData;
-      const latestPipelineRunAt = await fetchLatestPipelineRunAt(apiBase);
-      return { story, status: "live", latestPipelineRunAt };
-    }
-
-    if (res.status === 404) return { story: null, status: "not-found" };
-    if (strictLive) {
-      return {
-        story: null,
-        status: "error-live-required",
-        message: `Live story request failed with HTTP ${res.status}.`,
-      };
-    }
-
-    const fallback = getMockDetail(clusterId);
-    if (fallback) return { story: fallback, status: "mock-fallback" };
-    return { story: null, status: "not-found" };
+    if (!story) return { story: null, status: "not-found" };
+    const latestPipelineRunAt = story.created_at;
+    return { story, status: "live", latestPipelineRunAt };
   } catch {
     if (strictLive) {
       return {
@@ -151,19 +127,120 @@ export async function fetchStory(
   return result.story;
 }
 
-async function fetchLatestPipelineRunAt(apiBase: string): Promise<string | undefined> {
-  try {
-    const res = await fetch(`${apiBase}/health`, {
-      next: { revalidate: 300, tags: ["health"] },
-    });
-    if (!res.ok) return undefined;
-    const health = (await res.json()) as HealthResponse;
-    return (
-      health.last_successful_pipeline_run_at ||
-      health.latest_feed_created_at ||
-      undefined
-    );
-  } catch {
-    return undefined;
-  }
+type SupabaseAnalyzedFeedRow = AnalyzedFeedRow & { is_published?: boolean | null };
+
+function supabaseHeaders(anonKey: string) {
+  return {
+    apikey: anonKey,
+    Authorization: `Bearer ${anonKey}`,
+    Accept: "application/json",
+  } as const;
+}
+
+function toStoryCard(row: SupabaseAnalyzedFeedRow): StoryCardData {
+  const rawAttribution = row.source_attribution || {};
+  const sources = Object.entries(rawAttribution)
+    .map(([source, count]) => ({
+      source,
+      count: typeof count === "number" ? count : Number.parseInt(String(count), 10) || 0,
+    }))
+    .filter((s) => s.source && s.count > 0)
+    .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
+
+  return {
+    story_id: row.cluster_id,
+    created_at: row.created_at,
+    headline: row.headline,
+    snippet: row.summary || "",
+    category: row.category,
+    impact_labels: row.impact_labels || [],
+    confirmed_facts: Array.isArray(row.confirmed_facts) ? (row.confirmed_facts as any) : [],
+    debated_claims: Array.isArray(row.debated_claims) ? (row.debated_claims as any) : [],
+    sources,
+    metadata: row.metadata || {},
+  };
+}
+
+async function fetchSupabaseFeed({
+  supabaseUrl,
+  anonKey,
+  limit,
+}: {
+  supabaseUrl: string;
+  anonKey: string;
+  limit: number;
+}): Promise<StoryCardData[]> {
+  const url = new URL("/rest/v1/analyzed_feed", supabaseUrl);
+  url.searchParams.set(
+    "select",
+    [
+      "cluster_id",
+      "created_at",
+      "headline",
+      "summary",
+      "category",
+      "impact_labels",
+      "confirmed_facts",
+      "debated_claims",
+      "source_attribution",
+      "metadata",
+      "is_published",
+    ].join(","),
+  );
+  url.searchParams.set("is_published", "eq.true");
+  url.searchParams.set("order", "created_at.desc");
+  url.searchParams.set("limit", String(limit));
+
+  const res = await fetch(url.toString(), {
+    headers: supabaseHeaders(anonKey),
+    next: { revalidate: 300, tags: ["feed"] },
+  });
+  if (!res.ok) throw new Error(`Supabase feed HTTP ${res.status}`);
+  const rows = (await res.json()) as SupabaseAnalyzedFeedRow[];
+  return rows.map(toStoryCard);
+}
+
+async function fetchSupabaseStoryDetail({
+  supabaseUrl,
+  anonKey,
+  clusterId,
+}: {
+  supabaseUrl: string;
+  anonKey: string;
+  clusterId: string;
+}): Promise<StoryDetailData | null> {
+  const url = new URL("/rest/v1/analyzed_feed", supabaseUrl);
+  url.searchParams.set(
+    "select",
+    [
+      "cluster_id",
+      "created_at",
+      "headline",
+      "summary",
+      "category",
+      "impact_labels",
+      "confirmed_facts",
+      "debated_claims",
+      "source_attribution",
+      "metadata",
+      "is_published",
+    ].join(","),
+  );
+  url.searchParams.set("cluster_id", `eq.${clusterId}`);
+  url.searchParams.set("is_published", "eq.true");
+  url.searchParams.set("order", "created_at.desc");
+  url.searchParams.set("limit", "1");
+
+  const res = await fetch(url.toString(), {
+    headers: supabaseHeaders(anonKey),
+    next: { revalidate: 300, tags: [`story:${clusterId}`, "feed"] },
+  });
+  if (!res.ok) throw new Error(`Supabase story HTTP ${res.status}`);
+  const rows = (await res.json()) as SupabaseAnalyzedFeedRow[];
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    ...toStoryCard(row),
+    articles: [],
+  };
 }
