@@ -3,7 +3,7 @@
 ## Current Phase
 
 - Working directory: `/Users/saqlain/projects/personal/saaf-baat`
-- Active phase: `live-quality hardening` before ship
+- Active phase: `frontend handoff with backend monitoring`
 - Core product target: a trustworthy Pakistan morning brief with `5-9` must-know stories
 - Source-of-truth docs:
   - `README.md`
@@ -13,6 +13,7 @@
 
 For current progress, blockers, and next actions, read `docs/final-ready-plan.md`.
 For product reasoning and evaluation rules, read `program.md`.
+Treat `docs/final-ready-plan.md` as the changing release state; keep this file stable and blueprint-like.
 
 ## End Vision
 
@@ -120,7 +121,7 @@ Pre-ship confidence means:
 - duplicate events are merged well without collapsing different events into one blob
 - source attribution is trustworthy
 - dates are believable
-- the Groq editorial layer works reliably enough that deterministic fallback is exceptional
+- the editorial layer works reliably enough that deterministic fallback is exceptional
 - frontend presentation is clear and stable
 
 If those conditions are not true in live output, the product is not ready.

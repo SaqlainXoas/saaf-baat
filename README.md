@@ -37,27 +37,26 @@ These decisions are currently intentional and active:
 
 ## Current Status
 
-As of `2026-04-02`, the architecture is in place and the live product is close, but not yet production-trustworthy.
+As of `2026-04-03`, the backend has passed a clean constrained live acceptance run and is ready for frontend handoff.
 
 Working:
 
-- scraper pipeline runs and inserts raw articles
+- scraper pipeline runs and inserts fresh rows from the core sources
 - Gemini embeddings are working with DB-compatible `768` dimensions
-- clustering and deterministic analysis are wired end-to-end
-- Groq structured-output editorial review is integrated
-- API and frontend are already wired to live data
-- Geo source discovery bug is fixed
 - deterministic event grouping replaced whole-batch density clustering in production
-- recent live runs now reach the `5-9` story target range
+- deterministic analysis and publish gating are wired end-to-end
+- Gemini-first structured editorial review is working live, with Groq fallback still available
+- deterministic fallback now keeps the brief finite if editorial fails
+- Dawn same-site filtering is hardened across RSS-first and HTML discovery
+- recent constrained live runs now produce a finite `5-9` morning brief instead of collapsing into one blob or overflowing the feed
+- the latest constrained live acceptance run produced `5` coherent cards with all three core sources contributing fresh rows
 
-Not done yet:
+Still being monitored:
 
-- story count is now in range, but final story quality is not yet consistent enough
-- source coverage is still limited to the currently reliable core set
-- `dawn` discovery still needs cleanup because some runs surface `images.dawn.com` lifestyle links instead of hard news
-- Groq editorial still needs hardening against schema failures and `429` rate limits
-- freshness and publish-date trust still need more validation
-- full live acceptance from scrape to frontend quality still needs a clean pass
+- repeated-run consistency: keep the brief in `5-9` across additional live runs
+- final story quality: keep softer feature stories out when stronger civic/public-interest stories exist
+- suspicious publish-date handling: verify on future live rows that stale timestamps do not drive ranking or editorial pressure
+- scrape runtime: acceptable for now, but still slower than ideal
 
 ## Current Source Status
 
@@ -96,7 +95,7 @@ scrape sources
 
 ### LLM Layer
 
-Groq is used as an editorial layer to decide whether a candidate cluster deserves publication and to shape structured card fields such as:
+Gemini is the primary editorial layer, with Groq available as fallback, to decide whether a candidate cluster deserves publication and to shape structured card fields such as:
 
 - `why_it_matters`
 - `what_to_watch`
@@ -108,7 +107,7 @@ This is intentionally bounded. The system is not meant to become an opaque LLM-o
 
 ## Main Problem We Are Solving Now
 
-The core challenge is no longer basic plumbing or story formation. The remaining challenge is live brief quality and reliability.
+The core challenge is no longer basic plumbing or story formation. The remaining challenge is repeated-run confidence and final product polish.
 
 The main architecture issue is already fixed:
 
@@ -118,32 +117,29 @@ The main architecture issue is already fixed:
 The remaining live issues are narrower:
 
 - keep the surviving `5-9` stories on-mission for a must-know Pakistan morning brief
-- stop softer feature/lifestyle stories from consuming brief slots
-- make `dawn` consistently surface hard-news links
-- make the Groq editorial path reliable enough that deterministic fallback is exceptional, not routine
-- keep freshness and publish-date handling trustworthy
+- continue suppressing softer feature/lifestyle stories when harder public-interest stories are available
+- keep repeated editorial runs reliable enough that fallback remains exceptional
+- keep freshness and publish-date handling trustworthy on future live rows
 
 ## Next Phase
 
-The current phase is `live-quality hardening`.
+The current phase is `frontend handoff with backend monitoring`.
 
 The next work items are:
 
-1. Fix `dawn` source discovery so hard-news pages dominate and `images.dawn.com` lifestyle links do not leak into the morning run.
-2. Harden Groq editorial fallback behavior around schema validation and rate limits.
-3. Tighten deterministic importance ranking so weaker feature stories lose to stronger civic and public-interest stories.
-4. Re-check publish-date and freshness handling on live rows.
-5. Do final frontend polish only after backend output is stable.
+1. Move to frontend polish and presentation work against the now-stable backend brief shape.
+2. Keep monitoring constrained live runs for repeated `5-9` consistency.
+3. Re-check publish-date and freshness handling on future live rows.
+4. Do only light backend tuning unless a new live regression appears.
 
-## Main Blockers
+## Main Remaining Risks
 
-These are the current concrete blockers from the latest live run:
+These are the current areas still worth watching:
 
-- `dawn` discovery is inconsistent and can surface `images.dawn.com` lifestyle links instead of hard-news pages.
-- Groq editorial can fail on strict schema validation and then hit `429` on fallback, which forces deterministic publishing.
-- Deterministic ranking still lets some softer feature stories survive when stronger civic/public-interest stories should win the slot.
-
-Until those three are fixed, the product is close but not fully ship-ready.
+- repeated-run confidence, not one-run confidence
+- occasional softer survivors if ranking/editorial pressure drifts
+- suspicious publish dates on future live rows
+- frontend presentation quality now becoming the main product-facing gap
 
 ## Repository Layout
 
@@ -171,7 +167,7 @@ docs/
   final-ready-plan.md       # active release checklist
 
 program.md                  # operating rules and product principles
-AGENTS.md                   # repo workflow for autonomous evaluators
+AGENTS.md                   # stable repo blueprint for autonomous evaluators
 ```
 
 ## Setup
@@ -209,7 +205,8 @@ Required:
 Important optional controls:
 
 - `SAAF_ENABLE_EDITORIAL_LLM`
-- `SAAF_EDITORIAL_LLM_MODEL`
+- `SAAF_EDITORIAL_GEMINI_MODEL` (primary editorial model; default `gemini-3.1-flash-lite-preview`)
+- `SAAF_EDITORIAL_GROQ_MODEL` (fallback editorial model; legacy `SAAF_EDITORIAL_LLM_MODEL` still supported)
 - `SAAF_EDITORIAL_CANDIDATE_LIMIT`
 - `SAAF_EDITORIAL_MAX_STORIES`
 - `SAAF_LOW_COST_MODE`
@@ -247,7 +244,7 @@ Constrained pipeline run:
 ```bash
 cd backend
 source venv/bin/activate
-python run_pipeline.py --disable-playwright --log-level INFO --max-articles-per-source 12
+python run_pipeline.py --disable-playwright --log-level INFO --max-articles-per-source 4
 ```
 
 Quality report:
@@ -255,7 +252,7 @@ Quality report:
 ```bash
 cd backend
 source venv/bin/activate
-python scripts/quality_report.py --limit 20
+python scripts/quality_report.py --limit 12 --min-avg-sim 0.65 --min-centroid-sim 0.70 --fail-on-missing-embeddings
 ```
 
 Frontend tests:
