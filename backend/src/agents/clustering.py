@@ -107,20 +107,35 @@ def _set_overlap(left: Set[str], right: Set[str]) -> float:
     return float(len(left & right) / len(union))
 
 
-def _event_timestamp(article: RawArticle, max_publish_skew_hours: int = 72) -> datetime:
+def publish_date_skew_hours(article: RawArticle) -> float | None:
     scraped = article.scraped_at
     if scraped.tzinfo is None:
         scraped = scraped.replace(tzinfo=timezone.utc)
 
     published = article.publish_date
     if published is None:
-        return scraped
+        return None
     if published.tzinfo is None:
         published = published.replace(tzinfo=timezone.utc)
 
-    skew_hours = abs((scraped - published).total_seconds()) / 3600.0
+    return abs((scraped - published).total_seconds()) / 3600.0
+
+
+def trusted_article_timestamp(article: RawArticle, max_publish_skew_hours: int = 72) -> datetime:
+    scraped = article.scraped_at
+    if scraped.tzinfo is None:
+        scraped = scraped.replace(tzinfo=timezone.utc)
+
+    skew_hours = publish_date_skew_hours(article)
+    if skew_hours is None:
+        return scraped
     if skew_hours > max_publish_skew_hours:
         return scraped
+    published = article.publish_date
+    if published is None:
+        return scraped
+    if published.tzinfo is None:
+        published = published.replace(tzinfo=timezone.utc)
     return published
 
 
@@ -571,7 +586,7 @@ class EventGroupingService:
         return [
             _PreparedArticle(
                 index=index,
-                event_time=_event_timestamp(article, self.max_publish_skew_hours),
+                event_time=trusted_article_timestamp(article, self.max_publish_skew_hours),
                 headline_tokens=_headline_tokens(article),
                 entity_cues=_entity_cues(article),
             )

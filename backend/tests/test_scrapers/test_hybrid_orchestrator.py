@@ -329,6 +329,30 @@ class TestHybridOrchestratorArticleURLExtraction:
         # Should have unique URLs only
         assert len(urls) == len(set(urls))
 
+    def test_filters_off_domain_urls_during_extraction(self):
+        """Extraction should drop off-domain links (e.g. images sub-sites)."""
+        from src.scrapers.hybrid_orchestrator import HybridOrchestrator
+
+        orchestrator = HybridOrchestrator()
+
+        section_html = """
+        <html>
+        <body>
+            <a href="https://images.dawn.com/news/1195096/some-lifestyle-link">Images</a>
+            <a href="/news/12345/article-one">Hard News</a>
+        </body>
+        </html>
+        """
+
+        urls = orchestrator._extract_article_urls(
+            section_html,
+            base_url="https://www.dawn.com",
+            source="dawn",
+        )
+
+        assert any("https://www.dawn.com/news/12345" in url for url in urls)
+        assert all("images.dawn.com" not in url for url in urls)
+
 
 class TestHybridOrchestratorBatchScraping:
     """Tests for batch scraping functionality."""
@@ -556,10 +580,47 @@ class TestHybridOrchestratorFeedDiscovery:
                         feed_url="https://www.dawn.com/feeds/latest-news",
                     )
 
-        MockFeedDisc.assert_called_once_with("https://www.dawn.com/feeds/latest-news")
+        MockFeedDisc.assert_called_once_with(
+            "https://www.dawn.com/feeds/latest-news",
+            base_url="https://www.dawn.com",
+        )
         MockFeedDisc.return_value.discover.assert_called_once()
         # Section page fetching was NOT called
         mock_fetcher.fetch.assert_not_called()
+        assert len(results) == 1
+
+    def test_scrape_source_filters_off_domain_feed_urls_before_scraping(self):
+        """Feed-discovered off-domain URLs should not consume scrape slots."""
+        from src.scrapers.hybrid_orchestrator import HybridOrchestrator
+        from src.db.models import RawArticle
+        from types import SimpleNamespace
+
+        orchestrator = HybridOrchestrator()
+
+        kept_article = RawArticle(
+            source="dawn",
+            url="https://www.dawn.com/news/1001",
+            headline="Feed-discovered article headline",
+            main_text="Article body content here " * 50,
+        )
+
+        fake_feed = SimpleNamespace(
+            entries=[
+                SimpleNamespace(link="https://images.dawn.com/news/9999/lifestyle-link"),
+                SimpleNamespace(link="https://dawn.com/news/1001"),
+            ]
+        )
+
+        with patch("src.scrapers.feed.feedparser.parse", return_value=fake_feed):
+            with patch.object(orchestrator, "scrape_url", return_value=kept_article) as mock_scrape:
+                results = orchestrator.scrape_source(
+                    source="dawn",
+                    base_url="https://www.dawn.com",
+                    sections=["latest-news"],
+                    feed_url="https://www.dawn.com/feeds/latest-news",
+                )
+
+        mock_scrape.assert_called_once_with("https://dawn.com/news/1001", source="dawn")
         assert len(results) == 1
 
     def test_scrape_source_falls_back_to_html_when_feed_empty(self):

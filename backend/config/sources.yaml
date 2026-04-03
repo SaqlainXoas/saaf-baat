@@ -1,6 +1,7 @@
 sources:
   dawn:
     url: "https://www.dawn.com"
+    feed_url: "https://www.dawn.com/feeds/latest-news"
     sections:
       - "https://www.dawn.com/pakistan"
       - "https://www.dawn.com/business"
