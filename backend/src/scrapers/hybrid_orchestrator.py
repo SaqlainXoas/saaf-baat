@@ -13,7 +13,7 @@ Architecture:
 import re
 import logging
 from typing import Dict, List, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
@@ -40,6 +40,7 @@ from src.scrapers.parsers import ContentParser
 from src.scrapers.dtos import ScrapedArticle
 from src.scrapers.feed import FeedDiscoverer
 from src.db.models import RawArticle
+from src.utils.urls import host_allowed_for_base
 
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,7 @@ class HybridOrchestrator:
         # Tier 1: RSS feed discovery
         article_urls: List[str] = []
         if feed_url:
-            article_urls = FeedDiscoverer(feed_url).discover()
+            article_urls = FeedDiscoverer(feed_url, base_url=base_url).discover()
             if article_urls:
                 logger.info(f"Feed discovery returned {len(article_urls)} URLs for {source}")
 
@@ -322,7 +323,6 @@ class HybridOrchestrator:
         """
         urls: List[str] = []
         seen: set = set()
-
         try:
             soup = BeautifulSoup(html, "lxml")
 
@@ -332,6 +332,9 @@ class HybridOrchestrator:
                 # Resolve relative URLs
                 if not href.startswith("http"):
                     href = urljoin(base_url, href)
+
+                if not host_allowed_for_base(href, base_url):
+                    continue
 
                 # Check if it looks like an article URL
                 if self._is_article_url(href):

@@ -11,6 +11,7 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.agents.clustering import publish_date_skew_hours, trusted_article_timestamp
 from src.db.models import AnalyzedFeed, RawArticle
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,18 @@ VALID_IMPACT_LABELS = (
     "🏛️ GOVERNANCE",
 )
 
+EDITORIAL_SYSTEM_PROMPT = (
+    "You are the Saaf Baat editorial desk. Build a finite Pakistan morning brief.\n"
+    "Select only the most important stories that an ordinary person in Pakistan should know this morning.\n"
+    "Aim for 5-9 stories when the candidate pool supports it. Only return fewer than 5 if fewer than 5 candidates have clear Pakistan public relevance.\n"
+    "Use only the provided evidence. Do not invent facts. Exclude gossip, celebrity, soft lifestyle, sports unless nationally consequential, and foreign stories unless the effect on Pakistan is clear.\n"
+    "Prefer hard-news developments with direct public impact in governance, economy, security, utilities, transport, health, education, or major city life.\n"
+    "Deprioritize features, profiles, lifestyle, travel, seasonal colour, soft diplomacy reactions, and commentary when harder public-interest stories are available.\n"
+    "When evidence is thin or ambiguous, omit the cluster.\n"
+    "Headlines and summaries must be clean, calm, concrete, and non-sensational.\n"
+    "Return valid JSON only."
+)
+
 
 class EditorialError(RuntimeError):
     pass
@@ -55,10 +68,15 @@ class ClusterEditorialCandidate:
     min_member_similarity: Optional[float]
 
     def to_prompt_dict(self) -> Dict[str, Any]:
-        publish_dates = [a.publish_date for a in self.articles if a.publish_date is not None]
-        latest_publish = max(publish_dates).isoformat() if publish_dates else None
-        earliest_publish = min(publish_dates).isoformat() if publish_dates else None
+        trusted_timestamps = [trusted_article_timestamp(article) for article in self.articles]
+        latest_publish = max(trusted_timestamps).isoformat() if trusted_timestamps else None
+        earliest_publish = min(trusted_timestamps).isoformat() if trusted_timestamps else None
         source_names = sorted({a.source for a in self.articles})
+        suspicious_publish_dates = 0
+        for article in self.articles:
+            skew_hours = publish_date_skew_hours(article)
+            if skew_hours is not None and skew_hours > 72:
+                suspicious_publish_dates += 1
 
         supporting_headlines: List[str] = []
         for article in self.articles:
@@ -77,6 +95,7 @@ class ClusterEditorialCandidate:
             "source_counts": dict(self.base_feed.source_attribution or {}),
             "latest_publish_date": latest_publish,
             "earliest_publish_date": earliest_publish,
+            "suspicious_publish_dates": suspicious_publish_dates,
             "representative_source": self.representative_article.source,
             "representative_headline": self.representative_article.headline,
             "representative_excerpt": _truncate(self.representative_article.main_text, 700),
@@ -145,7 +164,7 @@ class EditorialResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     stories: List[EditorialStory] = Field(..., max_length=9)
-    omitted_cluster_ids: List[str]
+    omitted_cluster_ids: List[str] = Field(default_factory=list)
 
 
 class GroqMorningBriefService:
@@ -178,31 +197,8 @@ class GroqMorningBriefService:
 
         candidate_lookup = {str(candidate.cluster_id): candidate for candidate in candidates}
         candidate_rows = [candidate.to_prompt_dict() for candidate in candidates]
-        system_prompt = (
-            "You are the Saaf Baat editorial desk. Build a finite Pakistan morning brief.\n"
-            "Select only the most important stories that an ordinary person in Pakistan should know this morning.\n"
-            "Use only the provided evidence. Do not invent facts. Exclude gossip, celebrity, soft lifestyle, sports unless nationally consequential, and foreign stories unless the effect on Pakistan is clear.\n"
-            "Prefer public-impact stories in governance, economy, security, utilities, transport, health, education, or major city life.\n"
-            "When evidence is thin or ambiguous, omit the cluster.\n"
-            "Headlines and summaries must be clean, calm, concrete, and non-sensational.\n"
-            "Return valid JSON only."
-        )
-        user_prompt = json.dumps(
-            {
-                "task": "Select and format the morning brief.",
-                "max_stories": max(1, min(int(max_stories), 9)),
-                "selection_rules": [
-                    "Return at most max_stories items in stories.",
-                    "Each story must map to exactly one provided cluster_id.",
-                    "Use impact_labels only from the allowed set.",
-                    "Prefer Pakistan relevance and public impact over novelty.",
-                    "Summary should explain what happened and why it matters in 1-2 sentences.",
-                    "why_it_matters and what_to_watch must stay grounded in provided evidence.",
-                ],
-                "candidates": candidate_rows,
-            },
-            ensure_ascii=False,
-        )
+        system_prompt = EDITORIAL_SYSTEM_PROMPT
+        user_prompt = build_editorial_user_prompt(candidate_rows, max_stories=max_stories)
 
         payload = {
             "model": self.model,
@@ -214,6 +210,11 @@ class GroqMorningBriefService:
         }
 
         try:
+            # Groq strict json_schema mode currently validates that each object schema includes a
+            # `required` array listing every key in `properties` (even if a field is "optional"
+            # in our internal Pydantic model). We keep our Pydantic models flexible for parsing,
+            # but send a stricter, Groq-compatible schema in the request.
+            strict_schema = _groq_strict_json_schema(EditorialResponse.model_json_schema())
             body = self._post_completion(
                 payload
                 | {
@@ -222,7 +223,7 @@ class GroqMorningBriefService:
                         "json_schema": {
                             "name": "saaf_baat_editorial_brief",
                             "strict": True,
-                            "schema": EditorialResponse.model_json_schema(),
+                            "schema": strict_schema,
                         },
                     }
                 }
@@ -231,15 +232,23 @@ class GroqMorningBriefService:
         except httpx.HTTPStatusError as exc:
             if exc.response is None or exc.response.status_code != 400:
                 raise EditorialError(f"Groq editorial request failed: {exc}") from exc
-            logger.warning(
-                "Strict Groq schema mode failed, retrying with json_object mode: %s",
-                _truncate(exc.response.text, 240),
-            )
-            try:
-                body = self._post_completion(payload | {"response_format": {"type": "json_object"}})
-                parsed = self._parse_response(body, candidate_lookup)
-            except Exception as fallback_exc:
-                raise EditorialError(f"Groq editorial fallback failed: {fallback_exc}") from fallback_exc
+            # If Groq strict mode produced a candidate JSON but rejected it for schema mismatch,
+            # the 400 body often includes a `failed_generation` payload. We can salvage that
+            # payload locally (normalization + Pydantic validation) without spending another
+            # API call (and without risking a 429 on fallback).
+            salvaged = _salvage_failed_generation(exc.response, candidate_lookup)
+            if salvaged is not None:
+                parsed = salvaged
+            else:
+                logger.warning(
+                    "Strict Groq schema mode failed, retrying with json_object mode: %s",
+                    _truncate(exc.response.text, 240),
+                )
+                try:
+                    body = self._post_completion(payload | {"response_format": {"type": "json_object"}})
+                    parsed = self._parse_response(body, candidate_lookup)
+                except Exception as fallback_exc:
+                    raise EditorialError(f"Groq editorial fallback failed: {fallback_exc}") from fallback_exc
         except Exception as exc:
             raise EditorialError(f"Groq editorial request failed: {exc}") from exc
 
@@ -325,6 +334,31 @@ def merge_editorial_story(
     return feed
 
 
+def build_editorial_user_prompt(candidate_rows: Sequence[Dict[str, Any]], *, max_stories: int) -> str:
+    target_cap = max(1, min(int(max_stories), 9))
+    target_floor = min(5, target_cap)
+    return json.dumps(
+        {
+            "task": "Select and format the morning brief.",
+            "target_story_range": {"min": target_floor, "max": target_cap},
+            "max_stories": target_cap,
+            "selection_rules": [
+                "Return at most max_stories items in stories.",
+                "Aim to return at least target_story_range.min stories when enough candidates clearly support a Pakistan morning brief.",
+                "Each story must map to exactly one provided cluster_id.",
+                "Use impact_labels only from the allowed set.",
+                "Prefer Pakistan relevance and direct public impact over novelty, symbolism, or feature value.",
+                "Prefer hard-news developments over profiles, travel, lifestyle, seasonal, or commentary-style pieces.",
+                "Summary should explain what happened and why it matters in 1-2 sentences.",
+                "why_it_matters and what_to_watch must stay grounded in provided evidence.",
+                "Treat suspicious_publish_dates as a warning signal, not a reason by itself to invent or exaggerate freshness.",
+            ],
+            "candidates": list(candidate_rows),
+        },
+        ensure_ascii=False,
+    )
+
+
 def _truncate(text: str, limit: int) -> str:
     clean = " ".join((text or "").split())
     if len(clean) <= limit:
@@ -336,6 +370,75 @@ def _round_or_none(value: Optional[float]) -> Optional[float]:
     if value is None:
         return None
     return round(float(value), 4)
+
+
+def _groq_strict_json_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Transform a JSON Schema dict into the shape Groq strict mode accepts.
+
+    Observed Groq validation constraint:
+    - For any object schema with `properties`, `required` must be supplied and must include
+      *every* key in `properties`.
+
+    We apply this recursively to nested object schemas (including those inside arrays and anyOf).
+    """
+
+    def _walk(node: Any) -> Any:
+        if isinstance(node, dict):
+            # Recurse first so nested nodes are normalized.
+            for key, value in list(node.items()):
+                if isinstance(value, (dict, list)):
+                    node[key] = _walk(value)
+
+            properties = node.get("properties")
+            if isinstance(properties, dict) and properties:
+                keys = list(properties.keys())
+                node["required"] = keys
+                # Make sure objects are closed unless explicitly configured otherwise.
+                node.setdefault("additionalProperties", False)
+
+            return node
+
+        if isinstance(node, list):
+            return [_walk(item) for item in node]
+
+        return node
+
+    # Work on a deep copy to avoid mutating the original schema reference.
+    return _walk(json.loads(json.dumps(schema)))
+
+
+def _salvage_failed_generation(
+    response: httpx.Response,
+    candidate_lookup: Dict[str, ClusterEditorialCandidate],
+) -> Optional[EditorialResponse]:
+    """
+    Try to salvage Groq strict-mode 400s that include `failed_generation`.
+
+    Groq can return 400 even when it generated JSON (e.g. missing a required property). In that
+    case, the response JSON may include an `error.failed_generation` field. We can parse it,
+    normalize, and validate locally to avoid an immediate second API request (which is also where
+    429 rate limits often appear).
+    """
+    try:
+        data = response.json()
+    except Exception:
+        return None
+
+    error = data.get("error") if isinstance(data, dict) else None
+    if not isinstance(error, dict):
+        return None
+
+    failed = error.get("failed_generation")
+    if not failed:
+        return None
+
+    try:
+        payload = json.loads(str(failed))
+        normalized = _normalize_editorial_payload(payload, candidate_lookup)
+        return EditorialResponse.model_validate(normalized)
+    except Exception:
+        return None
 
 
 def _normalize_editorial_payload(

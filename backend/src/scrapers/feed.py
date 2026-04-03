@@ -1,9 +1,11 @@
 """RSS/Atom feed URL discovery — Tier 1 of URL discovery pipeline."""
 
 import logging
-from typing import List
+from typing import List, Optional
 
 import feedparser
+
+from src.utils.urls import host_allowed_for_base
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +17,9 @@ class FeedDiscoverer:
     to HTML scraping + regex extraction.
     """
 
-    def __init__(self, feed_url: str):
+    def __init__(self, feed_url: str, base_url: Optional[str] = None):
         self.feed_url = feed_url
+        self.base_url = base_url
 
     def discover(self) -> List[str]:
         """Parse feed and return unique article URLs.
@@ -29,7 +32,11 @@ class FeedDiscoverer:
             urls = []
             for entry in feed.entries:
                 link = getattr(entry, "link", None)
-                if link and link not in seen:
+                if not link:
+                    continue
+                if self.base_url and not host_allowed_for_base(link, self.base_url):
+                    continue
+                if link not in seen:
                     seen.add(link)
                     urls.append(link)
             return urls

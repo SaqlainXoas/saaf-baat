@@ -11,7 +11,6 @@ from uuid import UUID, uuid4
 
 import numpy as np
 import yaml
-from urllib.parse import urlparse
 
 from src.agents.analysis import (
     AnalysisService,
@@ -33,17 +32,23 @@ from src.agents.clustering import (
     EventGroupingService,
     calculate_centroid,
     calculate_intra_cluster_similarity,
+    publish_date_skew_hours,
+    trusted_article_timestamp,
 )
 from src.agents.editorial import (
     ClusterEditorialCandidate,
     EditorialError,
-    GroqMorningBriefService,
     merge_editorial_story,
 )
+from src.agents.editorial import GroqMorningBriefService
+from src.agents.editorial_gemini import GeminiMorningBriefService
+from src.agents.editorial_router import EditorialRouterService
 from src.agents.embeddings import GeminiEmbeddingProvider
+from src.config import load_editorial_model_config
 from src.db.client import DuplicateArticleError, SupabaseClient
 from src.db.models import RawArticle
 from src.scrapers.hybrid_orchestrator import HybridOrchestrator
+from src.utils.urls import host_allowed_for_base
 from src.utils.validators import validate_sources_config
 
 logger = logging.getLogger(__name__)
@@ -78,6 +83,16 @@ _SINGLE_SOURCE_ALLOWED_CATEGORIES = {
     "education",
 }
 _HIGH_IMPACT_LABELS = {"🛡️ SAFETY", "⚡ UTILITIES", "💳 WALLET", "🚦 COMMUTE", "🏛️ GOVERNANCE"}
+_SOFT_FEATURE_HEADLINE_PATTERNS = (
+    "blossom season",
+    "spring",
+    "festival",
+    "tourism",
+    "award",
+    "honoured",
+    "performer",
+    "feels like a dream",
+)
 
 
 @dataclass(frozen=True)
@@ -198,7 +213,7 @@ class PipelineOrchestrator:
         embedder: Optional[GeminiEmbeddingProvider] = None,
         clusterer: Optional[object] = None,
         analyzer: Optional[AnalysisService] = None,
-        editorial_service: Optional[GroqMorningBriefService] = None,
+        editorial_service: Optional[object] = None,
     ):
         self.config = config
         self.db = db
@@ -222,19 +237,7 @@ class PipelineOrchestrator:
 
     @staticmethod
     def _host_allowed(url: str, base_url: str) -> bool:
-        """Allow same host or subdomain of the configured base_url host."""
-        try:
-            u = urlparse(url)
-            b = urlparse(base_url)
-            url_host = (u.hostname or "").lower()
-            base_host = (b.hostname or "").lower()
-            if not url_host or not base_host:
-                return False
-            if url_host == base_host:
-                return True
-            return url_host.endswith("." + base_host)
-        except Exception:
-            return False
+        return host_allowed_for_base(url, base_url)
 
     def _get_scraper(self) -> HybridOrchestrator:
         if self.scraper is None:
@@ -282,18 +285,33 @@ class PipelineOrchestrator:
             )
         return self.analyzer
 
-    def _get_editorial_service(self) -> Optional[GroqMorningBriefService]:
+    def _get_editorial_service(self) -> Optional[object]:
         if self.editorial_service is not None:
             return self.editorial_service
         if not self.config.enable_editorial_llm:
             return None
 
-        api_key = (os.getenv("GROQ_API_KEY") or "").strip()
-        if not api_key:
+        models = load_editorial_model_config()
+        gemini = None
+        groq = None
+
+        if models.gemini_api_key:
+            try:
+                gemini = GeminiMorningBriefService(api_key=models.gemini_api_key, model=models.gemini_model)
+            except EditorialError as exc:
+                logger.warning("Gemini editorial unavailable: %s", exc)
+
+        if models.groq_api_key:
+            try:
+                groq = GroqMorningBriefService(api_key=models.groq_api_key, model=models.groq_model)
+            except EditorialError as exc:
+                logger.warning("Groq editorial unavailable: %s", exc)
+
+        if gemini is None and groq is None:
             return None
 
         try:
-            self.editorial_service = GroqMorningBriefService(api_key=api_key)
+            self.editorial_service = EditorialRouterService(gemini=gemini, groq=groq)
         except EditorialError as exc:
             logger.warning("Editorial service unavailable: %s", exc)
             return None
@@ -732,17 +750,16 @@ class PipelineOrchestrator:
                 len(candidates),
             )
 
+        ranked_publishable_candidates = self._rank_publishable_candidates(publishable_candidates)
+        story_limit = self._effective_story_limit(
+            ranked_publishable_candidates,
+            configured_limit=self.config.editorial_max_stories,
+        )
+        fallback_candidates = ranked_publishable_candidates[:story_limit]
+
         editorial_result: Dict[UUID, Any] | None = None
         if editorial and publishable_candidates:
-            ranked_candidates = sorted(
-                publishable_candidates,
-                key=lambda candidate: (
-                    -self._candidate_publish_score(candidate),
-                    -len(candidate.base_feed.source_attribution or {}),
-                    -len(candidate.articles),
-                    candidate.cluster_id.hex,
-                ),
-            )
+            ranked_candidates = ranked_publishable_candidates
             limited_candidates = ranked_candidates[: max(1, int(self.config.editorial_candidate_limit))]
             try:
                 editorial_result = editorial.review_clusters(
@@ -757,13 +774,44 @@ class PipelineOrchestrator:
             for candidate in publishable_candidates:
                 story = editorial_result.get(candidate.cluster_id)
                 if story is None:
-                    stats.feeds_rejected_editorial += 1
                     continue
                 selected_candidates.append((candidate, story))
 
             selected_candidates.sort(
-                key=lambda row: (int(row[1].priority), len(row[0].articles), row[0].cluster_id.hex)
+                key=lambda row: (
+                    -int(row[1].priority),
+                    -len(row[0].base_feed.source_attribution or {}),
+                    -len(row[0].articles),
+                    row[0].cluster_id.hex,
+                )
             )
+            target_floor = self._target_story_floor(
+                ranked_publishable_candidates,
+                configured_limit=self.config.editorial_max_stories,
+            )
+            story_cap = self._effective_story_limit(
+                selected_candidates,
+                configured_limit=self.config.editorial_max_stories,
+            )
+            selected_candidates = selected_candidates[:story_cap]
+            selected_cluster_ids = {candidate.cluster_id for candidate, _story in selected_candidates}
+            supplemental_candidates: List[ClusterEditorialCandidate] = []
+            if len(selected_candidates) < target_floor:
+                needed = target_floor - len(selected_candidates)
+                supplemental_candidates = [
+                    candidate
+                    for candidate in ranked_publishable_candidates
+                    if candidate.cluster_id not in selected_cluster_ids
+                ][:needed]
+                if supplemental_candidates:
+                    logger.info(
+                        "Editorial selection returned %d stories; supplementing %d deterministic candidates to hit floor %d",
+                        len(selected_candidates),
+                        len(supplemental_candidates),
+                        target_floor,
+                    )
+            final_cluster_ids = selected_cluster_ids | {candidate.cluster_id for candidate in supplemental_candidates}
+            stats.feeds_rejected_editorial += max(0, len(publishable_candidates) - len(final_cluster_ids))
 
             for candidate, story in selected_candidates:
                 try:
@@ -779,9 +827,29 @@ class PipelineOrchestrator:
                 except Exception as e:
                     stats.analyze_failures += 1
                     logger.exception("Failed inserting editorial feed for cluster %s: %s", candidate.cluster_id, e)
+            for candidate in supplemental_candidates:
+                try:
+                    candidate.base_feed.created_at = datetime.now(timezone.utc)
+                    feed_id = self.db.insert_analyzed_feed(candidate.base_feed)
+                    inserted_feed_ids.append(feed_id)
+                    stats.feeds_inserted += 1
+                except Exception as e:
+                    stats.analyze_failures += 1
+                    logger.exception(
+                        "Failed inserting supplemental deterministic feed for cluster %s: %s",
+                        candidate.cluster_id,
+                        e,
+                    )
             return inserted_feed_ids
 
-        for candidate in publishable_candidates:
+        if len(ranked_publishable_candidates) > len(fallback_candidates):
+            logger.info(
+                "Deterministic fallback capped brief to %d/%d publishable candidates",
+                len(fallback_candidates),
+                len(ranked_publishable_candidates),
+            )
+
+        for candidate in fallback_candidates:
             try:
                 candidate.base_feed.created_at = datetime.now(timezone.utc)
                 feed_id = self.db.insert_analyzed_feed(candidate.base_feed)
@@ -792,6 +860,33 @@ class PipelineOrchestrator:
                 logger.exception("Failed inserting deterministic feed for cluster %s: %s", candidate.cluster_id, e)
 
         return inserted_feed_ids
+
+    @staticmethod
+    def _effective_story_limit(items: Sequence[object], configured_limit: int = 9) -> int:
+        if not items:
+            return 0
+        return max(1, min(int(configured_limit), len(items)))
+
+    @staticmethod
+    def _target_story_floor(items: Sequence[object], configured_limit: int = 9) -> int:
+        if not items:
+            return 0
+        if len(items) < 5:
+            return 0
+        return min(5, int(configured_limit), len(items))
+
+    def _rank_publishable_candidates(
+        self, candidates: Sequence[ClusterEditorialCandidate]
+    ) -> List[ClusterEditorialCandidate]:
+        return sorted(
+            candidates,
+            key=lambda candidate: (
+                -self._candidate_publish_score(candidate),
+                -len(candidate.base_feed.source_attribution or {}),
+                -len(candidate.articles),
+                candidate.cluster_id.hex,
+            ),
+        )
 
     @staticmethod
     def _normalized_embedding_matrix(articles: Sequence[RawArticle]) -> Optional[np.ndarray]:
@@ -833,14 +928,20 @@ class PipelineOrchestrator:
 
     @staticmethod
     def _candidate_latest_timestamp(candidate: ClusterEditorialCandidate) -> datetime:
-        timestamps = [
-            article.publish_date or article.scraped_at
-            for article in candidate.articles
-        ]
+        timestamps = [trusted_article_timestamp(article) for article in candidate.articles]
         latest = max(timestamps) if timestamps else candidate.representative_article.scraped_at
         if latest.tzinfo is None:
             latest = latest.replace(tzinfo=timezone.utc)
         return latest
+
+    @staticmethod
+    def _candidate_suspicious_publish_dates(candidate: ClusterEditorialCandidate, max_skew_hours: int = 72) -> int:
+        count = 0
+        for article in candidate.articles:
+            skew_hours = publish_date_skew_hours(article)
+            if skew_hours is not None and skew_hours > max_skew_hours:
+                count += 1
+        return count
 
     def _candidate_publish_score(self, candidate: ClusterEditorialCandidate) -> int:
         feed = candidate.base_feed
@@ -848,6 +949,7 @@ class PipelineOrchestrator:
         sources = feed.source_attribution or {}
         source_breadth = len(sources)
         source_count = len(candidate.articles)
+        impact_labels = set(feed.impact_labels or [])
         impact_score = max((_IMPACT_IMPORTANCE.get(label, 0) for label in feed.impact_labels or []), default=0)
         category_score = _CATEGORY_IMPORTANCE.get(category, 0)
         confidence_score = int(round(float(feed.classification_confidence or 0.0) * 12))
@@ -862,6 +964,12 @@ class PipelineOrchestrator:
             recency_penalty = 3
         single_source_penalty = 10 if source_breadth == 1 else 0
         weak_category_penalty = 8 if category in {"other", "technology", "international"} else 0
+        suspicious_date_penalty = min(self._candidate_suspicious_publish_dates(candidate) * 6, 18)
+        headline = (feed.headline or "").strip().lower()
+        soft_feature_penalty = 0
+        if headline and not (impact_labels & _HIGH_IMPACT_LABELS):
+            if any(pattern in headline for pattern in _SOFT_FEATURE_HEADLINE_PATTERNS):
+                soft_feature_penalty = 12
 
         score = (
             category_score
@@ -873,6 +981,8 @@ class PipelineOrchestrator:
             - recency_penalty
             - single_source_penalty
             - weak_category_penalty
+            - suspicious_date_penalty
+            - soft_feature_penalty
         )
         return max(0, min(100, int(score)))
 
@@ -893,8 +1003,11 @@ class PipelineOrchestrator:
                 return False
             return score >= 40 and confidence >= 0.2
 
-        if category == "other":
-            return score >= 18 or confidence >= 0.45 or len(candidate.articles) >= 3
+        weak_categories = {"other", "technology", "international"}
+        if category in weak_categories:
+            if impact_labels & _HIGH_IMPACT_LABELS:
+                return score >= 16
+            return score >= 26
 
         return score >= 16
 
