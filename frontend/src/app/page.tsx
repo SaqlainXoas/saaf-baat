@@ -6,7 +6,7 @@ import Link from "next/link";
 import { applyFilters, deriveAvailableSources, parseFilters } from "@/utils/focusFilters";
 import DataStatusBanner from "@/components/DataStatusBanner";
 
-const MAX_STORIES = 7;
+const MAX_STORIES = 9;
 
 function toURLSearchParams(searchParams?: Record<string, string | string[] | undefined>) {
   const params = new URLSearchParams();
@@ -99,7 +99,7 @@ function LiveDataErrorState({ message, compact = false }: { message?: string; co
         Live data unavailable
       </p>
       <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
-        {message || "Connect NEXT_PUBLIC_API_URL to a healthy backend to view the brief."}
+        {message || "Configure SUPABASE_URL + SUPABASE_ANON_KEY to view the brief."}
       </p>
       <Link
         href="/"

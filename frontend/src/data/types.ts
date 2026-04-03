@@ -9,11 +9,24 @@ export interface SourceCountDTO {
   count: number;
 }
 
+export interface AnalyzedFeedRow {
+  cluster_id: string;
+  created_at: string;
+  headline: string;
+  summary: string | null;
+  category: string;
+  impact_labels: string[] | null;
+  confirmed_facts: unknown[] | null;
+  debated_claims: unknown[] | null;
+  source_attribution: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+}
+
 export interface StoryCardData {
   story_id: string;
   created_at: string;
   headline: string;
-  snippet: string;
+  snippet: string; // mapped from analyzed_feed.summary
   category: string;
   impact_labels: string[];
   confirmed_facts: EntityDTO[];

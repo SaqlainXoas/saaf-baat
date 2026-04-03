@@ -20,10 +20,10 @@ export default function DataStatusBanner({
       ? `Feed may be stale. Last successful update: ${latestUpdate?.label}.`
       : message ||
         (status === "mock-no-api"
-          ? "Showing local mock data. Set NEXT_PUBLIC_API_URL to load live stories."
+          ? "Showing local mock data. Set SUPABASE_URL + SUPABASE_ANON_KEY to load live stories."
           : status === "error-live-required"
-            ? "Live data is required. Connect the frontend to a healthy backend API."
-            : "Live backend is unavailable. Showing fallback data for now.");
+            ? "Live data is required. Configure Supabase env so the frontend can read analyzed_feed."
+            : "Live data is unavailable. Showing fallback data for now.");
 
   const nonLiveSuffix = !staleFeed && latestUpdate ? ` Last successful update: ${latestUpdate.label}.` : "";
 
