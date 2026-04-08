@@ -19,6 +19,10 @@ const mockStory = {
     { source: "geo", count: 1 },
     { source: "tribune", count: 1 },
   ],
+  metadata: {
+    why_it_matters: "Household costs and market confidence can shift quickly.",
+    what_to_watch: "Watch for the next official announcement.",
+  },
 };
 
 describe("StoryCard", () => {
@@ -52,14 +56,21 @@ describe("StoryCard", () => {
     expect(screen.queryByText("Open →")).toBeNull();
   });
 
-  it("renders trust preview chips", () => {
+  it("renders a watch note in default variant", () => {
     render(<StoryCard story={mockStory} />);
-    expect(screen.getByText("IMF")).toBeDefined();
-    expect(screen.getByText("fuel cut")).toBeDefined();
+    expect(screen.getByText("What to watch")).toBeDefined();
+    expect(screen.getByText("Watch for the next official announcement.")).toBeDefined();
+  });
+
+  it("renders hero visual and summary blocks in featured variant", () => {
+    render(<StoryCard story={mockStory} variant="featured" />);
+    expect(screen.getByText("Why it matters")).toBeDefined();
+    expect(screen.getByText("What to watch")).toBeDefined();
+    expect(screen.getByText("Where reporting lines up")).toBeDefined();
   });
 
   it("uses compact snippet clamp styling in compact variant", () => {
     render(<StoryCard story={mockStory} variant="compact" />);
-    expect(screen.getByText("State Bank confirms $1.2bn receipt.").className).toContain("sb-clamp-1");
+    expect(screen.getByText("State Bank confirms $1.2bn receipt.").className).toContain("sb-clamp-2");
   });
 });

@@ -1,168 +1,91 @@
 "use client";
 
-import { useEffect, useRef, useState, type TouchEvent } from "react";
 import Link from "next/link";
 import StoryCard from "./StoryCard";
 import type { StoryCardData } from "@/data/types";
 
-const DEPTH_STYLE: { transform: string; opacity: number; zIndex: number }[] = [
-  { transform: "scale(1)", opacity: 1, zIndex: 10 },
-  { transform: "translate(7px, 11px) scale(0.978)", opacity: 0.76, zIndex: 9 },
-  { transform: "translate(14px, 20px) scale(0.962)", opacity: 0.54, zIndex: 8 },
-  { transform: "translate(20px, 29px) scale(0.948)", opacity: 0.38, zIndex: 7 },
-];
-const SWIPE_THRESHOLD_PX = 56;
-
 export default function Deck({ stories }: { stories: StoryCardData[] }) {
-  const [idx, setIdx] = useState(0);
-  const total = stories.length;
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
-  const suppressTap = useRef(false);
+  const [leadStory, ...remainingStories] = stories;
+  const supportingStories = remainingStories.slice(0, 2);
+  const lowerStories = remainingStories.slice(2);
 
-  useEffect(() => {
-    const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (!mq) return;
-    const update = () => setReduceMotion(mq.matches);
-    update();
-    mq.addEventListener?.("change", update);
-    return () => mq.removeEventListener?.("change", update);
-  }, []);
-
-  // Indices of cards currently visible (current + up-to-3 behind)
-  const visible: number[] = [];
-  for (let i = 0; i < 4 && idx + i < total; i++) visible.push(idx + i);
-
-  function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
-    const touch = event.touches[0];
-    touchStartX.current = touch.clientX;
-    touchStartY.current = touch.clientY;
-    setDragging(false);
-    setDragOffset(0);
-  }
-
-  function handleTouchMove(event: TouchEvent<HTMLDivElement>) {
-    if (touchStartX.current === null || touchStartY.current === null) return;
-    const touch = event.touches[0];
-    const dx = touch.clientX - touchStartX.current;
-    const dy = touch.clientY - touchStartY.current;
-
-    if (Math.abs(dx) <= Math.abs(dy)) return;
-    setDragging(true);
-    setDragOffset(dx);
-  }
-
-  function handleTouchEnd() {
-    if (!dragging) {
-      touchStartX.current = null;
-      touchStartY.current = null;
-      return;
-    }
-
-    if (dragOffset <= -SWIPE_THRESHOLD_PX && idx < total - 1) {
-      setIdx((current) => current + 1);
-    } else if (dragOffset >= SWIPE_THRESHOLD_PX && idx > 0) {
-      setIdx((current) => current - 1);
-    }
-
-    suppressTap.current = true;
-    window.setTimeout(() => {
-      suppressTap.current = false;
-    }, 140);
-
-    touchStartX.current = null;
-    touchStartY.current = null;
-    setDragging(false);
-    setDragOffset(0);
-  }
+  if (!leadStory) return null;
 
   return (
-    <div
-      aria-label="Morning brief deck"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
-    >
-      <div className="relative" style={{ height: 430 }}>
-        {[...visible].reverse().map((si) => {
-          const depth = si - idx;
-          const story = stories[si];
-          const ds = DEPTH_STYLE[depth];
-
-          return (
-            <div
-              key={story.story_id}
-              className="absolute inset-x-0 top-0"
-              style={{
-                ...ds,
-                transition: reduceMotion
-                  ? "none"
-                  : dragging && depth === 0
-                    ? "none"
-                  : "transform 0.24s ease-out, opacity 0.24s ease-out",
-                transformOrigin: "50% 50%",
-                filter: depth === 0 ? "none" : "saturate(0.92)",
-                transform:
-                  depth === 0 && dragging ? `${ds.transform} translateX(${dragOffset}px)` : ds.transform,
-              }}
-            >
-              {depth === 0 ? (
-                <Link
-                  href={`/stories/${story.story_id}`}
-                  className="block"
-                  onClick={(event) => {
-                    if (!suppressTap.current) return;
-                    event.preventDefault();
-                  }}
-                >
-                  <StoryCard story={story} />
-                </Link>
-              ) : (
-                <button
-                  className="block w-full text-left"
-                  onClick={() => setIdx(si)}
-                  aria-label={`Switch to story: ${story.headline}`}
-                >
-                  <StoryCard story={story} isBackground />
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-col items-center gap-1.5 mt-4">
-        <div className="flex gap-1.5">
-          {stories.map((_, i) => (
-            <button
-              key={i}
-              className="w-2 h-2 rounded-full transition-colors"
-              style={{
-                background: i === idx ? "var(--teal)" : "var(--hairline)",
-              }}
-              onClick={() => setIdx(i)}
-              aria-label={`Go to story ${i + 1}`}
-            />
-          ))}
+    <section aria-label="Morning brief">
+      <div className="flex items-end justify-between gap-3 mb-4">
+        <div>
+          <p className="sb-kicker">Today&apos;s brief</p>
+          <p className="text-sm mt-1" style={{ color: "var(--ink-muted)" }}>
+            Start with the lead story, then skim the rest in ranked order.
+          </p>
         </div>
-
-        <span className="text-xs font-medium" style={{ color: "var(--ink-muted)" }}>
-          {idx + 1} / {total}
+        <span
+          className="text-xs font-medium rounded-full px-2.5 py-1"
+          style={{
+            background: "color-mix(in srgb, var(--surface) 88%, var(--surface-base))",
+            border: "1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent)",
+            color: "var(--ink-muted)",
+          }}
+        >
+          {stories.length} stories
         </span>
       </div>
 
-      {idx >= total - 1 && (
-        <p
-          className="text-center text-sm mt-4 leading-relaxed"
-          style={{ color: "var(--ink-muted)" }}
-        >
-          You&apos;re all caught up.<br />Enjoy your day.
+      <div>
+        <p className="sb-kicker mb-3" style={{ color: "var(--teal)" }}>
+          Lead story
         </p>
-      )}
-    </div>
+        <Link href={`/stories/${leadStory.story_id}`} className="block sb-focusable">
+          <StoryCard story={leadStory} variant="featured" />
+        </Link>
+      </div>
+
+      {supportingStories.length ? (
+        <div className="mt-8">
+          <div className="flex items-end justify-between gap-3 mb-4">
+            <div>
+              <p className="sb-kicker">Also moving</p>
+              <p className="text-sm mt-1" style={{ color: "var(--ink-muted)" }}>
+                The next strongest stories in the brief.
+              </p>
+            </div>
+            <span className="sb-meta">{supportingStories.length} stories</span>
+          </div>
+          <div className="space-y-4">
+            {supportingStories.map((story) => (
+              <Link key={story.story_id} href={`/stories/${story.story_id}`} className="block sb-focusable">
+                <StoryCard story={story} variant="compact" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {lowerStories.length ? (
+        <div className="mt-8">
+          <div className="flex items-end justify-between gap-3 mb-4">
+            <div>
+              <p className="sb-kicker">Then worth your time</p>
+              <p className="text-sm mt-1" style={{ color: "var(--ink-muted)" }}>
+                The rest of the brief, still ordered by importance.
+              </p>
+            </div>
+            <span className="sb-meta">{lowerStories.length} more</span>
+          </div>
+          <div className="space-y-4">
+            {lowerStories.map((story) => (
+              <Link key={story.story_id} href={`/stories/${story.story_id}`} className="block sb-focusable">
+                <StoryCard story={story} variant="compact" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <p className="text-center text-sm mt-8 leading-relaxed" style={{ color: "var(--ink-muted)" }}>
+        You&apos;re all caught up.<br />The brief ends here on purpose.
+      </p>
+    </section>
   );
 }

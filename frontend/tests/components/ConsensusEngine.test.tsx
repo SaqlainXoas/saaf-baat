@@ -1,64 +1,82 @@
 import { render, screen } from "@testing-library/react";
 import ConsensusEngine from "@/components/ConsensusEngine";
 
-const facts = [
-  { text: "IMF confirms tranche release", type: "ORG", sources: 3 },
-  { text: "SBP reserves increase", type: "ORG", sources: 3 },
-  { text: "Extra fact that should be cut", type: "ORG", sources: 2 },
-];
-
-const claims = [
-  { text: "Long-term inflation impact", type: "MISC", sources: 2 },
-  { text: "Second claim that should be cut", type: "MISC", sources: 1 },
-];
+const story = {
+  story_id: "story-1",
+  created_at: "2026-02-04T06:05:00Z",
+  headline: "IMF Tranche Released: Rupee Strengthens",
+  snippet: "State Bank confirms $1.2bn receipt.",
+  category: "economy",
+  impact_labels: ["💳 WALLET", "🏛️ GOVERNANCE"],
+  confirmed_facts: [
+    { text: "IMF", type: "ORG", sources: 3 },
+    { text: "Pakistan", type: "GPE", sources: 3 },
+  ],
+  debated_claims: [{ text: "Long-term inflation impact", type: "MISC", sources: 2 }],
+  sources: [
+    { source: "dawn", count: 1 },
+    { source: "tribune", count: 1 },
+  ],
+  metadata: {
+    why_it_matters: "The release eases immediate default pressure.",
+    what_to_watch: "Watch the inflation and reform timetable next.",
+    story_tags: ["IMF", "Reserves", "Rupee"],
+  },
+  articles: [],
+};
 
 describe("ConsensusEngine", () => {
   it("renders section heading", () => {
-    render(<ConsensusEngine confirmedFacts={facts} debatedClaims={claims} sourceCount={3} />);
-    expect(screen.getByText("Consensus Engine")).toBeDefined();
+    render(<ConsensusEngine story={story as any} />);
+    expect(screen.getByText("Consensus Summary")).toBeDefined();
   });
 
   it("renders What's agreed block", () => {
-    render(<ConsensusEngine confirmedFacts={facts} debatedClaims={claims} sourceCount={3} />);
-    expect(screen.getByText("What's agreed")).toBeDefined();
+    render(<ConsensusEngine story={story as any} />);
+    expect(screen.getByText(/where reporting lines up/i)).toBeDefined();
   });
 
   it("renders What's debated block", () => {
-    render(<ConsensusEngine confirmedFacts={facts} debatedClaims={claims} sourceCount={3} />);
-    expect(screen.getByText("What's debated")).toBeDefined();
+    render(<ConsensusEngine story={story as any} />);
+    expect(screen.getByText(/what to watch/i)).toBeDefined();
   });
 
-  it("caps agreed facts at 2", () => {
-    render(<ConsensusEngine confirmedFacts={facts} debatedClaims={claims} sourceCount={3} />);
-    expect(screen.getByText("IMF confirms tranche release")).toBeDefined();
-    expect(screen.getByText("SBP reserves increase")).toBeDefined();
-    expect(screen.queryByText("Extra fact that should be cut")).toBeNull();
+  it("renders derived summary bullets", () => {
+    render(<ConsensusEngine story={story as any} />);
+    expect(screen.getByText(/Dawn and Tribune line up on the core development/i)).toBeDefined();
+    expect(screen.getByText(/Watch the inflation and reform timetable next/i)).toBeDefined();
   });
 
-  it("caps debated claims at 1", () => {
-    render(<ConsensusEngine confirmedFacts={facts} debatedClaims={claims} sourceCount={3} />);
-    expect(screen.getByText("Long-term inflation impact")).toBeDefined();
-    expect(screen.queryByText("Second claim that should be cut")).toBeNull();
+  it("uses bounded section headings for a single-source story", () => {
+    render(
+      <ConsensusEngine
+        story={{
+          ...story,
+          sources: [{ source: "dawn", count: 1 }],
+        } as any}
+      />,
+    );
+
+    expect(screen.getByText("What’s clear in current reporting")).toBeDefined();
+    expect(screen.getByText("What to Watch")).toBeDefined();
+    expect(screen.getByText(/Current reporting from Dawn points to the core development/i)).toBeDefined();
   });
 
-  it("shows source count", () => {
-    render(<ConsensusEngine confirmedFacts={[]} debatedClaims={[]} sourceCount={5} />);
-    expect(screen.getByText(/assessed: 5/)).toBeDefined();
-  });
+  it("does not turn noisy debated dates into user-facing bullets", () => {
+    render(
+      <ConsensusEngine
+        story={{
+          ...story,
+          debated_claims: [
+            { text: "A week", type: "DATE", sources: 1 },
+            { text: "April 3, 2026", type: "DATE", sources: 1 },
+          ],
+        } as any}
+      />,
+    );
 
-  it("renders empty-state copy when consensus lists are empty", () => {
-    render(<ConsensusEngine confirmedFacts={[]} debatedClaims={[]} sourceCount={1} />);
-    expect(screen.getByText("No clear consensus yet.")).toBeDefined();
-    expect(screen.getByText("No major debated claims.")).toBeDefined();
-  });
-
-  it("renders checkmark icons for agreed items", () => {
-    render(<ConsensusEngine confirmedFacts={facts.slice(0, 1)} debatedClaims={[]} sourceCount={1} />);
-    expect(screen.getByText("✓")).toBeDefined();
-  });
-
-  it("renders question-mark icons for debated items", () => {
-    render(<ConsensusEngine confirmedFacts={[]} debatedClaims={claims.slice(0, 1)} sourceCount={1} />);
-    expect(screen.getByText("?")).toBeDefined();
+    expect(screen.queryByText(/A week/i)).toBeNull();
+    expect(screen.queryByText(/April 3, 2026/i)).toBeNull();
+    expect(screen.getByText(/Watch the inflation and reform timetable next/i)).toBeDefined();
   });
 });

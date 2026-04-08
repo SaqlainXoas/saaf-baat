@@ -14,34 +14,26 @@ export default function DataStatusBanner({
   const latestUpdate = parseLatestUpdate(latestCreatedAt);
   const staleFeed = status === "live" && latestUpdate ? latestUpdate.ageHours >= staleAfterHours : false;
   if (!staleFeed && (status === "live" || status === "not-found")) return null;
+  const tone = status === "error-live-required" ? "error" : "warn";
 
   const body =
     staleFeed
-      ? `Feed may be stale. Last successful update: ${latestUpdate?.label}.`
+      ? `This brief may be stale. Last successful live update: ${latestUpdate?.label}.`
       : message ||
         (status === "mock-no-api"
-          ? "Showing local mock data. Set SUPABASE_URL + SUPABASE_ANON_KEY to load live stories."
+          ? "Showing the local preview brief because a live backend is not configured."
           : status === "error-live-required"
-            ? "Live data is required. Configure Supabase env so the frontend can read analyzed_feed."
-            : "Live data is unavailable. Showing fallback data for now.");
+            ? "Live briefing is required, but the frontend cannot reach the backend API."
+            : "Live briefing is unavailable right now. Showing the local preview brief instead.");
 
-  const nonLiveSuffix = !staleFeed && latestUpdate ? ` Last successful update: ${latestUpdate.label}.` : "";
-
-  const isError = status === "error-live-required";
+  const nonLiveSuffix = !staleFeed && latestUpdate ? ` Last successful live update: ${latestUpdate.label}.` : "";
 
   return (
     <div
       role="status"
-      className="rounded-2xl px-3 py-2 text-xs"
-      style={{
-        background: isError
-          ? "color-mix(in srgb, #e85d4f 22%, var(--surface))"
-          : "var(--amber-bg)",
-        border: isError
-          ? "1px solid color-mix(in srgb, #e85d4f 44%, var(--hairline))"
-          : "1px solid color-mix(in srgb, var(--amber-bg) 56%, var(--hairline))",
-        color: isError ? "var(--ink)" : "var(--ink)",
-      }}
+      aria-live="polite"
+      className="sb-status-banner"
+      data-tone={tone}
     >
       {body}
       {nonLiveSuffix}

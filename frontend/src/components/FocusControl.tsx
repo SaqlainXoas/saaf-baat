@@ -180,6 +180,7 @@ export default function FocusControl({
         footer={
           <div className="flex items-center justify-between gap-3">
             <button
+              type="button"
               className="sb-focusable text-sm font-medium px-2 py-1 rounded-lg"
               style={{ color: "var(--ink-muted)" }}
               onClick={clearAll}

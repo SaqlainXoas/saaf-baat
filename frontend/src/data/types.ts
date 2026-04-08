@@ -9,6 +9,14 @@ export interface SourceCountDTO {
   count: number;
 }
 
+export interface StoryMetadata {
+  why_it_matters?: string;
+  what_to_watch?: string;
+  editorial_priority?: number;
+  deterministic_publish_score?: number;
+  [key: string]: unknown;
+}
+
 export interface AnalyzedFeedRow {
   cluster_id: string;
   created_at: string;
@@ -32,7 +40,7 @@ export interface StoryCardData {
   confirmed_facts: EntityDTO[];
   debated_claims: EntityDTO[];
   sources: SourceCountDTO[];
-  metadata?: Record<string, unknown>;
+  metadata?: StoryMetadata;
 }
 
 export interface StoryArticleData {

@@ -11,7 +11,12 @@ describe("DataStatusBanner", () => {
   it("shows stale warning when live feed is old", () => {
     const stale = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
     render(<DataStatusBanner status="live" latestCreatedAt={stale} />);
-    expect(screen.getByRole("status").textContent).toContain("Feed may be stale");
+    expect(screen.getByRole("status").textContent).toContain("This brief may be stale");
+  });
+
+  it("announces status changes politely to assistive tech", () => {
+    render(<DataStatusBanner status="mock-no-api" />);
+    expect(screen.getByRole("status").getAttribute("aria-live")).toBe("polite");
   });
 
   it("shows strict live mode error message", () => {
@@ -22,5 +27,10 @@ describe("DataStatusBanner", () => {
       />,
     );
     expect(screen.getByRole("status").textContent).toContain("HTTP 503");
+  });
+
+  it("does not invent a last successful update when no live timestamp exists", () => {
+    render(<DataStatusBanner status="mock-no-api" />);
+    expect(screen.getByRole("status").textContent).not.toContain("Last successful live update");
   });
 });

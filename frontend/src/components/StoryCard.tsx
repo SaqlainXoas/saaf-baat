@@ -1,20 +1,14 @@
 import Pill from "./primitives/Pill";
 import Card from "./primitives/Card";
 import TrustPreview from "./TrustPreview";
+import StoryHeroVisual from "./StoryHeroVisual";
 import type { StoryCardData } from "@/data/types";
-
-function capitalise(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function getMetadataString(story: StoryCardData, key: string): string | null {
-  const raw = story.metadata?.[key];
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    return trimmed ? trimmed : null;
-  }
-  return null;
-}
+import {
+  capitalise,
+  formatCategory,
+  formatRelativeTime,
+  getMetadataString,
+} from "@/utils/storyMeta";
 
 export default function StoryCard({
   story,
@@ -29,8 +23,10 @@ export default function StoryCard({
   const sourceNames = story.sources.map((s) => capitalise(s.source));
   const isCompact = variant === "compact";
   const isFeatured = variant === "featured";
-  const whyItMatters = getMetadataString(story, "why_it_matters");
-  const whatToWatch = getMetadataString(story, "what_to_watch");
+  const isDefault = variant === "default";
+  const whyItMatters = getMetadataString(story.metadata, "why_it_matters");
+  const whatToWatch = getMetadataString(story.metadata, "what_to_watch");
+  const updatedAt = formatRelativeTime(story.created_at);
 
   const headlineClass = isFeatured
     ? "sb-headline-featured"
@@ -41,15 +37,37 @@ export default function StoryCard({
   const snippetClass = isFeatured
     ? "sb-snippet-featured sb-clamp-2"
     : isCompact
-      ? "sb-snippet-compact sb-clamp-1"
+      ? "sb-snippet-compact sb-clamp-2"
       : "sb-snippet-default sb-clamp-2";
+
+  const featuredNote = whyItMatters || whatToWatch;
 
   return (
     <Card
       interactive={!isBackground}
-      className={isFeatured ? "p-5" : isCompact ? "p-3.5" : "p-4"}
+      className={isFeatured ? "p-4 md:p-5" : isCompact ? "p-4" : "p-4"}
     >
-      <Pill label={primaryLabel} />
+      {isFeatured ? (
+        <div className="mb-4">
+          <StoryHeroVisual story={story} variant="brief" />
+        </div>
+      ) : null}
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Pill label={primaryLabel} />
+          {!isCompact ? (
+            <span className="sb-story-chip">
+              {formatCategory(story.category)}
+            </span>
+          ) : null}
+        </div>
+        {updatedAt ? (
+          <span className="sb-meta flex-shrink-0">
+            {updatedAt}
+          </span>
+        ) : null}
+      </div>
 
       <h2 className={`${headlineClass} mt-3 sb-clamp-2`}>
         {story.headline}
@@ -59,31 +77,36 @@ export default function StoryCard({
         {story.snippet}
       </p>
 
-      {isFeatured && (whyItMatters || whatToWatch) ? (
-        <div className="mt-3 space-y-2">
-          {whyItMatters ? (
-            <p className="text-sm" style={{ color: "var(--ink)" }}>
-              <span className="font-bold">Why it matters:</span> {whyItMatters}
-            </p>
-          ) : null}
-          {whatToWatch ? (
-            <p className="text-sm" style={{ color: "var(--ink)" }}>
-              <span className="font-bold">What to watch:</span> {whatToWatch}
-            </p>
-          ) : null}
+      {isFeatured && featuredNote ? (
+        <div className="mt-4 rounded-[20px] border px-4 py-3" style={{ borderColor: "var(--hairline)", background: "var(--surface-2)" }}>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
+            {whyItMatters ? "Why it matters" : "What to watch"}
+          </p>
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink)" }}>
+            {whyItMatters || whatToWatch}
+          </p>
         </div>
       ) : null}
 
-      <TrustPreview
-        confirmedFacts={story.confirmed_facts}
-        debatedClaims={story.debated_claims}
-        layout={isCompact ? "compact" : "default"}
-      />
+      {isFeatured ? <TrustPreview story={story} /> : null}
+
+      {isDefault && featuredNote ? (
+        <div className="mt-4 rounded-[22px] border px-4 py-3" style={{ borderColor: "var(--hairline)", background: "var(--surface-2)" }}>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
+            {whatToWatch ? "What to watch" : "Why it matters"}
+          </p>
+          <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink)" }}>
+            {whatToWatch || whyItMatters}
+          </p>
+        </div>
+      ) : null}
+
+      {isCompact ? <TrustPreview story={story} layout="compact" /> : null}
 
       <div className="flex items-center justify-between mt-3">
         <span className="sb-meta">
           {isCompact
-            ? `Sources assessed: ${story.sources.length}`
+            ? `${sourceNames.join(" • ") || `${story.sources.length} source${story.sources.length === 1 ? "" : "s"}`}`
             : `Sources assessed: ${sourceNames.join(" • ")}`}
         </span>
         {!isBackground && (

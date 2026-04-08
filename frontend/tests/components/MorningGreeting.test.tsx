@@ -4,7 +4,7 @@ import MorningGreeting from "@/components/MorningGreeting";
 describe("MorningGreeting", () => {
   it("renders the city name", () => {
     render(<MorningGreeting storyCount={5} />);
-    expect(screen.getByText(/Islamabad/)).toBeDefined();
+    expect(screen.getAllByText(/Islamabad/).length).toBeGreaterThan(0);
   });
 
   it("shows story count in context line", () => {
@@ -21,5 +21,16 @@ describe("MorningGreeting", () => {
   it("does not render fake weather", () => {
     render(<MorningGreeting storyCount={5} />);
     expect(screen.queryByText(/°C/)).toBeNull();
+  });
+
+  it("guides the user to start with the lead story", () => {
+    render(<MorningGreeting storyCount={5} />);
+    expect(screen.getByText(/Start with the lead story/i)).toBeDefined();
+  });
+
+  it("renders a real edition date instead of a placeholder label", () => {
+    render(<MorningGreeting storyCount={5} />);
+    expect(screen.queryByText(/^Today$/)).toBeNull();
+    expect(screen.getByText(/^[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2}$/)).toBeDefined();
   });
 });
