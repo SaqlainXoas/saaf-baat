@@ -12,7 +12,7 @@ Architecture:
 
 import re
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -78,6 +78,12 @@ class HybridOrchestrator:
         r"/article/\d+",  # Generic article
     ]
 
+    _PROMINENCE_BUCKETS = (
+        (1, "lead", {"feed": 24, "section": 18}),
+        (4, "topline", {"feed": 18, "section": 13}),
+        (8, "secondary", {"feed": 10, "section": 7}),
+    )
+
     def __init__(
         self,
         stealth_fetcher: Optional[StealthFetcher] = None,
@@ -104,6 +110,7 @@ class HybridOrchestrator:
         self,
         url: str,
         source: str = "unknown",
+        discovery_metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[RawArticle]:
         """
         Scrape a single article URL and return RawArticle.
@@ -127,7 +134,10 @@ class HybridOrchestrator:
             if scraped_article and scraped_article.is_valid():
                 # Success with stealth fetch
                 self._articles_scraped += 1
-                return scraped_article.to_raw_article(url=url, source=source)
+                article = scraped_article.to_raw_article(url=url, source=source)
+                if discovery_metadata:
+                    article.metadata = {**(article.metadata or {}), **discovery_metadata}
+                return article
 
         # Step 3: Playwright fallback
         if self._enable_playwright_fallback:
@@ -140,7 +150,10 @@ class HybridOrchestrator:
 
                 if scraped_article and scraped_article.is_valid():
                     self._articles_scraped += 1
-                    return scraped_article.to_raw_article(url=url, source=source)
+                    article = scraped_article.to_raw_article(url=url, source=source)
+                    if discovery_metadata:
+                        article.metadata = {**(article.metadata or {}), **discovery_metadata}
+                    return article
 
         # All methods failed
         logger.warning(f"Failed to scrape: {url}")
@@ -178,7 +191,7 @@ class HybridOrchestrator:
 
         if article_urls:
             # Use feed-discovered URLs directly
-            for article_url in article_urls:
+            for discovery_rank, article_url in enumerate(article_urls):
                 if len(articles) >= max_articles:
                     break
                 if article_url in known_urls:
@@ -187,7 +200,14 @@ class HybridOrchestrator:
                     continue
                 seen_urls.add(article_url)
 
-                article = self.scrape_url(article_url, source=source)
+                article = self.scrape_url(
+                    article_url,
+                    source=source,
+                    discovery_metadata=self._build_discovery_metadata(
+                        origin="feed",
+                        discovery_rank=discovery_rank,
+                    ),
+                )
                 if article and article.content_hash not in seen_hashes:
                     seen_hashes.add(article.content_hash)
                     articles.append(article)
@@ -205,7 +225,7 @@ class HybridOrchestrator:
 
                 extracted_urls = self._extract_article_urls(section_html, base_url, source)
 
-                for article_url in extracted_urls:
+                for discovery_rank, article_url in enumerate(extracted_urls):
                     if len(articles) >= max_articles:
                         break
                     if article_url in known_urls:
@@ -214,7 +234,15 @@ class HybridOrchestrator:
                         continue
                     seen_urls.add(article_url)
 
-                    article = self.scrape_url(article_url, source=source)
+                    article = self.scrape_url(
+                        article_url,
+                        source=source,
+                        discovery_metadata=self._build_discovery_metadata(
+                            origin="section",
+                            discovery_rank=discovery_rank,
+                            section_url=section_url,
+                        ),
+                    )
                     if article and article.content_hash not in seen_hashes:
                         seen_hashes.add(article.content_hash)
                         articles.append(article)
@@ -303,6 +331,33 @@ class HybridOrchestrator:
                 urls.append(full_url)
 
         return urls
+
+    @classmethod
+    def _build_discovery_metadata(
+        cls,
+        *,
+        origin: str,
+        discovery_rank: int,
+        section_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        rank = max(0, int(discovery_rank))
+        bucket = "tail"
+        score = 4 if origin == "feed" else 2
+        for cutoff, candidate_bucket, score_map in cls._PROMINENCE_BUCKETS:
+            if rank <= cutoff:
+                bucket = candidate_bucket
+                score = score_map.get(origin, score)
+                break
+
+        metadata: Dict[str, Any] = {
+            "discovery_origin": origin,
+            "discovery_rank": rank,
+            "source_prominence_score": score,
+            "topline_bucket": bucket,
+        }
+        if section_url:
+            metadata["discovery_section_url"] = section_url
+        return metadata
 
     def _extract_article_urls(
         self,

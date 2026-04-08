@@ -54,11 +54,11 @@ from src.utils.validators import validate_sources_config
 logger = logging.getLogger(__name__)
 
 _CATEGORY_IMPORTANCE: Dict[str, int] = {
-    "security": 28,
-    "economy": 24,
-    "politics": 22,
-    "city": 20,
-    "health": 20,
+    "security": 20,
+    "economy": 30,
+    "politics": 28,
+    "city": 24,
+    "health": 18,
     "education": 16,
     "international": 10,
     "technology": 8,
@@ -93,6 +93,12 @@ _SOFT_FEATURE_HEADLINE_PATTERNS = (
     "performer",
     "feels like a dream",
 )
+_TOPLINE_BUCKET_SCORES: Dict[str, int] = {
+    "lead": 4,
+    "topline": 3,
+    "secondary": 2,
+    "tail": 1,
+}
 
 
 @dataclass(frozen=True)
@@ -728,7 +734,14 @@ class PipelineOrchestrator:
         for candidate in candidates:
             score = self._candidate_publish_score(candidate)
             metadata = dict(candidate.base_feed.metadata or {})
+            prominence = self._candidate_publisher_topline(candidate)
             metadata["deterministic_publish_score"] = score
+            metadata["publisher_topline_score"] = prominence["score"]
+            metadata["publisher_topline_sources"] = prominence["sources"]
+            metadata["publisher_topline_lead_sources"] = prominence["lead_sources"]
+            metadata["publisher_topline_source_count"] = prominence["source_count"]
+            metadata["publisher_topline_bucket_score"] = prominence["bucket_score"]
+            metadata["selection_mode"] = "national_topline"
             candidate.base_feed.metadata = metadata
             if not self._is_publishable_candidate(candidate, score):
                 rejected_by_publish_gate += 1
@@ -775,7 +788,7 @@ class PipelineOrchestrator:
                 story = editorial_result.get(candidate.cluster_id)
                 if story is None:
                     continue
-                selected_candidates.append((candidate, story))
+                selected_candidates.append((candidate, self._apply_editorial_priority_guardrail(candidate, story)))
 
             selected_candidates.sort(
                 key=lambda row: (
@@ -867,12 +880,15 @@ class PipelineOrchestrator:
             return 0
         return max(1, min(int(configured_limit), len(items)))
 
-    @staticmethod
-    def _target_story_floor(items: Sequence[object], configured_limit: int = 9) -> int:
+    def _target_story_floor(self, items: Sequence[ClusterEditorialCandidate], configured_limit: int = 9) -> int:
         if not items:
             return 0
         if len(items) < 5:
             return 0
+        if len(items) >= 7:
+            seventh_score = self._candidate_publish_score(items[6])
+            if seventh_score >= 28:
+                return min(7, int(configured_limit), len(items))
         return min(5, int(configured_limit), len(items))
 
     def _rank_publishable_candidates(
@@ -882,11 +898,60 @@ class PipelineOrchestrator:
             candidates,
             key=lambda candidate: (
                 -self._candidate_publish_score(candidate),
+                -int((candidate.base_feed.metadata or {}).get("publisher_topline_score", 0) or 0),
                 -len(candidate.base_feed.source_attribution or {}),
                 -len(candidate.articles),
                 candidate.cluster_id.hex,
             ),
         )
+
+    @staticmethod
+    def _article_prominence_score(article: RawArticle) -> int:
+        metadata = article.metadata or {}
+        try:
+            return max(0, int(metadata.get("source_prominence_score", 0) or 0))
+        except Exception:
+            return 0
+
+    def _candidate_publisher_topline(self, candidate: ClusterEditorialCandidate) -> Dict[str, Any]:
+        strongest_by_source: Dict[str, int] = {}
+        bucket_score = 0
+        for article in candidate.articles:
+            prominence = self._article_prominence_score(article)
+            strongest_by_source[article.source] = max(strongest_by_source.get(article.source, 0), prominence)
+            bucket = str((article.metadata or {}).get("topline_bucket", "tail"))
+            bucket_score += _TOPLINE_BUCKET_SCORES.get(bucket, 1)
+
+        score = min(sum(strongest_by_source.values()), 42)
+        lead_sources = sum(1 for value in strongest_by_source.values() if value >= 18)
+        sources = sorted(source for source, value in strongest_by_source.items() if value >= 10)
+        return {
+            "score": score,
+            "lead_sources": lead_sources,
+            "source_count": len(sources),
+            "sources": sources,
+            "bucket_score": bucket_score,
+        }
+
+    def _apply_editorial_priority_guardrail(
+        self,
+        candidate: ClusterEditorialCandidate,
+        story: Any,
+    ) -> Any:
+        metadata = candidate.base_feed.metadata or {}
+        deterministic_score = int(metadata.get("deterministic_publish_score", self._candidate_publish_score(candidate)) or 0)
+        publisher_topline_score = int(metadata.get("publisher_topline_score", 0) or 0)
+        guarded_priority = int(
+            round(
+                (int(story.priority) * 0.6)
+                + (deterministic_score * 0.3)
+                + (publisher_topline_score * 0.5)
+            )
+        )
+        guarded_priority = max(0, min(100, guarded_priority))
+        if guarded_priority == int(story.priority):
+            return story
+        return story.model_copy(update={"priority": guarded_priority})
 
     @staticmethod
     def _normalized_embedding_matrix(articles: Sequence[RawArticle]) -> Optional[np.ndarray]:
@@ -956,13 +1021,19 @@ class PipelineOrchestrator:
         facts_score = min(len(feed.confirmed_facts or []), 4) * 2
         breadth_score = min(source_breadth, 3) * 7
         size_score = min(source_count, 5) * 3
+        prominence = self._candidate_publisher_topline(candidate)
+        publisher_topline_score = prominence["score"]
+        publisher_topline_bonus = min(publisher_topline_score, 34)
+        lead_source_bonus = min(int(prominence["lead_sources"]) * 4, 10)
+        topline_source_bonus = min(int(prominence["source_count"]) * 2, 6)
         recency_hours = (datetime.now(timezone.utc) - self._candidate_latest_timestamp(candidate)).total_seconds() / 3600.0
         recency_penalty = 0
         if recency_hours > 24:
             recency_penalty = 6
         elif recency_hours > 12:
             recency_penalty = 3
-        single_source_penalty = 10 if source_breadth == 1 else 0
+        max_article_prominence = max((self._article_prominence_score(article) for article in candidate.articles), default=0)
+        single_source_penalty = 4 if source_breadth == 1 and max_article_prominence >= 18 else 10 if source_breadth == 1 else 0
         weak_category_penalty = 8 if category in {"other", "technology", "international"} else 0
         suspicious_date_penalty = min(self._candidate_suspicious_publish_dates(candidate) * 6, 18)
         headline = (feed.headline or "").strip().lower()
@@ -970,6 +1041,9 @@ class PipelineOrchestrator:
         if headline and not (impact_labels & _HIGH_IMPACT_LABELS):
             if any(pattern in headline for pattern in _SOFT_FEATURE_HEADLINE_PATTERNS):
                 soft_feature_penalty = 12
+        low_prominence_incident_penalty = 0
+        if category in {"security", "city"} and publisher_topline_score < 16 and source_breadth < 3:
+            low_prominence_incident_penalty = 10
 
         score = (
             category_score
@@ -978,11 +1052,15 @@ class PipelineOrchestrator:
             + facts_score
             + breadth_score
             + size_score
+            + publisher_topline_bonus
+            + lead_source_bonus
+            + topline_source_bonus
             - recency_penalty
             - single_source_penalty
             - weak_category_penalty
             - suspicious_date_penalty
             - soft_feature_penalty
+            - low_prominence_incident_penalty
         )
         return max(0, min(100, int(score)))
 
