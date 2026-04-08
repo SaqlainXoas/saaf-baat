@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import uuid4
 
@@ -129,3 +130,36 @@ def test_feed_route_caps_entities_in_payload():
     payload = res.json()
     assert len(payload[0]["confirmed_facts"]) == 8
     assert len(payload[0]["debated_claims"]) == 12
+
+
+def test_feed_route_sorts_by_editorial_priority_before_created_at():
+    older_high_priority = AnalyzedFeed(
+        cluster_id=uuid4(),
+        created_at=datetime(2026, 4, 3, 10, 0, tzinfo=timezone.utc),
+        headline="Higher-priority story",
+        summary="Should lead despite being older.",
+        category="economy",
+        impact_labels=["💳 WALLET"],
+        source_attribution={"dawn": 2},
+        metadata={"editorial_priority": 95, "deterministic_publish_score": 80},
+    )
+    newer_lower_priority = AnalyzedFeed(
+        cluster_id=uuid4(),
+        created_at=datetime(2026, 4, 3, 11, 0, tzinfo=timezone.utc),
+        headline="Lower-priority story",
+        summary="Newer but weaker.",
+        category="economy",
+        impact_labels=["💳 WALLET"],
+        source_attribution={"tribune": 1},
+        metadata={"editorial_priority": 70, "deterministic_publish_score": 40},
+    )
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: _FakeDB([newer_lower_priority, older_high_priority])  # type: ignore[assignment]
+    client = TestClient(app)
+
+    res = client.get("/api/feed?limit=10")
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload[0]["headline"] == "Higher-priority story"
+    assert payload[1]["headline"] == "Lower-priority story"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from datetime import timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -39,6 +40,26 @@ def _to_story_card(feed) -> StoryCardDTO:
     )
 
 
+def _metadata_int(feed, key: str) -> int:
+    raw = (feed.metadata or {}).get(key, 0)
+    try:
+        return int(raw)
+    except Exception:
+        return 0
+
+
+def _story_sort_key(feed) -> tuple[float, float, float, str]:
+    created_at = feed.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return (
+        -_metadata_int(feed, "editorial_priority"),
+        -_metadata_int(feed, "deterministic_publish_score"),
+        -created_at.timestamp(),
+        str(feed.cluster_id),
+    )
+
+
 @router.get("/feed", response_model=list[StoryCardDTO])
 def get_feed(
     category: Optional[str] = None,
@@ -50,4 +71,5 @@ def get_feed(
         feeds = db.get_analyzed_feed(category=category, impact_label=impact_label, limit=limit)
     except DatabaseError as exc:
         raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}")
+    feeds = sorted(feeds, key=_story_sort_key)
     return [_to_story_card(f) for f in feeds]
