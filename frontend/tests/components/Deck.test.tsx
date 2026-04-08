@@ -26,13 +26,13 @@ describe("Deck", () => {
 
   it("renders the first story as the lead story", () => {
     render(<Deck stories={stories} />);
-    expect(screen.getByText("Lead story")).toBeDefined();
+    expect(screen.getByText("Top story")).toBeDefined();
     expect(screen.getByRole("link", { name: /Headline 1/i }).getAttribute("href")).toBe("/stories/1");
   });
 
   it("renders supporting stories in ranked order", () => {
     render(<Deck stories={stories} />);
-    expect(screen.getByText("Also moving")).toBeDefined();
+    expect(screen.getByText("Next up")).toBeDefined();
     expect(screen.getByRole("link", { name: /Headline 2/i }).getAttribute("href")).toBe("/stories/2");
     expect(screen.getByRole("link", { name: /Headline 3/i }).getAttribute("href")).toBe("/stories/3");
     expect(screen.getByText("Then worth your time")).toBeDefined();

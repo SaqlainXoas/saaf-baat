@@ -31,54 +31,47 @@ export default function DesktopBrief({
       <BrandHeader availableSources={availableSources} storyCount={stories.length} />
       <DataStatusBanner status={status} message={statusMessage} latestCreatedAt={latestCreatedAt} />
 
-      <section className="mt-12 grid grid-cols-12 gap-10 items-start">
-        <div className="col-span-8">
-          <div className="mb-7 max-w-2xl">
-            <p className="sb-kicker">Lead story</p>
-            <p className="text-sm mt-2 max-w-2xl" style={{ color: "var(--ink-muted)" }}>
-              The strongest signal in today&apos;s brief, with the clearest reporting support and the most immediate public consequence.
-            </p>
+      <section className="mt-8">
+        <div className="mb-5 flex items-end justify-between gap-4">
+          <div>
+            <p className="sb-kicker">Top of the brief</p>
+            <p className="sb-meta mt-2">Start here, then move through the next strongest stories.</p>
           </div>
-
-          <Link href={`/stories/${featuredStory.story_id}`} className="block sb-focusable" data-testid="desktop-featured-preview">
-            <StoryCard story={featuredStory} variant="featured" />
-          </Link>
+          <p className="sb-meta">{stories.length} ranked stories</p>
         </div>
 
-        <aside className="col-span-4 space-y-5">
-          <div className="sb-sidebar-note">
-            <p className="sb-kicker" style={{ color: "var(--teal)" }}>
-              Supporting stories
-            </p>
-            <p className="mt-3 text-2xl font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
-              The next strongest signals
-            </p>
-            <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
-              Read these after the lead to round out the morning picture without losing the ranking.
-            </p>
+        <div className="grid grid-cols-12 gap-5 items-start">
+          <div id="lead-story" tabIndex={-1} className="col-span-12 xl:col-span-6">
+            <Link
+              href={`/stories/${featuredStory.story_id}`}
+              className="block sb-focusable"
+              data-testid="desktop-featured-preview"
+              data-skip-target="stories"
+            >
+              <StoryCard story={featuredStory} variant="featured" />
+            </Link>
           </div>
 
           {sidebarStories.map((story) => (
-            <Link
-              key={story.story_id}
-              href={`/stories/${story.story_id}`}
-              className="block sb-focusable"
-              data-testid={`desktop-sidebar-${story.story_id}`}
-            >
-              <StoryCard story={story} variant="compact" />
-            </Link>
+            <div key={story.story_id} className="col-span-12 md:col-span-6 xl:col-span-3">
+              <Link
+                href={`/stories/${story.story_id}`}
+                className="block sb-focusable h-full"
+                data-testid={`desktop-sidebar-${story.story_id}`}
+              >
+                <StoryCard story={story} variant="supporting" />
+              </Link>
+            </div>
           ))}
-        </aside>
+        </div>
       </section>
 
       {lowerStories.length ? (
-        <section className="mt-12">
+        <section className="mt-10">
           <div className="flex items-end justify-between gap-4 mb-5">
             <div>
               <p className="sb-kicker">More to know</p>
-              <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
-                The rest of the brief, still ordered by importance.
-              </p>
+              <p className="sb-meta mt-2">The rest of the brief, still ordered by importance.</p>
             </div>
             <p className="sb-meta">{lowerStories.length} more stories</p>
           </div>

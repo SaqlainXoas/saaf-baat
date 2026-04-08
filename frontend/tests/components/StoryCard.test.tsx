@@ -62,11 +62,11 @@ describe("StoryCard", () => {
     expect(screen.getByText("Watch for the next official announcement.")).toBeDefined();
   });
 
-  it("renders hero visual and summary blocks in featured variant", () => {
+  it("renders a lighter featured card treatment", () => {
     render(<StoryCard story={mockStory} variant="featured" />);
-    expect(screen.getByText("Why it matters")).toBeDefined();
-    expect(screen.getByText("What to watch")).toBeDefined();
-    expect(screen.getByText("Where reporting lines up")).toBeDefined();
+    expect(screen.queryByText("Source support")).toBeNull();
+    expect(screen.getByText("Household costs and market confidence can shift quickly.")).toBeDefined();
+    expect(screen.queryByText("Clear:")).toBeNull();
   });
 
   it("uses compact snippet clamp styling in compact variant", () => {

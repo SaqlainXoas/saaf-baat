@@ -38,26 +38,29 @@ export default function StoryHeroVisual({
   variant = "default",
 }: {
   story: StoryCardData;
-  variant?: "default" | "compact" | "brief";
+  variant?: "default" | "compact" | "brief" | "cue";
 }) {
   const compact = variant !== "default";
   const isBrief = variant === "brief";
+  const isCue = variant === "cue";
   const tone = getTone(story.category);
   const sourceLabel = story.sources.map((source) => capitalise(source.source)).join(" • ");
   const sourceTitle = story.sources.length <= 1 ? "Current reporting" : "Source support";
   const rawTags = story.metadata?.story_tags;
   const storyTags = Array.isArray(rawTags)
-    ? rawTags.map((tag) => String(tag)).slice(0, compact ? 1 : 2)
+    ? rawTags.map((tag) => String(tag)).slice(0, isCue ? 1 : compact ? 1 : 2)
     : [];
 
   return (
     <div
-      className={`relative overflow-hidden rounded-[28px] border ${compact ? "aspect-[5/4]" : "aspect-[16/9]"}`}
+      className={`relative overflow-hidden border ${
+        isCue ? "rounded-[22px] min-h-[148px]" : compact ? "rounded-[24px] aspect-[5/4]" : "rounded-[28px] aspect-[16/9]"
+      }`}
       style={{
-        aspectRatio: isBrief ? "16 / 11" : undefined,
+        aspectRatio: isBrief ? "16 / 11" : isCue ? "5 / 4" : undefined,
         background: tone.background,
         borderColor: "rgba(255,255,255,0.08)",
-        boxShadow: "0 26px 70px -30px rgba(11, 18, 32, 0.45)",
+        boxShadow: isCue ? "0 18px 42px -28px rgba(11, 18, 32, 0.4)" : "0 26px 70px -30px rgba(11, 18, 32, 0.45)",
       }}
     >
       <div
@@ -68,11 +71,15 @@ export default function StoryHeroVisual({
         }}
       />
       <div
-        className={`absolute ${isBrief ? "inset-y-4 left-4 w-20" : "inset-y-6 left-6 w-24"} rounded-[22px]`}
+        className={`absolute ${
+          isCue ? "inset-y-4 left-4 w-16" : isBrief ? "inset-y-4 left-4 w-20" : "inset-y-6 left-6 w-24"
+        } rounded-[22px]`}
         style={{ background: tone.accent, filter: "blur(2px)" }}
       />
       <div
-        className={`absolute ${isBrief ? "bottom-4 right-4 px-3 py-2" : "bottom-6 right-6 px-4 py-3"} rounded-[20px] border backdrop-blur-sm`}
+        className={`absolute ${
+          isCue ? "right-3 top-3 max-w-[60%] px-3 py-2" : isBrief ? "bottom-4 right-4 px-3 py-2" : "bottom-6 right-6 px-4 py-3"
+        } rounded-[20px] border backdrop-blur-sm`}
         style={{
           borderColor: "rgba(255,255,255,0.14)",
           background: "rgba(255,255,255,0.08)",
@@ -80,16 +87,20 @@ export default function StoryHeroVisual({
         }}
       >
         <p className="text-[10px] font-bold uppercase tracking-[0.22em] opacity-70">{sourceTitle}</p>
-        <p className={`mt-1 ${isBrief ? "text-xs" : "text-sm"} font-semibold`}>{sourceLabel || "Live brief"}</p>
+        <p className={`mt-1 ${isCue || isBrief ? "text-xs" : "text-sm"} font-semibold`}>{sourceLabel || "Live brief"}</p>
       </div>
-      <div className={`absolute ${isBrief ? "left-4 top-4 gap-1.5" : "left-6 top-6 gap-2"} flex flex-wrap items-center`}>
+      <div
+        className={`absolute ${
+          isCue ? "left-3 top-3 gap-1.5 max-w-[58%]" : isBrief ? "left-4 top-4 gap-1.5" : "left-6 top-6 gap-2"
+        } flex flex-wrap items-center`}
+      >
         <span
-          className={`inline-flex items-center rounded-full ${isBrief ? "px-2.5 py-1" : "px-3 py-1"} text-[10px] font-bold uppercase tracking-[0.2em]`}
+          className={`inline-flex items-center rounded-full ${isCue || isBrief ? "px-2.5 py-1" : "px-3 py-1"} text-[10px] font-bold uppercase tracking-[0.2em]`}
           style={{ background: tone.chip, color: "rgba(255,255,255,0.92)" }}
         >
           {formatCategory(story.category)}
         </span>
-        {(story.impact_labels || []).slice(0, compact ? 1 : 2).map((label) => (
+        {(story.impact_labels || []).slice(0, isCue ? 1 : compact ? 1 : 2).map((label) => (
           <span
             key={label}
             className="inline-flex items-center rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em]"
@@ -100,11 +111,15 @@ export default function StoryHeroVisual({
         ))}
       </div>
       {storyTags.length ? (
-        <div className={`absolute ${isBrief ? "left-4 bottom-4 max-w-[55%]" : "left-6 bottom-6 max-w-[60%]"}`}>
+        <div
+          className={`absolute ${
+            isCue ? "left-3 bottom-3 max-w-[48%]" : isBrief ? "left-4 bottom-4 max-w-[55%]" : "left-6 bottom-6 max-w-[60%]"
+          }`}
+        >
           {storyTags.map((tag) => (
             <div
               key={tag}
-              className={`mb-2 inline-flex rounded-full ${isBrief ? "px-2.5 py-1 text-[11px]" : "px-3 py-1 text-xs"} font-medium`}
+              className={`mb-2 inline-flex rounded-full ${isCue || isBrief ? "px-2.5 py-1 text-[11px]" : "px-3 py-1 text-xs"} font-medium`}
               style={{
                 background: "rgba(255,255,255,0.08)",
                 color: "rgba(255,255,255,0.88)",

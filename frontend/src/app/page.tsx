@@ -5,6 +5,7 @@ import Deck from "@/components/Deck";
 import Link from "next/link";
 import { applyFilters, deriveAvailableSources, parseFilters } from "@/utils/focusFilters";
 import DataStatusBanner from "@/components/DataStatusBanner";
+import SkipLink from "@/components/SkipLink";
 
 const MAX_STORIES = 9;
 
@@ -38,13 +39,7 @@ export default async function Home({
   return (
     <div className="min-h-screen" style={{ background: "var(--paper)" }}>
       <div className="bg-ambient" />
-      <a
-        href="#main-content"
-        className="sb-focusable absolute left-3 top-3 z-40 rounded-lg px-3 py-2 text-xs font-bold"
-        style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--hairline)" }}
-      >
-        Skip to stories
-      </a>
+      <SkipLink label="Skip to stories" selector='[data-skip-target="stories"]' />
 
       <main id="main-content" className="relative" role="main">
         {/* ── Desktop: single-flow brief (feed) ── */}
