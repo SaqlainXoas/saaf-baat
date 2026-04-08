@@ -1,6 +1,6 @@
 # Saaf Baat Final Ready Plan
 
-Status date: **April 3, 2026**
+Status date: **April 8, 2026**
 
 ## Objective
 
@@ -28,22 +28,73 @@ Working:
 - editorial prompt now explicitly targets a `5-9` brief and the orchestrator can supplement editorial under-selection up to the floor of `5` when enough publishable candidates exist
 - editorial candidate prompts now use trusted timestamps and surface suspicious publish-date counts instead of blindly passing raw publish dates
 - latest constrained live acceptance run produced `5` coherent cards with live Gemini-first editorial success and all three core sources contributing fresh rows
+- the latest verified April 8 live run published `7` cards and `/health` reported `pipeline_is_stale: false`
+- frontend now consumes the backend `/api/feed` and `/api/stories/{cluster_id}` contracts instead of direct Supabase table reads
+- frontend detail pages can now show real original-source article links from backend story detail data
+- frontend ship-pass implementation is in place with a calmer editorial presentation system, and local `npm test` plus `npm run build` both pass
+- frontend feed presentation now sorts live stories by editorial priority instead of insertion timestamp semantics
+- frontend/detail trust presentation no longer relies on raw entity chips as literal consensus bullets; it now derives cleaner editorial summary copy from sources, tags, `why_it_matters`, and `what_to_watch`
+- story detail source lists now filter obviously unrelated cluster members before they are shown as supporting reports
+- frontend live fetches now bypass stale brief caching so a fresh publish is visible immediately
+- desktop homepage and story detail layouts have been reshaped around the local Stitch concept references under `UI-concepts/stitch/`
+- the homepage hierarchy now follows a premium editorial structure:
+  - one clear lead story
+  - two supporting sidebar stories
+  - the remaining brief in a lower ranked grid
+- detail pages now use a richer editorial hero, cleaner source presentation, and a more honest “consensus summary” block
+- story detail pages have been compressed into a quick-brief layout with top reporting links above the fold
+- deterministic ranking now carries publisher-prominence signals from ordered discovery and scores the brief as a national-topline product, not only as a coherent civic-impact product
 
 Not finished:
 
 - repeated-run consistency still needs monitoring across additional live runs
 - source coverage is not broad enough beyond the reliable core set
 - editorial LLM layer is now **Gemini-first** with Groq fallback and is working in live conditions; repeated-run reliability still needs confirmation
-- deterministic ranking/publish gating was tightened in this iteration, and soft-feature score tuning was added; continue live confirmation that softer feature stories do not occupy slots when stronger civic/public-interest stories exist
+- deterministic ranking/publish gating was tightened in this iteration, and soft-feature score tuning was added; continue live confirmation that softer or second-tier stories do not occupy slots when stronger civic/public-interest stories exist
 - freshness and publish-date trust have been tightened in both scoring and editorial prompt inputs, but still need live DB confirmation against suspicious rows
-- frontend presentation still needs final polish and confirmation against the improved live brief
+- frontend now has the intended live-data contract, corrected ranking semantics, and a stronger visual system, but still needs final live visual confirmation against the improved brief
+- the product is now good enough for serious UI review, but homepage composition still may over-weight the lead story visually
+- payload cleanup is not fully complete: backend `confirmed_facts` and `debated_claims` still contain some noisy entity/date fragments even though the frontend suppresses the worst presentation issues
+- final frontend polish still depends on one more real-browser pass to confirm:
+  - homepage ranking feels right
+  - the visual hierarchy feels premium rather than heavy
+  - story detail still feels fast and finite, not article-like
+  - source lists stay clean across multiple live stories
 
 ## Current Main Blockers
 
 - Repeated-run confidence: the backend now has a clean constrained acceptance run, but should still be watched across additional live runs.
-- Deterministic ranking/publish gating tightening is implemented; continue live confirmation so softer feature stories do not occupy slots that should go to stronger civic and public-interest stories.
+- Deterministic ranking/publish gating tightening is implemented; continue live confirmation so softer or second-tier stories do not occupy slots that should go to stronger civic and public-interest stories.
 - Freshness and publish-date trust handling is hardened more consistently in code and prompt inputs, but still needs live confirmation against the suspicious rows already present in Supabase.
-- Frontend handoff and presentation validation are now the next major workstream.
+- Frontend composition review remains the main product-facing workstream.
+- Cluster cleanliness should continue to be monitored in live output even though obviously unrelated source links are now filtered before display.
+- Publisher-prominence scoring still needs watching because several published stories can still carry weak or zero prominence scores.
+
+## Frontend UI Hardening
+
+Issues fixed in this pass:
+
+- homepage was effectively featuring stories by insertion order instead of editorial rank
+- the old `What&apos;s agreed` / `What&apos;s debated` UI was misleading because it surfaced raw extracted entity fragments
+- detail pages could show obviously unrelated supporting articles from slightly noisy clusters
+- the desktop homepage felt too sticky, too tall, and too much like stacked cards rather than a clean morning brief
+
+Redesign completed in this pass:
+
+- replaced the sticky featured-preview layout with a more editorial homepage structure inspired by the local Stitch concepts
+- introduced a richer lead-story treatment with a visual hero and cleaner supporting hierarchy
+- restyled compact cards so the brief reads like ranked editorial coverage rather than duplicate oversized cards
+- rebuilt the trust presentation into a sentence-level summary block that is closer to the intended product meaning
+- refreshed story-detail layout so it feels closer to a premium article brief with stronger hierarchy and cleaner original-source presentation
+- later tightened that story-detail layout into a faster quick-brief surface with top reporting links inside the main brief card
+
+What still remains after this pass:
+
+- one more live browser verification pass across multiple stories on desktop and mobile
+- confirm the lead story now consistently matches backend editorial priority in live output
+- confirm the homepage lead/supporting/grid balance feels premium rather than oversized
+- confirm the new summary blocks feel honest and useful across several real stories, not just one or two
+- continue watching for cluster contamination upstream even though the UI now suppresses the most obvious bad source links
 
 ## Release Definition
 
@@ -113,6 +164,20 @@ Reason:
 - switched editorial prompt timestamps to trusted timestamps and surfaced suspicious publish-date counts
 - added regression coverage for editorial prompt shape, trusted timestamp signalling, and story-floor supplementation
 - verified a constrained live run with `5` final cards, live Gemini-first editorial success, good core-source coverage, and clean cluster coherence
+- switched the frontend live-data adapter from direct Supabase reads to the backend API DTOs
+- fixed the frontend live detail route so it can render original source articles from `/api/stories/{cluster_id}`
+- implemented a calm editorial UI pass across the homepage, cards, and story detail view
+- added frontend regression coverage for the backend API adapter and richer featured-card metadata rendering
+- verified local frontend test and production build success after the live-data and UI pass
+- re-ranked frontend feed presentation by editorial priority so the homepage lead story aligns with the backend editorial decision
+- replaced raw “agreed/debated” entity chips with derived editorial summary blocks that better match the intended product meaning
+- aligned homepage and story-detail visual hierarchy with the local Stitch concept exports while preserving Saaf Baat branding and `Subah Bakhair` framing
+- added display-side filtering of obviously unrelated source links in story detail output and backend tests to lock it in
+- added a new frontend presentation helper layer to derive cleaner summary language from live backend story data
+- added freshness-safe frontend API fetch behavior so the live brief updates immediately after publish
+- added publisher-topline discovery metadata and national-topline-aware ranking guardrails
+- reshaped story detail pages into quick-brief reading surfaces instead of article-like pages
+- verified a fresh April 8 live run with `7` published cards, `pipeline_is_stale: false`, and quality-report success
 
 ## Must Fix Before Ship
 
@@ -124,10 +189,11 @@ Reason:
 - [x] Implement Gemini-first editorial with structured JSON output (`application/json`) and configurable model selection
 - [ ] Confirm editorial operational reliability across repeated runs: Gemini-first should keep succeeding and Groq fallback should remain rare
 - [x] Confirm in a fresh live run that deterministic fallback never inserts more than the configured `5-9` brief size
-- [ ] Confirm via repeated live runs that deterministic ranking/publish-gate tightening plus editorial floor supplementation removes softer feature survivors when stronger civic/public-interest stories exist
+- [ ] Confirm via repeated live runs that deterministic ranking/publish-gate tightening plus editorial floor supplementation removes softer or second-tier survivors when stronger civic/public-interest stories exist
 - [ ] Confirm in a fresh live run that suspicious `publish_date` rows lose ranking strength and do not dominate the brief or the editorial prompt
 - [x] Re-check duplicate suppression, event grouping, and publish gating on the newest live batch
-- [ ] Confirm the frontend shows the improved live brief cleanly
+- [ ] Confirm the frontend shows the improved live brief cleanly with real backend API data on desktop and mobile after the latest ranking and UI-hardening pass
+- [ ] Make a final call on homepage composition density and lead-card weight after reviewing the fresh live brief in a real browser
 
 ## Should Fix Soon After Ship
 
@@ -144,10 +210,10 @@ Reason:
 
 ## Immediate Next Execution Order
 
-1. Freeze the current backend path and move to frontend polish/integration.
-2. Keep monitoring repeated constrained live runs for `5-9` consistency and soft-story suppression.
-3. Re-check suspicious-date behavior on future live rows.
-4. Validate the frontend presentation against the improved live brief.
+1. Review the fresh live brief in a real browser and decide whether homepage lead/supporting/grid composition needs one more density pass.
+2. Confirm the homepage lead card matches editorial priority rather than insertion order.
+3. Keep monitoring repeated constrained live runs for `5-9` consistency and soft-story suppression.
+4. Re-check suspicious-date behavior, prominence scoring, and cluster cleanliness on future live rows.
 
 ## Verification Commands
 
@@ -186,9 +252,9 @@ npm run build
 ## Current Confidence Estimate
 
 - technical foundation: `95%`
-- actual product readiness for the intended morning brief: `92-94%`
+- actual product readiness for the intended morning brief: `93-95%`
 
 Reason:
 
-- the backend now has a clean live acceptance run that matches the intended brief shape
-- remaining work is mostly repeated-run confidence and frontend presentation, not major backend architecture or pipeline rework
+- the backend now has a fresh live run that matches the intended brief shape more closely, including true topline stories
+- remaining work is final composition judgment, repeated-run confidence, and semantic cleanup rather than major backend architecture or pipeline rework

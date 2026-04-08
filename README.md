@@ -24,6 +24,7 @@ These decisions are currently intentional and active:
 
 - Keep the feed finite: target `5-9` cards, not endless scrolling.
 - Prefer importance over recency.
+- Treat the brief as **national-topline first**, then strongest direct public-life stories.
 - Prefer one clean card per real story over multiple headline variants.
 - Keep deterministic extraction for evidence, attribution, and clustering support.
 - Use the LLM layer only for bounded editorial selection and card framing, not for free-form rewriting of the whole product.
@@ -34,10 +35,11 @@ These decisions are currently intentional and active:
 - Allow a strong single-source story only when the civic or public-impact signal is clearly high.
 - Treat suspicious publish dates as low-confidence data, not as automatically trustworthy.
 - Prefer a small set of reliable Pakistani sources over a large unreliable source list.
+- Keep story pages as quick briefs, not long article clones.
 
 ## Current Status
 
-As of `2026-04-03`, the backend has passed a clean constrained live acceptance run and is ready for frontend handoff.
+As of `2026-04-08`, the backend and frontend are both on the intended live contract, the brief is fresh in Supabase, and the product is in final ship review rather than architecture rebuild mode.
 
 Working:
 
@@ -45,18 +47,31 @@ Working:
 - Gemini embeddings are working with DB-compatible `768` dimensions
 - deterministic event grouping replaced whole-batch density clustering in production
 - deterministic analysis and publish gating are wired end-to-end
-- Gemini-first structured editorial review is working live, with Groq fallback still available
+- Gemini-first structured editorial review is working live, with Groq fallback retained as backup
 - deterministic fallback now keeps the brief finite if editorial fails
 - Dawn same-site filtering is hardened across RSS-first and HTML discovery
 - recent constrained live runs now produce a finite `5-9` morning brief instead of collapsing into one blob or overflowing the feed
-- the latest constrained live acceptance run produced `5` coherent cards with all three core sources contributing fresh rows
+- the latest fresh live run produced `7` published cards with all three core sources contributing
+- the brief now ranks toward Pakistan morning toplines first by carrying ordered discovery prominence into publish scoring
+- frontend now reads the backend `/api/feed` and `/api/stories/{cluster_id}` DTOs instead of direct Supabase table reads
+- detail pages can now render real original-source article links from the backend story route
+- frontend fetches now use live API data directly instead of serving stale cached brief data after a publish
+- homepage and story detail UI now follow the Stitch-inspired editorial system more closely
+- story detail pages now behave like quick briefs instead of mini article pages
+- frontend test suites and production build are green on the current worktree
+- the latest verified `/health` check shows:
+  - `pipeline_is_stale: false`
+  - `latest_feed_created_at: 2026-04-08T10:17:46.144314Z`
+  - `last_successful_pipeline_run_at: 2026-04-08T10:17:47Z`
 
 Still being monitored:
 
 - repeated-run consistency: keep the brief in `5-9` across additional live runs
-- final story quality: keep softer feature stories out when stronger civic/public-interest stories exist
+- final story quality: keep softer or second-tier stories out when stronger national/public-interest stories exist
 - suspicious publish-date handling: verify on future live rows that stale timestamps do not drive ranking or editorial pressure
-- scrape runtime: acceptable for now, but still slower than ideal
+- publisher-prominence tuning: several stories still carry `publisher_topline_score = 0`, so topline ranking should keep being watched
+- payload semantics: extracted `confirmed_facts` and `debated_claims` still contain some noisy entity/date fragments even though the frontend now hides the worst of that
+- final homepage composition: the product is good enough to review seriously, but the public-facing homepage balance still needs final visual judgment in a real browser
 
 ## Current Source Status
 
@@ -79,8 +94,9 @@ scrape sources
 -> normalize + deduplicate
 -> embed articles with Gemini
 -> cluster related coverage
+-> score source prominence and national-topline strength
 -> run deterministic analysis
--> run bounded Groq editorial review on candidates
+-> run bounded Gemini-first editorial review on candidates
 -> publish the best morning-brief cards
 -> serve via FastAPI to the Next.js frontend
 ```
@@ -107,7 +123,13 @@ This is intentionally bounded. The system is not meant to become an opaque LLM-o
 
 ## Main Problem We Are Solving Now
 
-The core challenge is no longer basic plumbing or story formation. The remaining challenge is repeated-run confidence and final product polish.
+The core challenge is no longer basic plumbing or story formation.
+
+The remaining challenge is final product judgment:
+
+- keep the selected `5-9` stories aligned with what a Pakistan reader would actually expect as the day’s toplines
+- keep homepage composition feeling premium and finite rather than oversized or article-heavy
+- keep the product honest about what the backend truly knows
 
 The main architecture issue is already fixed:
 
@@ -117,29 +139,31 @@ The main architecture issue is already fixed:
 The remaining live issues are narrower:
 
 - keep the surviving `5-9` stories on-mission for a must-know Pakistan morning brief
-- continue suppressing softer feature/lifestyle stories when harder public-interest stories are available
+- continue suppressing weaker or second-tier survivors when stronger national/public-life stories are available
 - keep repeated editorial runs reliable enough that fallback remains exceptional
 - keep freshness and publish-date handling trustworthy on future live rows
+- finish the final homepage/detail visual signoff in a real browser
 
 ## Next Phase
 
-The current phase is `frontend handoff with backend monitoring`.
+The current phase is `final frontend composition review with backend monitoring`.
 
 The next work items are:
 
-1. Move to frontend polish and presentation work against the now-stable backend brief shape.
-2. Keep monitoring constrained live runs for repeated `5-9` consistency.
+1. Review the live homepage and story detail hierarchy in a real browser and decide whether the lead-story composition is still too heavy.
+2. Keep monitoring constrained live runs for repeated `5-9` consistency and better topline selection.
 3. Re-check publish-date and freshness handling on future live rows.
-4. Do only light backend tuning unless a new live regression appears.
+4. Do only targeted backend ranking/prominence tuning unless a new live regression appears.
 
 ## Main Remaining Risks
 
 These are the current areas still worth watching:
 
 - repeated-run confidence, not one-run confidence
-- occasional softer survivors if ranking/editorial pressure drifts
+- occasional second-tier survivors if ranking/editorial pressure drifts
 - suspicious publish dates on future live rows
-- frontend presentation quality now becoming the main product-facing gap
+- some remaining headline/detail payload noise below the UI layer
+- final live homepage composition judgment is still pending
 
 ## Repository Layout
 
@@ -221,13 +245,13 @@ Important optional controls:
 
 Frontend env usually needs:
 
-- `NEXT_PUBLIC_API_URL`
+- `BACKEND_API_BASE_URL` or `NEXT_PUBLIC_BACKEND_API_BASE_URL`
 - `NEXT_PUBLIC_STRICT_LIVE_DATA=1`
 - `NEXT_PUBLIC_CITY_NAME`
 - `NEXT_PUBLIC_DEFAULT_THEME`
 - `REVALIDATE_SECRET`
 
-See `backend/.env.example` for the backend template.
+See `backend/.env.example` for the backend template and `frontend/.env.example` for the frontend live-data template.
 
 ## Useful Commands
 
