@@ -31,7 +31,7 @@ export default async function Home({
   const filters = parseFilters(urlParams);
   const filtered = applyFilters(allStories, filters);
   const stories = filtered.slice(0, MAX_STORIES);
-  const latestCreatedAt = feedResult.latestPipelineRunAt || allStories[0]?.created_at;
+  const latestCreatedAt = feedResult.latestPipelineRunAt;
   const hasFilters = urlParams.has("impact") || urlParams.has("sources");
   const hasLiveDataError = feedResult.status === "error-live-required";
 
@@ -96,10 +96,10 @@ function LiveDataErrorState({ message, compact = false }: { message?: string; co
   return (
     <div className={`text-center ${compact ? "py-10" : "py-20"} px-6`}>
       <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
-        Live data unavailable
+        Live brief unavailable
       </p>
       <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
-        {message || "Configure SUPABASE_URL + SUPABASE_ANON_KEY to view the brief."}
+        {message || "The live morning brief could not be loaded right now."}
       </p>
       <Link
         href="/"
@@ -116,12 +116,12 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
   return (
     <div className="text-center py-20 px-6">
       <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
-        {hasFilters ? "No stories match your focus" : "Nothing new yet"}
+        {hasFilters ? "No stories match this focus" : "Today’s brief is not ready yet"}
       </p>
       <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
         {hasFilters
-          ? "Try clearing filters to see the full brief."
-          : "Check back later — your morning brief is still being assembled."}
+          ? "Try a broader focus to see the full brief."
+          : "Check back shortly. The next live brief has not been published yet."}
       </p>
       {hasFilters ? (
         <Link
@@ -129,7 +129,7 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
           className="inline-block mt-4 text-sm font-bold sb-focusable px-4 py-2 rounded-xl"
           style={{ background: "var(--surface)", border: "1px solid var(--hairline)", color: "var(--ink)" }}
         >
-          Clear filters
+          Clear focus
         </Link>
       ) : null}
     </div>

@@ -1,62 +1,66 @@
-import Chip from "./primitives/Chip";
-import type { EntityDTO } from "@/data/types";
+import type { StoryCardData } from "@/data/types";
+import { buildConsensusSummary } from "@/utils/storyPresentation";
 
 export default function TrustPreview({
-  confirmedFacts,
-  debatedClaims,
+  story,
   layout = "default",
 }: {
-  confirmedFacts: EntityDTO[];
-  debatedClaims: EntityDTO[];
+  story: StoryCardData;
   layout?: "default" | "compact";
 }) {
-  const agreed = confirmedFacts.slice(0, 2);
-  const debated = debatedClaims.slice(0, 1);
+  const summary = buildConsensusSummary(story);
+  const agreed = summary.agreed.slice(0, layout === "compact" ? 1 : 2);
+  const debated = summary.debated.slice(0, 1);
+  const isSingleSource = story.sources.length <= 1;
+  const agreedLabel = isSingleSource ? "What’s clear in current reporting" : "Where reporting lines up";
+  const debatedLabel = "What to watch";
 
   if (layout === "compact") {
     return (
-      <div className="flex gap-1.5 mt-2 flex-wrap items-center">
-        {agreed.map((e, i) => (
-          <Chip key={`a-${i}`} label={e.text} variant="agreed" />
-        ))}
-        {debated.map((e, i) => (
-          <Chip key={`d-${i}`} label={e.text} variant="debated" />
-        ))}
+      <div className="mt-3 space-y-1.5">
+        {agreed[0] ? (
+          <p className="text-xs leading-relaxed" style={{ color: "var(--ink-muted)" }}>
+            <span className="font-semibold" style={{ color: "var(--ink)" }}>
+              Clear:
+            </span>{" "}
+            {agreed[0]}
+          </p>
+        ) : null}
+        {debated[0] ? (
+          <p className="text-xs leading-relaxed" style={{ color: "var(--ink-muted)" }}>
+            <span className="font-semibold" style={{ color: "var(--ink)" }}>
+              Watch:
+            </span>{" "}
+            {debated[0]}
+          </p>
+        ) : null}
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-      <div>
-        <span className="text-xs font-medium" style={{ color: "var(--ink-muted)" }}>
-          Agreed across sources
-        </span>
-        <div className="flex gap-1.5 mt-1 flex-wrap">
-          {agreed.map((e, i) => (
-            <Chip key={i} label={e.text} variant="agreed" />
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+      <div className="sb-summary-panel sb-summary-panel-agreed">
+        <p className="sb-summary-label">{agreedLabel}</p>
+        <ul className="mt-3 space-y-2">
+          {agreed.map((item) => (
+            <li key={item} className="sb-summary-item">
+              <span className="sb-summary-bullet">✓</span>
+              <span>{item}</span>
+            </li>
           ))}
-          {agreed.length === 0 ? (
-            <span className="text-xs" style={{ color: "var(--ink-muted)" }}>
-              —
-            </span>
-          ) : null}
-        </div>
+        </ul>
       </div>
-      <div>
-        <span className="text-xs font-medium" style={{ color: "var(--ink-muted)" }}>
-          Debated / emerging
-        </span>
-        <div className="flex gap-1.5 mt-1 flex-wrap">
-          {debated.map((e, i) => (
-            <Chip key={i} label={e.text} variant="debated" />
+      <div className="sb-summary-panel sb-summary-panel-debated">
+        <p className="sb-summary-label">{debatedLabel}</p>
+        <ul className="mt-3 space-y-2">
+          {debated.map((item) => (
+            <li key={item} className="sb-summary-item">
+              <span className="sb-summary-bullet">?</span>
+              <span>{item}</span>
+            </li>
           ))}
-          {debated.length === 0 ? (
-            <span className="text-xs" style={{ color: "var(--ink-muted)" }}>
-              —
-            </span>
-          ) : null}
-        </div>
+        </ul>
       </div>
     </div>
   );

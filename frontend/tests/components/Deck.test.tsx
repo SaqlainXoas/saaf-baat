@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import Deck from "@/components/Deck";
 import type { StoryCardData } from "@/data/types";
 
@@ -17,46 +17,39 @@ function story(id: string): StoryCardData {
 }
 
 describe("Deck", () => {
-  const stories = [story("1"), story("2"), story("3")];
+  const stories = [story("1"), story("2"), story("3"), story("4")];
 
-  it("renders progress counter", () => {
+  it("renders the story count summary", () => {
     render(<Deck stories={stories} />);
-    expect(screen.getByText("1 / 3")).toBeDefined();
+    expect(screen.getByText("4 stories")).toBeDefined();
   });
 
-  it("switches cards when dot is clicked", () => {
+  it("renders the first story as the lead story", () => {
     render(<Deck stories={stories} />);
-    fireEvent.click(screen.getByLabelText("Go to story 2"));
-    expect(screen.getByText("2 / 3")).toBeDefined();
+    expect(screen.getByText("Lead story")).toBeDefined();
+    expect(screen.getByRole("link", { name: /Headline 1/i }).getAttribute("href")).toBe("/stories/1");
   });
 
-  it("shows caught-up copy on the last card", () => {
+  it("renders supporting stories in ranked order", () => {
     render(<Deck stories={stories} />);
-    fireEvent.click(screen.getByLabelText("Go to story 3"));
+    expect(screen.getByText("Also moving")).toBeDefined();
+    expect(screen.getByRole("link", { name: /Headline 2/i }).getAttribute("href")).toBe("/stories/2");
+    expect(screen.getByRole("link", { name: /Headline 3/i }).getAttribute("href")).toBe("/stories/3");
+    expect(screen.getByText("Then worth your time")).toBeDefined();
+    expect(screen.getByRole("link", { name: /Headline 4/i }).getAttribute("href")).toBe("/stories/4");
+  });
+
+  it("shows the finite-end copy", () => {
+    render(<Deck stories={stories} />);
     expect(screen.getByText(/You're all caught up/)).toBeDefined();
-    expect(screen.getByText(/Enjoy your day/)).toBeDefined();
+    expect(screen.getByText(/The brief ends here on purpose/)).toBeDefined();
   });
 
-  it("moves to next story on left swipe", () => {
+  it("keeps all story links keyboard-focusable", () => {
     render(<Deck stories={stories} />);
-    const deck = screen.getByLabelText("Morning brief deck");
 
-    fireEvent.touchStart(deck, { touches: [{ clientX: 240, clientY: 120 }] });
-    fireEvent.touchMove(deck, { touches: [{ clientX: 140, clientY: 120 }] });
-    fireEvent.touchEnd(deck);
-
-    expect(screen.getByText("2 / 3")).toBeDefined();
-  });
-
-  it("moves to previous story on right swipe", () => {
-    render(<Deck stories={stories} />);
-    const deck = screen.getByLabelText("Morning brief deck");
-
-    fireEvent.click(screen.getByLabelText("Go to story 2"));
-    fireEvent.touchStart(deck, { touches: [{ clientX: 120, clientY: 120 }] });
-    fireEvent.touchMove(deck, { touches: [{ clientX: 220, clientY: 120 }] });
-    fireEvent.touchEnd(deck);
-
-    expect(screen.getByText("1 / 3")).toBeDefined();
+    screen.getAllByRole("link").forEach((link) => {
+      expect(link.className).toContain("sb-focusable");
+    });
   });
 });

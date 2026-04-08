@@ -8,6 +8,7 @@ export default function Button({
   variant = "ghost",
   size = "md",
   className = "",
+  type,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   children: ReactNode;
@@ -37,6 +38,7 @@ export default function Button({
   return (
     <button
       {...props}
+      type={type ?? "button"}
       className={`sb-focusable inline-flex items-center justify-center gap-2 font-medium transition-colors ${sizeClass} ${className}`}
       style={variantStyle}
     >

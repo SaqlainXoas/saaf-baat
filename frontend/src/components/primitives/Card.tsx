@@ -17,21 +17,12 @@ export default function Card({
     variant === "flat"
       ? "sb-surface"
       : variant === "inset"
-        ? "sb-surface"
+        ? "sb-surface sb-surface-inset"
         : "sb-card";
 
   return (
     <div
       className={`w-full p-4 ${base} ${interactive ? "sb-card-interactive" : ""} ${className}`}
-      style={
-        variant === "inset"
-          ? {
-              background: "var(--surface-2)",
-              border: "1px solid var(--hairline)",
-              boxShadow: "none",
-            }
-          : undefined
-      }
     >
       {children}
     </div>

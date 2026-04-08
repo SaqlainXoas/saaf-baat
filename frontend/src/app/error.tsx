@@ -13,8 +13,9 @@ export default function Error({ reset }: { error: Error; reset: () => void }) {
         We couldn&apos;t load the brief. Please try again.
       </p>
       <button
+        type="button"
         onClick={reset}
-        className="mt-4 px-5 py-2 rounded-xl text-sm font-bold text-white"
+        className="mt-4 px-5 py-2 rounded-xl text-sm font-bold text-white sb-focusable"
         style={{ background: "var(--teal)" }}
       >
         Try again

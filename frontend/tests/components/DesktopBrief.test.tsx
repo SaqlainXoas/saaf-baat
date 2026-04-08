@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import DesktopBrief from "@/components/DesktopBrief";
 import type { StoryCardData } from "@/data/types";
 
@@ -20,49 +20,24 @@ function story(id: string): StoryCardData {
 }
 
 describe("DesktopBrief", () => {
-  const stories = [story("1"), story("2"), story("3")];
+  const stories = [story("1"), story("2"), story("3"), story("4")];
 
-  it("shows first story in featured preview by default", () => {
+  it("shows first story as the lead story", () => {
     render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
 
     const featured = screen.getByTestId("desktop-featured-preview");
     expect(within(featured).getByText("Headline 1")).toBeDefined();
-    expect(within(featured).getByRole("link").getAttribute("href")).toBe("/stories/1");
+    expect(featured.getAttribute("href")).toBe("/stories/1");
   });
 
-  it("does not duplicate active featured story inside compact list", () => {
+  it("renders sidebar stories separately from the lead", () => {
     render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
-    expect(screen.queryByTestId("desktop-compact-1")).toBeNull();
-    expect(screen.getByTestId("desktop-compact-2")).toBeDefined();
-    expect(screen.getByTestId("desktop-compact-3")).toBeDefined();
+    expect(screen.getByTestId("desktop-sidebar-2")).toBeDefined();
+    expect(screen.getByTestId("desktop-sidebar-3")).toBeDefined();
   });
 
-  it("updates featured preview on compact card hover", () => {
+  it("renders lower grid stories when enough stories are present", () => {
     render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
-
-    fireEvent.mouseEnter(screen.getByTestId("desktop-compact-2"));
-    const featured = screen.getByTestId("desktop-featured-preview");
-    expect(within(featured).getByText("Headline 2")).toBeDefined();
-    expect(within(featured).getByRole("link").getAttribute("href")).toBe("/stories/2");
-  });
-
-  it("resets featured preview to first story after hover-out", () => {
-    render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
-
-    fireEvent.mouseEnter(screen.getByTestId("desktop-compact-3"));
-    fireEvent.mouseLeave(screen.getByTestId("desktop-compact-list"));
-
-    const featured = screen.getByTestId("desktop-featured-preview");
-    expect(within(featured).getByText("Headline 1")).toBeDefined();
-    expect(within(featured).getByRole("link").getAttribute("href")).toBe("/stories/1");
-  });
-
-  it("updates featured preview on keyboard focus", () => {
-    render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
-
-    fireEvent.focus(screen.getByTestId("desktop-compact-3"));
-    const featured = screen.getByTestId("desktop-featured-preview");
-    expect(within(featured).getByText("Headline 3")).toBeDefined();
-    expect(within(featured).getByRole("link").getAttribute("href")).toBe("/stories/3");
+    expect(screen.getByTestId("desktop-grid-4")).toBeDefined();
   });
 });

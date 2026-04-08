@@ -31,9 +31,17 @@ describe("OriginalSourcesList", () => {
 
   it("renders each article headline with capitalised source", () => {
     render(<OriginalSourcesList articles={articles} />);
-    expect(screen.getByText(/Dawn: Pakistan IMF talks/)).toBeDefined();
-    expect(screen.getByText(/Geo: Markets react/)).toBeDefined();
-    expect(screen.getByText(/Tribune: Analysts watch/)).toBeDefined();
+    expect(screen.getByText("Dawn")).toBeDefined();
+    expect(screen.getByText(/Pakistan IMF talks/)).toBeDefined();
+    expect(screen.getByText("Geo")).toBeDefined();
+    expect(screen.getByText(/Markets react/)).toBeDefined();
+    expect(screen.getByText("Tribune")).toBeDefined();
+    expect(screen.getByText(/Analysts watch/)).toBeDefined();
+  });
+
+  it("shows source timestamps as concrete Pakistan time when available", () => {
+    render(<OriginalSourcesList articles={articles} />);
+    expect(screen.getByText(/Published (?:4 Feb|Feb 4), 9:30\s?(?:am|AM) PKT/i)).toBeDefined();
   });
 
   it("renders a Read link for each article", () => {
@@ -59,6 +67,12 @@ describe("OriginalSourcesList", () => {
     });
   });
 
+  it("gives each Read link a descriptive accessible name", () => {
+    render(<OriginalSourcesList articles={articles} />);
+    expect(screen.getByLabelText(/Read Dawn report: Pakistan IMF talks underway/i)).toBeDefined();
+    expect(screen.getByLabelText(/Read Geo report: Markets react positively/i)).toBeDefined();
+  });
+
   it("does not render View all reports when there are 4 or fewer entries", () => {
     render(<OriginalSourcesList articles={articles} />);
     expect(screen.queryByText(/View all \d+ reports/)).toBeNull();
@@ -75,6 +89,13 @@ describe("OriginalSourcesList", () => {
     render(<OriginalSourcesList articles={[]} />);
     expect(screen.getByText("Original sources")).toBeDefined();
     expect(screen.queryByText("Read")).toBeNull();
+    expect(screen.getByText(/still being attached to this brief/i)).toBeDefined();
+    expect(screen.getByText(/not available for this story yet/i)).toBeDefined();
+  });
+
+  it("uses single-source copy when only one article link is available", () => {
+    render(<OriginalSourcesList articles={[articles[0]]} />);
+    expect(screen.getByText(/currently links to one original publisher report/i)).toBeDefined();
   });
 
   it("shows View all reports when there are more than 4 entries", () => {
@@ -95,10 +116,12 @@ describe("OriginalSourcesList", () => {
     ];
     render(<OriginalSourcesList articles={many as any} />);
 
-    expect(screen.queryByText(/Geo: Fifth/)).toBeNull();
-    fireEvent.click(screen.getByText("View all 5 reports →"));
-    expect(screen.getByText(/Geo: Fifth/)).toBeDefined();
+    expect(screen.queryByText(/Fifth/)).toBeNull();
+    const toggle = screen.getByText("View all 5 reports →");
+    expect(toggle.getAttribute("aria-controls")).toBe("original-sources-list");
+    fireEvent.click(toggle);
+    expect(screen.getByText(/Fifth/)).toBeDefined();
     fireEvent.click(screen.getByText("Show fewer reports"));
-    expect(screen.queryByText(/Geo: Fifth/)).toBeNull();
+    expect(screen.queryByText(/Fifth/)).toBeNull();
   });
 });

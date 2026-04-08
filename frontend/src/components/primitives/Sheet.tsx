@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const SHEET_ANIM_MS = 170;
 
@@ -35,12 +35,13 @@ export default function Sheet({
   widthClassName?: string;
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const lastActive = useMemo(() => (typeof document !== "undefined" ? document.activeElement : null), []);
+  const lastActiveRef = useRef<Element | null>(null);
   const [rendered, setRendered] = useState(open);
   const [visible, setVisible] = useState(open);
 
   useEffect(() => {
     if (open) {
+      lastActiveRef.current = typeof document !== "undefined" ? document.activeElement : null;
       setRendered(true);
       const raf = window.requestAnimationFrame(() => setVisible(true));
       return () => window.cancelAnimationFrame(raf);
@@ -80,9 +81,9 @@ export default function Sheet({
 
   useEffect(() => {
     if (open) return;
-    const el = lastActive as HTMLElement | null;
+    const el = lastActiveRef.current as HTMLElement | null;
     el?.focus?.();
-  }, [open, lastActive]);
+  }, [open]);
 
   if (!rendered) return null;
 
@@ -118,6 +119,7 @@ export default function Sheet({
               {title}
             </h2>
             <button
+              type="button"
               onClick={onClose}
               className="sb-focusable text-sm font-medium px-2 py-1 rounded-lg"
               style={{ color: "var(--ink-muted)" }}
