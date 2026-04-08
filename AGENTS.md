@@ -3,7 +3,7 @@
 ## Current Phase
 
 - Working directory: `/Users/saqlain/projects/personal/saaf-baat`
-- Active phase: `frontend handoff with backend monitoring`
+- Active phase: `final frontend composition review with backend monitoring`
 - Core product target: a trustworthy Pakistan morning brief with `5-9` must-know stories
 - Source-of-truth docs:
   - `README.md`
@@ -36,6 +36,7 @@ These decisions are currently approved and should be treated as active constrain
   - core sources must work reliably every day
   - flaky or partial sources should be disabled, not tolerated
 - Morning brief size should be flexible `5-9`, not forced to `9`
+- Brief selection is national-topline first, then strongest direct public-life stories
 - A single-source story may still publish if it has strong civic/public-impact value
 - LLM use should stay bounded to editorial selection and presentation support
 - Story grouping should use a deterministic event-graph approach, not global HDBSCAN/DBSCAN as the primary source of truth
@@ -44,6 +45,7 @@ These decisions are currently approved and should be treated as active constrain
 - Do not preserve the current global clustering path as an operational fallback once the new event-grouping path is implemented
 - Suspicious publish dates should lower confidence, not be trusted blindly
 - Cards should emphasize `why_it_matters` and `what_to_watch`
+- Story pages should read as quick briefs, not long article pages
 - Category surface should stay small and user-legible
 
 ## Working Principles
@@ -54,6 +56,7 @@ These decisions are currently approved and should be treated as active constrain
 - If a source is flaky, fix it properly or disable it.
 - If a heuristic chain becomes hard to reason about, simplify it.
 - Do not optimize for article volume. Optimize for morning-brief quality.
+- Do not let the UI overstate what the backend actually knows.
 - Do not revert unrelated user changes in a dirty worktree.
 
 ## Documentation Hygiene
@@ -118,10 +121,12 @@ Pre-ship confidence means:
 
 - fresh live rows come from the intended reliable sources
 - the feed consistently produces `5-9` distinct meaningful cards
+- the selected set feels like the day’s true Pakistan toplines, not merely coherent clusters
 - duplicate events are merged well without collapsing different events into one blob
 - source attribution is trustworthy
 - dates are believable
 - the editorial layer works reliably enough that deterministic fallback is exceptional
-- frontend presentation is clear and stable
+- frontend presentation is clear, finite, and quick to scan
+- story detail pages feel like fast briefs rather than mini articles
 
 If those conditions are not true in live output, the product is not ready.
