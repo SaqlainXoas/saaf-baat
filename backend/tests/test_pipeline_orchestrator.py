@@ -1570,6 +1570,262 @@ def test_suspicious_publish_date_penalty_lowers_publish_score(tmp_path):
     assert suspicious == baseline - 12
 
 
+def test_publish_score_carries_publisher_topline_metadata(tmp_path):
+    sources_yaml = tmp_path / "sources.yaml"
+    sources_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "sources": {
+                    "dawn": {"url": "https://example.com", "sections": ["pakistan"], "enabled": False},
+                    "geo": {"url": "https://example.com", "sections": ["pakistan"], "enabled": False},
+                    "tribune": {"url": "https://example.com", "sections": ["business"], "enabled": False},
+                },
+                "scraping_config": {"max_articles_per_source": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    rules_path = Path(__file__).resolve().parent.parent / "config" / "classification_rules.yaml"
+
+    class _Analyzer:
+        def choose_representative_article(self, articles: List[RawArticle]) -> RawArticle:
+            return articles[0]
+
+        def analyze_cluster(self, cluster_id: UUID, articles: List[RawArticle]) -> AnalyzedFeed:
+            sources: Dict[str, int] = {}
+            for a in articles:
+                sources[a.source] = sources.get(a.source, 0) + 1
+            return AnalyzedFeed(
+                cluster_id=cluster_id,
+                headline="Pakistan facilitates US-Iran ceasefire",
+                summary="Pakistan says it helped secure a ceasefire understanding.",
+                category="politics",
+                confirmed_facts=[],
+                debated_claims=[],
+                impact_labels=["🏛️ GOVERNANCE"],
+                source_attribution=sources,
+                entity_counts={},
+                classification_confidence=0.8,
+                metadata={},
+            )
+
+    db = FakeDB()
+    cluster_id = db.create_cluster(article_ids=[])
+    now = datetime.now(timezone.utc)
+    articles = [
+        RawArticle(
+            source="dawn",
+            url="https://example.com/a",
+            headline="Pakistan facilitates US-Iran ceasefire",
+            main_text=("x " * 80),
+            scraped_at=now,
+            embedding=[1.0, 0.0, 0.0],
+            metadata={"source_prominence_score": 24, "topline_bucket": "lead"},
+        ),
+        RawArticle(
+            source="geo",
+            url="https://example.com/b",
+            headline="Pakistan role praised in US-Iran ceasefire",
+            main_text=("x " * 80),
+            scraped_at=now,
+            embedding=[0.99, 0.01, 0.0],
+            metadata={"source_prominence_score": 18, "topline_bucket": "topline"},
+        ),
+        RawArticle(
+            source="tribune",
+            url="https://example.com/c",
+            headline="Ceasefire follows Pakistan mediation effort",
+            main_text=("x " * 80),
+            scraped_at=now,
+            embedding=[0.98, 0.02, 0.0],
+            metadata={"source_prominence_score": 18, "topline_bucket": "topline"},
+        ),
+    ]
+    for article in articles:
+        db.insert_article(article)
+        db.assign_to_cluster(article.id, cluster_id)
+        db._clusters_by_id[cluster_id].add_article(article.id)
+
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(
+            sources_yaml=sources_yaml,
+            classification_yaml=rules_path,
+            recluster_recent_window=False,
+        ),
+        db=db,  # type: ignore[arg-type]
+        scraper=FakeScraper({}),  # type: ignore[arg-type]
+        analyzer=_Analyzer(),  # type: ignore[arg-type]
+    )
+
+    runner.run()
+
+    feed = db._feed_by_cluster[cluster_id]
+    assert feed.metadata["publisher_topline_score"] >= 36
+    assert set(feed.metadata["publisher_topline_sources"]) == {"dawn", "geo", "tribune"}
+    assert feed.metadata["selection_mode"] == "national_topline"
+
+
+def test_editorial_guardrail_demotes_low_prominence_incident_below_topline_story(tmp_path):
+    sources_yaml = tmp_path / "sources.yaml"
+    sources_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "sources": {
+                    "dawn": {"url": "https://example.com", "sections": ["pakistan"], "enabled": False},
+                    "geo": {"url": "https://example.com", "sections": ["pakistan"], "enabled": False},
+                    "tribune": {"url": "https://example.com", "sections": ["business"], "enabled": False},
+                },
+                "scraping_config": {"max_articles_per_source": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    rules_path = Path(__file__).resolve().parent.parent / "config" / "classification_rules.yaml"
+
+    class _Analyzer:
+        def choose_representative_article(self, articles: List[RawArticle]) -> RawArticle:
+            return articles[0]
+
+        def analyze_cluster(self, cluster_id: UUID, articles: List[RawArticle]) -> AnalyzedFeed:
+            sources: Dict[str, int] = {}
+            for a in articles:
+                sources[a.source] = sources.get(a.source, 0) + 1
+            lead_headline = articles[0].headline
+            if "ceasefire" in lead_headline.lower():
+                return AnalyzedFeed(
+                    cluster_id=cluster_id,
+                    headline=lead_headline,
+                    summary="Pakistan says it helped secure a ceasefire understanding.",
+                    category="politics",
+                    confirmed_facts=[],
+                    debated_claims=[],
+                    impact_labels=["🏛️ GOVERNANCE"],
+                    source_attribution=sources,
+                    entity_counts={},
+                    classification_confidence=0.8,
+                    metadata={},
+                )
+            return AnalyzedFeed(
+                cluster_id=cluster_id,
+                headline=lead_headline,
+                summary="Attack leaves multiple casualties in Bannu.",
+                category="security",
+                confirmed_facts=[],
+                debated_claims=[],
+                impact_labels=["🛡️ SAFETY"],
+                source_attribution=sources,
+                entity_counts={},
+                classification_confidence=0.8,
+                metadata={},
+            )
+
+    class _EditorialThatGetsLeadWrong:
+        model = "fake-editorial"
+
+        def review_clusters(self, candidates, *, max_stories: int = 9):
+            from src.agents.editorial import EditorialStory
+
+            selected = {}
+            for candidate in candidates:
+                is_topline = "ceasefire" in candidate.base_feed.headline.lower()
+                selected[candidate.cluster_id] = EditorialStory(
+                    cluster_id=str(candidate.cluster_id),
+                    priority=70 if is_topline else 95,
+                    headline=candidate.base_feed.headline,
+                    summary=candidate.base_feed.summary or "Summary",
+                    category=str(candidate.base_feed.category),
+                    impact_labels=list(candidate.base_feed.impact_labels or ["🏛️ GOVERNANCE"]),
+                    why_it_matters="This has direct public relevance.",
+                    what_to_watch="Watch for the next official update.",
+                    public_impact="high",
+                    story_tags=["pakistan", "brief"],
+                    confidence=0.9,
+                    selection_reason="Selected by editorial gate.",
+                )
+            return selected
+
+    db = FakeDB()
+    now = datetime.now(timezone.utc)
+    topline_cluster = db.create_cluster(article_ids=[])
+    incident_cluster = db.create_cluster(article_ids=[])
+    topline_articles = [
+        RawArticle(
+            source="dawn",
+            url="https://example.com/topline-a",
+            headline="Pakistan facilitates US-Iran ceasefire",
+            main_text=("x " * 80),
+            scraped_at=now,
+            embedding=[1.0, 0.0, 0.0],
+            metadata={"source_prominence_score": 24, "topline_bucket": "lead"},
+        ),
+        RawArticle(
+            source="geo",
+            url="https://example.com/topline-b",
+            headline="Pakistan role praised in US-Iran ceasefire",
+            main_text=("x " * 80),
+            scraped_at=now,
+            embedding=[0.99, 0.01, 0.0],
+            metadata={"source_prominence_score": 18, "topline_bucket": "topline"},
+        ),
+        RawArticle(
+            source="tribune",
+            url="https://example.com/topline-c",
+            headline="Ceasefire follows Pakistan mediation effort",
+            main_text=("x " * 80),
+            scraped_at=now,
+            embedding=[0.98, 0.02, 0.0],
+            metadata={"source_prominence_score": 18, "topline_bucket": "topline"},
+        ),
+    ]
+    incident_articles = [
+        RawArticle(
+            source="dawn",
+            url="https://example.com/incident-a",
+            headline="Five killed in suicide attack at Bannu police station",
+            main_text=("x " * 80),
+            scraped_at=now,
+            embedding=[0.0, 1.0, 0.0],
+            metadata={"source_prominence_score": 7, "topline_bucket": "secondary"},
+        ),
+        RawArticle(
+            source="tribune",
+            url="https://example.com/incident-b",
+            headline="Attack in Bannu leaves five dead",
+            main_text=("x " * 80),
+            scraped_at=now,
+            embedding=[0.01, 0.99, 0.0],
+            metadata={"source_prominence_score": 7, "topline_bucket": "secondary"},
+        ),
+    ]
+    for article in topline_articles:
+        db.insert_article(article)
+        db.assign_to_cluster(article.id, topline_cluster)
+        db._clusters_by_id[topline_cluster].add_article(article.id)
+    for article in incident_articles:
+        db.insert_article(article)
+        db.assign_to_cluster(article.id, incident_cluster)
+        db._clusters_by_id[incident_cluster].add_article(article.id)
+
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(
+            sources_yaml=sources_yaml,
+            classification_yaml=rules_path,
+            recluster_recent_window=False,
+            enable_editorial_llm=True,
+        ),
+        db=db,  # type: ignore[arg-type]
+        scraper=FakeScraper({}),  # type: ignore[arg-type]
+        analyzer=_Analyzer(),  # type: ignore[arg-type]
+        editorial_service=_EditorialThatGetsLeadWrong(),
+    )
+
+    runner.run()
+
+    topline_priority = int(db._feed_by_cluster[topline_cluster].metadata["editorial_priority"])
+    incident_priority = int(db._feed_by_cluster[incident_cluster].metadata["editorial_priority"])
+    assert topline_priority > incident_priority
+
+
 def test_host_allowed_accepts_www_and_bare_domain_variants():
     assert PipelineOrchestrator._host_allowed("https://dawn.com/news/1001", "https://www.dawn.com")
     assert PipelineOrchestrator._host_allowed("https://www.dawn.com/news/1001", "https://dawn.com")

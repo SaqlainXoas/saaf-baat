@@ -89,6 +89,45 @@ class TestHybridOrchestratorBasicFlow:
         assert result.headline == "Test Article Title"
         assert result.source == "example"
 
+    def test_scrape_url_merges_discovery_metadata(self):
+        """Discovery-order metadata should be carried into RawArticle.metadata."""
+        from src.scrapers.hybrid_orchestrator import HybridOrchestrator
+
+        orchestrator = HybridOrchestrator()
+
+        with patch.object(orchestrator, "_stealth_fetcher") as mock_fetcher:
+            mock_fetcher.fetch.return_value = "<html><body>Test</body></html>"
+
+            with patch.object(orchestrator, "_content_parser") as mock_parser:
+                from src.scrapers.dtos import ScrapedArticle
+
+                mock_result = ScrapedArticle(
+                    title="Test Article Title",
+                    text="Content " * 50,
+                    authors=["Test Author"],
+                    date_published=datetime.now(timezone.utc),
+                    source_domain="example.com",
+                    parser_used="trafilatura",
+                )
+                mock_parser.parse.return_value = mock_result
+
+                result = orchestrator.scrape_url(
+                    "https://example.com/article",
+                    source="example",
+                    discovery_metadata={
+                        "discovery_origin": "feed",
+                        "discovery_rank": 0,
+                        "source_prominence_score": 24,
+                        "topline_bucket": "lead",
+                    },
+                )
+
+        assert result is not None
+        assert result.metadata["discovery_origin"] == "feed"
+        assert result.metadata["discovery_rank"] == 0
+        assert result.metadata["source_prominence_score"] == 24
+        assert result.metadata["topline_bucket"] == "lead"
+
 
 class TestHybridOrchestratorTier2Fallback:
     """Tests for Playwright fallback when stealth fetch fails."""
@@ -525,7 +564,7 @@ class TestHybridOrchestratorContentHashDedup:
 
         call_count = {"n": 0}
 
-        def mock_scrape_url(url, source="unknown"):
+        def mock_scrape_url(url, source="unknown", discovery_metadata=None):
             call_count["n"] += 1
             return article_a if call_count["n"] == 1 else article_b
 
@@ -620,7 +659,12 @@ class TestHybridOrchestratorFeedDiscovery:
                     feed_url="https://www.dawn.com/feeds/latest-news",
                 )
 
-        mock_scrape.assert_called_once_with("https://dawn.com/news/1001", source="dawn")
+        call = mock_scrape.call_args
+        assert call is not None
+        assert call.args[0] == "https://dawn.com/news/1001"
+        assert call.kwargs["source"] == "dawn"
+        assert call.kwargs["discovery_metadata"]["discovery_origin"] == "feed"
+        assert call.kwargs["discovery_metadata"]["discovery_rank"] == 0
         assert len(results) == 1
 
     def test_scrape_source_falls_back_to_html_when_feed_empty(self):
@@ -695,7 +739,12 @@ class TestHybridOrchestratorKnownUrlSkipping:
                     skip_urls={"https://www.dawn.com/news/1001/known-article"},
                 )
 
-        mock_scrape.assert_called_once_with("https://www.dawn.com/news/1002/fresh-article", source="dawn")
+        call = mock_scrape.call_args
+        assert call is not None
+        assert call.args[0] == "https://www.dawn.com/news/1002/fresh-article"
+        assert call.kwargs["source"] == "dawn"
+        assert call.kwargs["discovery_metadata"]["discovery_origin"] == "section"
+        assert call.kwargs["discovery_metadata"]["discovery_rank"] == 1
         assert len(results) == 1
 
 

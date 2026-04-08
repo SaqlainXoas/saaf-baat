@@ -43,9 +43,12 @@ VALID_IMPACT_LABELS = (
 EDITORIAL_SYSTEM_PROMPT = (
     "You are the Saaf Baat editorial desk. Build a finite Pakistan morning brief.\n"
     "Select only the most important stories that an ordinary person in Pakistan should know this morning.\n"
-    "Aim for 5-9 stories when the candidate pool supports it. Only return fewer than 5 if fewer than 5 candidates have clear Pakistan public relevance.\n"
+    "This is a national topline brief first, not just a list of coherent incidents.\n"
+    "Aim for 5-9 stories when the candidate pool supports it, and aim for 7-9 when enough strong candidates clearly deserve inclusion.\n"
+    "Only return fewer than 5 if fewer than 5 candidates have clear Pakistan public relevance.\n"
     "Use only the provided evidence. Do not invent facts. Exclude gossip, celebrity, soft lifestyle, sports unless nationally consequential, and foreign stories unless the effect on Pakistan is clear.\n"
-    "Prefer hard-news developments with direct public impact in governance, economy, security, utilities, transport, health, education, or major city life.\n"
+    "Prefer the developments dominating core-source coverage across Pakistan first, then the strongest direct public-impact stories in governance, economy, security, utilities, transport, health, education, or major city life.\n"
+    "An isolated incident should not lead the brief when broader nationally dominant developments are available.\n"
     "Deprioritize features, profiles, lifestyle, travel, seasonal colour, soft diplomacy reactions, and commentary when harder public-interest stories are available.\n"
     "When evidence is thin or ambiguous, omit the cluster.\n"
     "Headlines and summaries must be clean, calm, concrete, and non-sensational.\n"
@@ -103,6 +106,9 @@ class ClusterEditorialCandidate:
             "deterministic_category": str(self.base_feed.category),
             "deterministic_impact_labels": list(self.base_feed.impact_labels or []),
             "deterministic_summary": self.base_feed.summary or "",
+            "deterministic_publish_score": int((self.base_feed.metadata or {}).get("deterministic_publish_score", 0) or 0),
+            "publisher_topline_score": int((self.base_feed.metadata or {}).get("publisher_topline_score", 0) or 0),
+            "publisher_topline_sources": list((self.base_feed.metadata or {}).get("publisher_topline_sources", [])),
             "confirmed_facts": confirmed,
             "debated_claims": debated,
             "avg_similarity": _round_or_none(self.avg_similarity),
@@ -347,8 +353,10 @@ def build_editorial_user_prompt(candidate_rows: Sequence[Dict[str, Any]], *, max
                 "Aim to return at least target_story_range.min stories when enough candidates clearly support a Pakistan morning brief.",
                 "Each story must map to exactly one provided cluster_id.",
                 "Use impact_labels only from the allowed set.",
-                "Prefer Pakistan relevance and direct public impact over novelty, symbolism, or feature value.",
+                "Prefer Pakistan relevance, nationally dominant developments, and direct public impact over novelty, symbolism, or feature value.",
                 "Prefer hard-news developments over profiles, travel, lifestyle, seasonal, or commentary-style pieces.",
+                "Use publisher_topline_score and publisher_topline_sources as strong signals for what belongs near the top of the brief.",
+                "Do not let an isolated incident lead the brief if a broader governance, economy, utilities, diplomacy, weather, or public-life story has stronger publisher topline support.",
                 "Summary should explain what happened and why it matters in 1-2 sentences.",
                 "why_it_matters and what_to_watch must stay grounded in provided evidence.",
                 "Treat suspicious_publish_dates as a warning signal, not a reason by itself to invent or exaggerate freshness.",
