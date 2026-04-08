@@ -25,7 +25,7 @@ describe("MorningGreeting", () => {
 
   it("guides the user to start with the lead story", () => {
     render(<MorningGreeting storyCount={5} />);
-    expect(screen.getByText(/Start with the lead story/i)).toBeDefined();
+    expect(screen.getByText(/The morning's must-know stories, ranked fast/i)).toBeDefined();
   });
 
   it("renders a real edition date instead of a placeholder label", () => {

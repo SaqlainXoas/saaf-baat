@@ -16,22 +16,29 @@ export default function BrandHeader({
 
   return (
     <header className="sb-home-header">
-      <div className="flex flex-col gap-8 xl:flex-row xl:items-start xl:justify-between">
+      <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
         <div className="max-w-3xl">
-          <div className="flex items-center gap-2 flex-wrap text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--ink-muted)" }}>
-            <Logo size={18} decorative className="opacity-90" />
-            <span>{city}</span>
-            <span>—</span>
-            <span>{dateLabel}</span>
-            {storyCountLabel ? (
-              <>
+          <div className="flex items-center gap-3">
+            <Logo size={26} decorative className="opacity-95 flex-shrink-0" />
+            <div>
+              <p className="text-[28px] font-semibold tracking-tight" style={{ color: "var(--teal)" }}>
+                Saaf Baat
+              </p>
+              <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--ink-muted)" }}>
+                <span>{city}</span>
                 <span>•</span>
-                <span>{storyCountLabel}</span>
-              </>
-            ) : null}
+                <span>{dateLabel}</span>
+                {storyCountLabel ? (
+                  <>
+                    <span>•</span>
+                    <span>{storyCountLabel}</span>
+                  </>
+                ) : null}
+              </div>
+            </div>
           </div>
 
-          <div className="mt-8">
+          <div className="mt-5">
             <div
               className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em]"
               style={{
@@ -43,20 +50,16 @@ export default function BrandHeader({
               <span>Pakistan morning brief</span>
               <span style={{ color: "var(--teal)" }}>Edition</span>
             </div>
-            <p className="text-[30px] font-semibold tracking-tight mt-5" style={{ color: "var(--teal)" }}>
-              Saaf Baat
-            </p>
-            <h1 className="sb-display-home mt-4">
-              Subah Bakhair,<br />
-              <span className="not-italic">{city}</span>
+            <h1 className="sb-display-home mt-3">
+              Subah Bakhair, <span className="not-italic">{city}</span>
             </h1>
-            <p className="text-[17px] mt-5 max-w-2xl leading-relaxed" style={{ color: "var(--ink-muted)" }}>
-              A finite, edited read on what matters this morning, why it matters to ordinary life or public affairs, and what deserves your attention next.
+            <p className="text-base mt-3 max-w-xl leading-relaxed" style={{ color: "var(--ink-muted)" }}>
+              The morning&apos;s must-know stories, ranked fast.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-col gap-4 xl:items-end xl:max-w-[300px]">
+        <div className="flex flex-col gap-3 xl:items-end xl:max-w-[300px]">
           <div className="flex items-center gap-2 xl:justify-end">
             <ThemeToggle />
             <FocusControl availableSources={availableSources} size="sm" />

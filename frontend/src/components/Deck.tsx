@@ -16,9 +16,7 @@ export default function Deck({ stories }: { stories: StoryCardData[] }) {
       <div className="flex items-end justify-between gap-3 mb-4">
         <div>
           <p className="sb-kicker">Today&apos;s brief</p>
-          <p className="text-sm mt-1" style={{ color: "var(--ink-muted)" }}>
-            Start with the lead story, then skim the rest in ranked order.
-          </p>
+          <p className="sb-meta mt-1">Start at the top and move fast through the rest.</p>
         </div>
         <span
           className="text-xs font-medium rounded-full px-2.5 py-1"
@@ -32,30 +30,28 @@ export default function Deck({ stories }: { stories: StoryCardData[] }) {
         </span>
       </div>
 
-      <div>
+      <div id="mobile-lead-story" tabIndex={-1}>
         <p className="sb-kicker mb-3" style={{ color: "var(--teal)" }}>
-          Lead story
+          Top story
         </p>
-        <Link href={`/stories/${leadStory.story_id}`} className="block sb-focusable">
+        <Link href={`/stories/${leadStory.story_id}`} className="block sb-focusable" data-skip-target="stories">
           <StoryCard story={leadStory} variant="featured" />
         </Link>
       </div>
 
       {supportingStories.length ? (
-        <div className="mt-8">
+        <div className="mt-6">
           <div className="flex items-end justify-between gap-3 mb-4">
             <div>
-              <p className="sb-kicker">Also moving</p>
-              <p className="text-sm mt-1" style={{ color: "var(--ink-muted)" }}>
-                The next strongest stories in the brief.
-              </p>
+              <p className="sb-kicker">Next up</p>
+              <p className="sb-meta mt-1">The next strongest stories in rank order.</p>
             </div>
             <span className="sb-meta">{supportingStories.length} stories</span>
           </div>
           <div className="space-y-4">
             {supportingStories.map((story) => (
               <Link key={story.story_id} href={`/stories/${story.story_id}`} className="block sb-focusable">
-                <StoryCard story={story} variant="compact" />
+                <StoryCard story={story} variant="supporting" />
               </Link>
             ))}
           </div>
@@ -63,13 +59,11 @@ export default function Deck({ stories }: { stories: StoryCardData[] }) {
       ) : null}
 
       {lowerStories.length ? (
-        <div className="mt-8">
+        <div className="mt-6">
           <div className="flex items-end justify-between gap-3 mb-4">
             <div>
               <p className="sb-kicker">Then worth your time</p>
-              <p className="text-sm mt-1" style={{ color: "var(--ink-muted)" }}>
-                The rest of the brief, still ordered by importance.
-              </p>
+              <p className="sb-meta mt-1">The rest of the brief, still ordered by importance.</p>
             </div>
             <span className="sb-meta">{lowerStories.length} more</span>
           </div>
