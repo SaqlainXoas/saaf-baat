@@ -137,3 +137,44 @@ def test_story_detail_caps_entities_and_derives_sources_when_missing():
     assert len(body["debated_claims"]) == 12
     assert [s["source"] for s in body["sources"]] == ["dawn", "geo"]
     assert all(article["publish_date"] is None for article in body["articles"])
+
+
+def test_story_detail_filters_obviously_unrelated_articles_from_source_list():
+    cluster_id = uuid4()
+    feed = AnalyzedFeed(
+        cluster_id=cluster_id,
+        headline="National Assembly surrenders Rs470 million for austerity drive",
+        summary="Parliament hands money back to the exchequer under austerity measures.",
+        category="politics",
+        impact_labels=["🏛️ GOVERNANCE"],
+        source_attribution={"dawn": 2},
+        metadata={"story_tags": ["National Assembly", "Austerity", "Exchequer"]},
+    )
+    relevant = RawArticle(
+        id=uuid4(),
+        source="dawn",
+        url="https://www.dawn.com/news/relevant",
+        headline="NA surrenders over Rs470m into national exchequer to support govt austerity drive",
+        main_text=("National Assembly austerity " * 30),
+        publish_date=datetime(2026, 4, 3, 8, 0, tzinfo=timezone.utc),
+    )
+    unrelated = RawArticle(
+        id=uuid4(),
+        source="dawn",
+        url="https://www.dawn.com/news/unrelated",
+        headline="Imran, Bushra move IHC to fix appeals in Toshakhana-I case",
+        main_text=("Toshakhana appeal hearing " * 30),
+        publish_date=datetime(2026, 4, 3, 7, 0, tzinfo=timezone.utc),
+    )
+    cluster = Cluster(id=cluster_id, article_ids=[relevant.id, unrelated.id])
+    fake_db = _FakeDB(cluster_id=cluster_id, feed=feed, cluster=cluster, articles=[relevant, unrelated])
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: fake_db  # type: ignore[assignment]
+    client = TestClient(app)
+
+    res = client.get(f"/api/stories/{cluster_id}")
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body["articles"]) == 1
+    assert body["articles"][0]["headline"].startswith("NA surrenders")
