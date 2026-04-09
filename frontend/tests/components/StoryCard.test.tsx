@@ -64,13 +64,26 @@ describe("StoryCard", () => {
 
   it("renders a lighter featured card treatment", () => {
     render(<StoryCard story={mockStory} variant="featured" />);
-    expect(screen.queryByText("Source support")).toBeNull();
-    expect(screen.getByText("Household costs and market confidence can shift quickly.")).toBeDefined();
-    expect(screen.queryByText("Clear:")).toBeNull();
+    expect(screen.queryByText("Household costs and market confidence can shift quickly.")).toBeNull();
+    expect(screen.queryByText("Economy")).toBeNull();
+    expect(screen.queryByText(/Sources assessed:/)).toBeNull();
+  });
+
+  it("renders the homepage variant without rank dots or extra chrome", () => {
+    render(<StoryCard story={mockStory} variant="homepage" />);
+    expect(screen.queryByText("Economy")).toBeNull();
+    expect(screen.queryByText(/Sources assessed:/)).toBeNull();
+    expect(screen.queryByText("1")).toBeNull();
   });
 
   it("uses compact snippet clamp styling in compact variant", () => {
     render(<StoryCard story={mockStory} variant="compact" />);
     expect(screen.getByText("State Bank confirms $1.2bn receipt.").className).toContain("sb-clamp-2");
+  });
+
+  it("keeps the default variant richer than homepage cards", () => {
+    render(<StoryCard story={mockStory} />);
+    expect(screen.getByText("Economy")).toBeDefined();
+    expect(screen.getByText(/Sources assessed:/)).toBeDefined();
   });
 });

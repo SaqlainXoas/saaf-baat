@@ -9,8 +9,8 @@ export default function ConsensusEngine({ story }: { story: StoryDetailData }) {
   const debatedHeading = "What to Watch";
 
   return (
-    <section className="mt-10">
-      <div className="flex items-center gap-2 mb-4">
+    <section className="mt-2">
+      <div className="flex items-center gap-2 mb-3">
         <span className="text-lg" style={{ color: "var(--teal)" }}>
           ✦
         </span>
@@ -21,7 +21,7 @@ export default function ConsensusEngine({ story }: { story: StoryDetailData }) {
         </div>
       </div>
 
-      <div className="sb-summary-stack grid grid-cols-1 md:grid-cols-2">
+      <div className="sb-summary-stack grid grid-cols-1 gap-px md:grid-cols-2">
         <div className="sb-summary-shell sb-summary-panel-agreed">
           <h4 className="sb-summary-heading">{agreedHeading}</h4>
           <ul className="mt-4 space-y-3">
