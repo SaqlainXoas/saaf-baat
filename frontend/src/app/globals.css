@@ -300,18 +300,51 @@ body {
   }
 
   .sb-home-header {
-    padding: 2px 0 6px;
+    padding: 0 0 2px;
   }
 
   .sb-status-pill {
     display: inline-flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 16px;
+    padding: 10px 14px;
     border-radius: 999px;
     border: 1px solid color-mix(in srgb, var(--outline-ghost) 74%, transparent);
     background: color-mix(in srgb, var(--surface) 84%, var(--surface-base));
     box-shadow: 0 24px 56px -34px rgba(29, 28, 22, 0.28);
+  }
+
+  .sb-home-story {
+    padding: 18px 20px 17px;
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    border: 1px solid color-mix(in srgb, var(--outline-ghost) 46%, transparent);
+    border-radius: 20px;
+    box-shadow: 0 16px 36px -42px rgba(29, 28, 22, 0.2);
+  }
+
+  .sb-brief-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .sb-home-story-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    min-width: 164px;
+  }
+
+  .sb-meta-strong {
+    color: color-mix(in srgb, var(--ink-muted) 88%, var(--ink));
+  }
+
+  .sb-home-link {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--teal);
   }
 
   .sb-status-icon {
@@ -325,7 +358,7 @@ body {
   }
 
   .sb-display-home {
-    font-size: 58px;
+    font-size: 52px;
     font-weight: 600;
     line-height: 1.02;
     letter-spacing: -0.035em;
@@ -355,10 +388,10 @@ body {
 
   .sb-summary-stack {
     overflow: hidden;
-    border-radius: 28px;
-    box-shadow: var(--elev-1);
-    outline: 1px solid color-mix(in srgb, var(--outline-ghost) 78%, transparent);
-    background: var(--surface);
+    border-radius: 24px;
+    border: 1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent);
+    box-shadow: 0 20px 44px -40px rgba(29, 28, 22, 0.18);
+    background: color-mix(in srgb, var(--surface) 96%, var(--surface-base));
   }
 
   .sb-summary-panel {
@@ -368,24 +401,24 @@ body {
   }
 
   .sb-summary-panel-agreed {
-    background: var(--summary-agreed-bg);
-    border-color: var(--summary-agreed-border);
-    color: var(--summary-agreed-ink);
+    background: color-mix(in srgb, var(--surface) 94%, var(--surface-base));
+    border-color: transparent;
+    color: var(--ink);
   }
 
   .sb-summary-panel-debated {
-    background: var(--summary-debated-bg);
-    border-color: var(--summary-debated-border);
-    color: var(--summary-debated-ink);
+    background: color-mix(in srgb, var(--surface-2) 92%, var(--surface-base));
+    border-color: transparent;
+    color: var(--ink);
   }
 
   .sb-summary-shell {
-    padding: 28px 30px;
+    padding: 24px 26px;
   }
 
   .sb-summary-heading {
     font-size: 14px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--ink);
   }
 
@@ -427,20 +460,20 @@ body {
     display: flex;
     gap: 10px;
     align-items: flex-start;
-    font-size: 15px;
-    line-height: 1.7;
+    font-size: 14px;
+    line-height: 1.65;
     color: inherit;
   }
 
   .sb-status-banner {
     border-radius: 18px;
-    padding: 10px 14px;
+    padding: 9px 13px;
     font-size: 12px;
     line-height: 1.45;
     border: 1px solid color-mix(in srgb, var(--outline-ghost) 76%, transparent);
     background: color-mix(in srgb, var(--status-info-bg) 78%, var(--surface));
     color: var(--ink);
-    box-shadow: 0 20px 42px -36px rgba(29, 28, 22, 0.24);
+    box-shadow: 0 16px 34px -36px rgba(29, 28, 22, 0.16);
   }
 
   .sb-status-banner[data-tone="warn"] {
@@ -478,16 +511,16 @@ body {
   }
 
   .sb-headline-featured {
-    font-size: 36px;
+    font-size: 32px;
     font-weight: 600;
-    line-height: 1.08;
+    line-height: 1.12;
     letter-spacing: -0.03em;
     color: var(--ink);
     font-family: var(--font-display);
   }
 
   .sb-headline-supporting {
-    font-size: 31px;
+    font-size: 30px;
     font-weight: 600;
     line-height: 1.14;
     letter-spacing: -0.02em;
@@ -523,14 +556,14 @@ body {
   }
 
   .sb-snippet-featured {
-    font-size: 16px;
-    line-height: 1.58;
+    font-size: 15px;
+    line-height: 1.5;
     color: var(--ink-muted);
   }
 
   .sb-snippet-supporting {
     font-size: 15px;
-    line-height: 1.55;
+    line-height: 1.5;
     color: var(--ink-muted);
   }
 
@@ -542,7 +575,22 @@ body {
 
   .sb-snippet-compact {
     font-size: 14px;
-    line-height: 1.65;
+    line-height: 1.55;
+    color: var(--ink-muted);
+  }
+
+  .sb-headline-homepage {
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1.14;
+    letter-spacing: -0.018em;
+    color: var(--ink);
+    font-family: var(--font-display);
+  }
+
+  .sb-snippet-homepage {
+    font-size: 14px;
+    line-height: 1.5;
     color: var(--ink-muted);
   }
 
@@ -553,17 +601,17 @@ body {
   }
 
   .sb-headline-brief {
-    font-size: 42px;
+    font-size: 38px;
     font-weight: 600;
-    line-height: 1.06;
-    letter-spacing: -0.03em;
+    line-height: 1.08;
+    letter-spacing: -0.028em;
     color: var(--ink);
     font-family: var(--font-display);
   }
 
   .sb-snippet-brief {
-    font-size: 17px;
-    line-height: 1.55;
+    font-size: 16px;
+    line-height: 1.52;
     color: var(--ink-muted);
   }
 
@@ -699,17 +747,21 @@ body {
   }
 }
 
-@media (max-width: 1024px) {
+  @media (max-width: 1024px) {
   .sb-display-home {
-    font-size: 48px;
+    font-size: 42px;
+  }
+
+  .sb-headline-homepage {
+    font-size: 27px;
   }
 
   .sb-headline-featured {
-    font-size: 32px;
+    font-size: 30px;
   }
 
   .sb-headline-supporting {
-    font-size: 28px;
+    font-size: 29px;
   }
 
   .sb-headline-detail {
@@ -717,17 +769,25 @@ body {
   }
 
   .sb-headline-brief {
-    font-size: 36px;
+    font-size: 34px;
+  }
+
+  .sb-home-story {
+    padding: 16px 18px;
   }
 }
 
 @media (max-width: 640px) {
   .sb-display-home {
-    font-size: 44px;
+    font-size: 36px;
+  }
+
+  .sb-headline-homepage {
+    font-size: 24px;
   }
 
   .sb-headline-featured {
-    font-size: 30px;
+    font-size: 28px;
   }
 
   .sb-headline-supporting {
@@ -742,15 +802,19 @@ body {
     font-size: 38px;
   }
 
+  .sb-home-story {
+    padding: 14px 14px 15px;
+  }
+
   .sb-snippet-detail {
     font-size: 18px;
   }
 
   .sb-headline-brief {
-    font-size: 32px;
+    font-size: 30px;
   }
 
   .sb-snippet-brief {
-    font-size: 16px;
+    font-size: 15px;
   }
 }

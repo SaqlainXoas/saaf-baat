@@ -66,7 +66,7 @@ export default async function StoryDetail({
       <div className="bg-ambient" />
       <SkipLink label="Skip to story" selector='[data-skip-target="story"]' />
 
-      <main id="story-main" className="relative sb-container px-4 py-8" style={{ maxWidth: 980 }} role="main">
+      <main id="story-main" className="relative sb-container px-4 py-8" style={{ maxWidth: 1220 }} role="main">
         <Link
           href="/"
           className="sb-focusable inline-flex items-center gap-1 text-sm px-2 py-1 rounded-lg"
@@ -76,12 +76,14 @@ export default async function StoryDetail({
           <span>Back to brief</span>
         </Link>
         <div className="mt-3">
-          <DataStatusBanner status={status} message={message} latestCreatedAt={latestPipelineRunAt} />
+          <div className="max-w-[920px]">
+            <DataStatusBanner status={status} message={message} latestCreatedAt={latestPipelineRunAt} />
+          </div>
         </div>
 
-        <div className="mt-4">
-          <Card variant="flat" className="p-5 md:p-6">
-            <div data-skip-target="story" tabIndex={-1}>
+        <section className="mt-4 max-w-[920px]">
+          <div data-skip-target="story" tabIndex={-1} className="min-w-0">
+            <div className="sb-hero-shell p-5 md:p-7">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Pill label={primaryLabel} />
@@ -103,60 +105,69 @@ export default async function StoryDetail({
                 {story.snippet}
               </p>
 
-              <div className="flex gap-2 mt-4 flex-wrap">
-                <span
-                  className="text-xs px-2.5 py-1 rounded-full"
-                  style={{
-                    background: "color-mix(in srgb, var(--surface) 84%, var(--surface-base))",
-                    border: "1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent)",
-                    color: "var(--ink)",
-                  }}
-                >
-                  {sourceSupportLabel}
-                </span>
-                {story.sources.map((s, i) => (
+              {(whyItMatters || whatToWatch) ? (
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {whyItMatters ? (
+                    <div className="sb-editorial-note">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
+                        Why it matters
+                      </p>
+                      <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--ink)" }}>
+                        {whyItMatters}
+                      </p>
+                    </div>
+                  ) : null}
+                  {whatToWatch ? (
+                    <div className="sb-editorial-note">
+                      <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
+                        What to watch
+                      </p>
+                      <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--ink)" }}>
+                        {whatToWatch}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 flex flex-col gap-4">
+              <Card variant="inset" className="p-4 md:p-5">
+                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
+                  Source support
+                </p>
+                <div className="flex gap-2 mt-3 flex-wrap">
                   <span
-                    key={i}
                     className="text-xs px-2.5 py-1 rounded-full"
                     style={{
-                      background: "color-mix(in srgb, var(--surface-2) 84%, var(--surface-base))",
+                      background: "color-mix(in srgb, var(--surface) 84%, var(--surface-base))",
                       border: "1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent)",
                       color: "var(--ink)",
                     }}
                   >
-                    {capitalise(s.source)}
+                    {sourceSupportLabel}
                   </span>
-                ))}
-              </div>
+                  {story.sources.map((s, i) => (
+                    <span
+                      key={i}
+                      className="text-xs px-2.5 py-1 rounded-full"
+                      style={{
+                        background: "color-mix(in srgb, var(--surface-2) 84%, var(--surface-base))",
+                        border: "1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent)",
+                        color: "var(--ink)",
+                      }}
+                    >
+                      {capitalise(s.source)}
+                    </span>
+                  ))}
+                </div>
 
-              <p className="sb-meta mt-3">
-                {sourceSupportText}
-              </p>
+                <p className="sb-meta mt-3">
+                  {sourceSupportText}
+                </p>
+              </Card>
 
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
-                {whyItMatters ? (
-                  <div className="sb-editorial-note">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
-                      Why it matters
-                    </p>
-                    <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--ink)" }}>
-                      {whyItMatters}
-                    </p>
-                  </div>
-                ) : null}
-                {whatToWatch ? (
-                  <div className="sb-editorial-note">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
-                      What to watch
-                    </p>
-                    <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--ink)" }}>
-                      {whatToWatch}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-4 sb-editorial-note">
+              <Card variant="inset" className="p-4 md:p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
                   Top reporting
                 </p>
@@ -193,14 +204,18 @@ export default async function StoryDetail({
                     Original links are not available for this story yet.
                   </p>
                 )}
-              </div>
+              </Card>
             </div>
-          </Card>
+          </div>
+        </section>
+
+        <div className="mt-8 max-w-[920px]">
+          <ConsensusEngine story={story} />
         </div>
 
-        <ConsensusEngine story={story} />
-
-        <OriginalSourcesList articles={story.articles || []} />
+        <div className="mt-8 max-w-[920px]">
+          <OriginalSourcesList articles={story.articles || []} />
+        </div>
       </main>
     </div>
   );
