@@ -322,10 +322,6 @@ body {
     box-shadow: 0 16px 36px -42px rgba(29, 28, 22, 0.2);
   }
 
-  .sb-home-story + .sb-home-story {
-    border-top: 0;
-  }
-
   .sb-brief-flow {
     display: flex;
     flex-direction: column;

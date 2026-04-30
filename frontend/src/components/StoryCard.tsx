@@ -40,7 +40,7 @@ export default function StoryCard({
       : "sb-headline-default";
 
   const snippetClass = isHomepage
-    ? "sb-snippet-homepage sb-clamp-2"
+    ? "sb-snippet-homepage"
     : isFeatured
     ? "sb-snippet-featured sb-clamp-2"
     : isSupporting
