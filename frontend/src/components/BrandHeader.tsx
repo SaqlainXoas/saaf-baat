@@ -16,12 +16,12 @@ export default function BrandHeader({
 
   return (
     <header className="sb-home-header">
-      <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-        <div className="max-w-3xl">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px] xl:items-start xl:gap-6">
+        <div className="max-w-[760px]">
           <div className="flex items-center gap-3">
-            <Logo size={26} decorative className="opacity-95 flex-shrink-0" />
+            <Logo size={28} decorative className="opacity-95 flex-shrink-0" />
             <div>
-              <p className="text-[28px] font-semibold tracking-tight" style={{ color: "var(--teal)" }}>
+              <p className="text-[26px] font-semibold tracking-tight" style={{ color: "var(--teal)" }}>
                 Saaf Baat
               </p>
               <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--ink-muted)" }}>
@@ -38,9 +38,9 @@ export default function BrandHeader({
             </div>
           </div>
 
-          <div className="mt-5">
+          <div className="mt-2">
             <div
-              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em]"
+              className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em]"
               style={{
                 background: "color-mix(in srgb, var(--surface) 80%, var(--surface-base))",
                 border: "1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent)",
@@ -50,17 +50,17 @@ export default function BrandHeader({
               <span>Pakistan morning brief</span>
               <span style={{ color: "var(--teal)" }}>Edition</span>
             </div>
-            <h1 className="sb-display-home mt-3">
+            <h1 className="sb-display-home mt-1.5">
               Subah Bakhair, <span className="not-italic">{city}</span>
             </h1>
-            <p className="text-base mt-3 max-w-xl leading-relaxed" style={{ color: "var(--ink-muted)" }}>
-              The morning&apos;s must-know stories, ranked fast.
+            <p className="text-sm mt-1 max-w-lg leading-relaxed" style={{ color: "var(--ink-muted)" }}>
+              The morning&apos;s must-know stories.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 xl:items-end xl:max-w-[300px]">
-          <div className="flex items-center gap-2 xl:justify-end">
+        <div className="flex flex-col gap-2.5 xl:items-start xl:max-w-[260px] xl:pt-1">
+          <div className="flex items-center gap-2">
             <ThemeToggle />
             <FocusControl availableSources={availableSources} size="sm" />
           </div>
@@ -76,8 +76,8 @@ export default function BrandHeader({
               <p className="text-sm font-semibold" style={{ color: "var(--teal)" }}>
                 {formatEssentialStoryCount(storyCount || 0)}
               </p>
-              <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--ink-muted)" }}>
-                Ranked for public impact first, then the next things worth knowing.
+              <p className="mt-1 text-[11px] leading-relaxed" style={{ color: "var(--ink-muted)" }}>
+                Ranked for public impact first.
               </p>
             </div>
           </div>

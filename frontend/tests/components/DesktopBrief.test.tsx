@@ -22,22 +22,24 @@ function story(id: string): StoryCardData {
 describe("DesktopBrief", () => {
   const stories = [story("1"), story("2"), story("3"), story("4")];
 
-  it("shows first story as the lead story", () => {
+  it("renders the first story as the lead item in the vertical flow", () => {
     render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
 
-    const featured = screen.getByTestId("desktop-featured-preview");
-    expect(within(featured).getByText("Headline 1")).toBeDefined();
-    expect(featured.getAttribute("href")).toBe("/stories/1");
+    const firstStory = screen.getByTestId("desktop-story-1");
+    expect(within(firstStory).getByText("Headline 1")).toBeDefined();
+    expect(firstStory.getAttribute("href")).toBe("/stories/1");
   });
 
-  it("renders sidebar stories separately from the lead", () => {
+  it("renders all stories in a single ordered flow", () => {
     render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
-    expect(screen.getByTestId("desktop-sidebar-2")).toBeDefined();
-    expect(screen.getByTestId("desktop-sidebar-3")).toBeDefined();
+    expect(screen.getByTestId("desktop-story-2")).toBeDefined();
+    expect(screen.getByTestId("desktop-story-3")).toBeDefined();
+    expect(screen.getByTestId("desktop-story-4")).toBeDefined();
   });
 
-  it("renders lower grid stories when enough stories are present", () => {
+  it("does not render homepage section headings", () => {
     render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
-    expect(screen.getByTestId("desktop-grid-4")).toBeDefined();
+    expect(screen.queryByText("Top of the brief")).toBeNull();
+    expect(screen.queryByText("More to know")).toBeNull();
   });
 });
