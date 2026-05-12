@@ -9,11 +9,6 @@ const mockStory = {
   snippet: "State Bank confirms $1.2bn receipt.",
   category: "economy",
   impact_labels: ["💳 WALLET", "🏛️ GOVERNANCE"],
-  confirmed_facts: [
-    { text: "IMF", type: "ORG", sources: 3 },
-    { text: "Pakistan", type: "GPE", sources: 3 },
-  ],
-  debated_claims: [{ text: "fuel cut", type: "MISC", sources: 1 }],
   sources: [
     { source: "dawn", count: 1 },
     { source: "geo", count: 1 },

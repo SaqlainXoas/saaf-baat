@@ -39,20 +39,22 @@ describe("api data mode", () => {
     (global as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => [
-        {
-          story_id: FEED[0].story_id,
-          created_at: FEED[0].created_at,
-          headline: FEED[0].headline,
-          snippet: FEED[0].snippet,
-          category: FEED[0].category,
-          impact_labels: FEED[0].impact_labels,
-          confirmed_facts: FEED[0].confirmed_facts,
-          debated_claims: FEED[0].debated_claims,
-          sources: [{ source: "dawn", count: 1 }, { source: "geo", count: 1 }],
-          metadata: { why_it_matters: "Fuel shifts affect household budgets." },
-        },
-      ],
+      json: async () => ({
+        generated_at: FEED[0].created_at,
+        is_fresh: true,
+        stories: [
+          {
+            story_id: FEED[0].story_id,
+            created_at: FEED[0].created_at,
+            headline: FEED[0].headline,
+            snippet: FEED[0].snippet,
+            category: FEED[0].category,
+            impact_labels: FEED[0].impact_labels,
+            sources: [{ source: "dawn", count: 1 }, { source: "geo", count: 1 }],
+            metadata: { why_it_matters: "Fuel shifts affect household budgets." },
+          },
+        ],
+      }),
     } as Response);
 
     const result = await fetchFeedWithMeta();
@@ -62,7 +64,8 @@ describe("api data mode", () => {
       { source: "dawn", count: 1 },
       { source: "geo", count: 1 },
     ]);
-    expect(result.latestPipelineRunAt).toBe(FEED[0].created_at);
+    expect(result.generatedAt).toBe(FEED[0].created_at);
+    expect(result.isFresh).toBe(true);
     expect((global as { fetch: jest.Mock }).fetch.mock.calls[0][0]).toBe("http://127.0.0.1:8000/api/feed?limit=9");
     expect((global as { fetch: jest.Mock }).fetch.mock.calls[0][1]).toMatchObject({
       cache: "no-store",
@@ -70,43 +73,44 @@ describe("api data mode", () => {
     });
   });
 
-  it("uses the newest live story timestamp for freshness metadata instead of ranked order", async () => {
+  it("uses the feed envelope freshness metadata instead of recomputing from ranked order", async () => {
     process.env.BACKEND_API_BASE_URL = "http://127.0.0.1:8000";
     (global as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => [
-        {
-          story_id: "older-ranked-higher",
-          created_at: "2026-02-04T05:00:00Z",
-          headline: "Higher priority but older",
-          snippet: "Older story with stronger editorial priority.",
-          category: "economy",
-          impact_labels: ["💳 WALLET"],
-          confirmed_facts: [],
-          debated_claims: [],
-          sources: [{ source: "dawn", count: 1 }],
-          metadata: { editorial_priority: 100, deterministic_publish_score: 9 },
-        },
-        {
-          story_id: "newer-ranked-lower",
-          created_at: "2026-02-04T06:30:00Z",
-          headline: "Lower priority but newer",
-          snippet: "Newer story that should drive freshness only.",
-          category: "governance",
-          impact_labels: ["🏛️ GOVERNANCE"],
-          confirmed_facts: [],
-          debated_claims: [],
-          sources: [{ source: "geo", count: 1 }],
-          metadata: { editorial_priority: 50, deterministic_publish_score: 7 },
-        },
-      ],
+      json: async () => ({
+        generated_at: "2026-02-04T06:30:00Z",
+        is_fresh: false,
+        stories: [
+          {
+            story_id: "older-ranked-higher",
+            created_at: "2026-02-04T05:00:00Z",
+            headline: "Higher priority but older",
+            snippet: "Older story with stronger editorial priority.",
+            category: "economy",
+            impact_labels: ["💳 WALLET"],
+            sources: [{ source: "dawn", count: 1 }],
+            metadata: { editorial_priority: 100, deterministic_publish_score: 9 },
+          },
+          {
+            story_id: "newer-ranked-lower",
+            created_at: "2026-02-04T06:30:00Z",
+            headline: "Lower priority but newer",
+            snippet: "Newer story that should drive freshness only.",
+            category: "governance",
+            impact_labels: ["🏛️ GOVERNANCE"],
+            sources: [{ source: "geo", count: 1 }],
+            metadata: { editorial_priority: 50, deterministic_publish_score: 7 },
+          },
+        ],
+      }),
     } as Response);
 
     const result = await fetchFeedWithMeta();
     expect(result.status).toBe("live");
     expect(result.stories[0].story_id).toBe("older-ranked-higher");
-    expect(result.latestPipelineRunAt).toBe("2026-02-04T06:30:00Z");
+    expect(result.generatedAt).toBe("2026-02-04T06:30:00Z");
+    expect(result.isFresh).toBe(false);
   });
 
   it("returns fallback status when backend feed call fails", async () => {
@@ -130,8 +134,6 @@ describe("api data mode", () => {
         snippet: FEED[0].snippet,
         category: FEED[0].category,
         impact_labels: FEED[0].impact_labels,
-        confirmed_facts: FEED[0].confirmed_facts,
-        debated_claims: FEED[0].debated_claims,
         sources: [{ source: "dawn", count: 1 }],
         metadata: {
           why_it_matters: "Fuel changes hit households quickly.",
@@ -154,6 +156,7 @@ describe("api data mode", () => {
     expect(result.story?.story_id).toBe(FEED[0].story_id);
     expect(result.story?.articles).toHaveLength(1);
     expect(result.story?.metadata?.what_to_watch).toBe("Watch for an official statement.");
+    expect(result.generatedAt).toBe(FEED[0].created_at);
     expect((global as { fetch: jest.Mock }).fetch.mock.calls[0][0]).toBe(
       `http://127.0.0.1:8000/api/stories/${FEED[0].story_id}`,
     );

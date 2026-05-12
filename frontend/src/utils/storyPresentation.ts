@@ -2,7 +2,7 @@ import type { SourceCountDTO, StoryCardData, StoryMetadata } from "@/data/types"
 
 type StoryLike = Pick<
   StoryCardData,
-  "headline" | "snippet" | "impact_labels" | "confirmed_facts" | "debated_claims" | "sources" | "metadata"
+  "headline" | "snippet" | "impact_labels" | "sources" | "metadata"
 >;
 
 const IMPACT_LANGUAGE: Record<string, string> = {

@@ -7,7 +7,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.api.dtos import SourceCountDTO, StoryArticleDTO, StoryDetailDTO
-from src.api.entity_sanitizer import MAX_CONFIRMED_FACTS, MAX_DEBATED_CLAIMS, to_entity_dtos
 from src.db.client import DatabaseError, NotFoundError, SupabaseClient
 
 router = APIRouter()
@@ -68,8 +67,6 @@ def _to_story_detail(feed, articles) -> StoryDetailDTO:
         snippet=feed.summary or "",
         category=str(feed.category),
         impact_labels=list(feed.impact_labels or []),
-        confirmed_facts=to_entity_dtos(feed.confirmed_facts, MAX_CONFIRMED_FACTS),
-        debated_claims=to_entity_dtos(feed.debated_claims, MAX_DEBATED_CLAIMS),
         sources=sources,
         metadata=dict(feed.metadata or {}),
         articles=[

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -32,7 +32,7 @@ from src.agents.clustering import (
     EventGroupingService,
     calculate_centroid,
     calculate_intra_cluster_similarity,
-    publish_date_skew_hours,
+    has_suspicious_publish_date,
     trusted_article_timestamp,
 )
 from src.agents.editorial import (
@@ -40,9 +40,7 @@ from src.agents.editorial import (
     EditorialError,
     merge_editorial_story,
 )
-from src.agents.editorial import GroqMorningBriefService
 from src.agents.editorial_gemini import GeminiMorningBriefService
-from src.agents.editorial_router import EditorialRouterService
 from src.agents.embeddings import GeminiEmbeddingProvider
 from src.config import load_editorial_model_config
 from src.db.client import DuplicateArticleError, SupabaseClient
@@ -98,6 +96,14 @@ _TOPLINE_BUCKET_SCORES: Dict[str, int] = {
     "topline": 3,
     "secondary": 2,
     "tail": 1,
+}
+_SOURCE_PROMINENCE_FALLBACKS: Dict[str, int] = {
+    "dawn": 10,
+    "geo": 10,
+    "tribune": 10,
+    "thenews": 10,
+    "reuters_pk": 12,
+    "business_recorder": 10,
 }
 
 
@@ -167,8 +173,10 @@ class PipelineStats:
     sources_attempted: int = 0
     sources_succeeded: int = 0
     sources_failed: int = 0
+    source_article_counts: Dict[str, int] = field(default_factory=dict)
+    degraded_sources: List[str] = field(default_factory=list)
 
-    def as_dict(self) -> dict[str, int]:
+    def as_dict(self) -> dict[str, object]:
         return {
             "scraped": self.scraped,
             "inserted": self.inserted,
@@ -194,6 +202,8 @@ class PipelineStats:
             "sources_attempted": self.sources_attempted,
             "sources_succeeded": self.sources_succeeded,
             "sources_failed": self.sources_failed,
+            "source_article_counts": dict(self.source_article_counts),
+            "degraded_sources": list(self.degraded_sources),
         }
 
 
@@ -298,26 +308,14 @@ class PipelineOrchestrator:
             return None
 
         models = load_editorial_model_config()
-        gemini = None
-        groq = None
-
-        if models.gemini_api_key:
-            try:
-                gemini = GeminiMorningBriefService(api_key=models.gemini_api_key, model=models.gemini_model)
-            except EditorialError as exc:
-                logger.warning("Gemini editorial unavailable: %s", exc)
-
-        if models.groq_api_key:
-            try:
-                groq = GroqMorningBriefService(api_key=models.groq_api_key, model=models.groq_model)
-            except EditorialError as exc:
-                logger.warning("Groq editorial unavailable: %s", exc)
-
-        if gemini is None and groq is None:
+        if not models.gemini_api_key:
             return None
 
         try:
-            self.editorial_service = EditorialRouterService(gemini=gemini, groq=groq)
+            self.editorial_service = GeminiMorningBriefService(
+                api_key=models.gemini_api_key,
+                model=models.gemini_model,
+            )
         except EditorialError as exc:
             logger.warning("Editorial service unavailable: %s", exc)
             return None
@@ -399,6 +397,9 @@ class PipelineOrchestrator:
             except Exception as e:
                 logger.exception("Scrape failed for %s: %s", source_name, e)
                 stats.sources_failed += 1
+                stats.source_article_counts[source_name] = 0
+                if source_name not in stats.degraded_sources:
+                    stats.degraded_sources.append(source_name)
                 continue
             else:
                 stats.sources_succeeded += 1
@@ -414,6 +415,9 @@ class PipelineOrchestrator:
             for article in scraped:
                 if not self._host_allowed(article.url, base_url):
                     logger.warning("Skipping off-domain url for %s: %s", source_name, article.url)
+                    continue
+                if article.publish_date is None:
+                    logger.warning("Skipping article with missing publish_date for %s: %s", source_name, article.url)
                     continue
                 text = f"{article.headline}. {article.main_text[:1000]}"
                 fp = simhash64(text)
@@ -458,6 +462,9 @@ class PipelineOrchestrator:
                 source_near_duplicates,
                 time.perf_counter() - source_started_at,
             )
+            stats.source_article_counts[source_name] = source_inserted
+            if source_inserted <= 0 and source_name not in stats.degraded_sources:
+                stats.degraded_sources.append(source_name)
 
         return stats, inserted_articles
 
@@ -715,15 +722,17 @@ class PipelineOrchestrator:
             try:
                 articles = self.db.get_articles_by_ids(cluster.article_ids)
                 feed = analyzer.analyze_cluster(cluster.id, articles)
+                feed = self._apply_publish_date_confidence_penalty(feed, articles)
+                editorial_articles = self._select_editorial_articles(articles)
                 candidates.append(
                     ClusterEditorialCandidate(
                         cluster_id=cluster.id,
                         base_feed=feed,
-                        representative_article=analyzer.choose_representative_article(articles),
-                        articles=tuple(articles),
+                        representative_article=analyzer.choose_representative_article(editorial_articles),
+                        articles=tuple(editorial_articles),
                         algorithm_used=cluster.algorithm_used,
-                        avg_similarity=self._compute_cluster_avg_similarity(articles),
-                        min_member_similarity=self._compute_cluster_min_similarity(articles),
+                        avg_similarity=self._compute_cluster_avg_similarity(editorial_articles),
+                        min_member_similarity=self._compute_cluster_min_similarity(editorial_articles),
                     )
                 )
             except Exception as e:
@@ -768,7 +777,10 @@ class PipelineOrchestrator:
             ranked_publishable_candidates,
             configured_limit=self.config.editorial_max_stories,
         )
-        fallback_candidates = ranked_publishable_candidates[:story_limit]
+        fallback_candidates = self._select_diverse_candidates(
+            ranked_publishable_candidates,
+            max_items=story_limit,
+        )
 
         editorial_result: Dict[UUID, Any] | None = None
         if editorial and publishable_candidates:
@@ -783,47 +795,56 @@ class PipelineOrchestrator:
                 logger.warning("Editorial review failed, falling back to deterministic feed: %s", exc)
 
         if editorial_result is not None:
-            selected_candidates = []
+            selected_story_by_cluster = {}
             for candidate in publishable_candidates:
                 story = editorial_result.get(candidate.cluster_id)
                 if story is None:
                     continue
-                selected_candidates.append((candidate, self._apply_editorial_priority_guardrail(candidate, story)))
+                selected_story_by_cluster[candidate.cluster_id] = self._apply_editorial_priority_guardrail(candidate, story)
 
-            selected_candidates.sort(
-                key=lambda row: (
-                    -int(row[1].priority),
-                    -len(row[0].base_feed.source_attribution or {}),
-                    -len(row[0].articles),
-                    row[0].cluster_id.hex,
-                )
-            )
             target_floor = self._target_story_floor(
                 ranked_publishable_candidates,
                 configured_limit=self.config.editorial_max_stories,
             )
-            story_cap = self._effective_story_limit(
-                selected_candidates,
-                configured_limit=self.config.editorial_max_stories,
+            preferred_candidates = [
+                candidate
+                for candidate in publishable_candidates
+                if candidate.cluster_id in selected_story_by_cluster
+            ]
+            preferred_candidates.sort(
+                key=lambda row: (
+                    -int(selected_story_by_cluster[row.cluster_id].priority),
+                    -len(row.base_feed.source_attribution or {}),
+                    -len(row.articles),
+                    row.cluster_id.hex,
+                )
             )
-            selected_candidates = selected_candidates[:story_cap]
-            selected_cluster_ids = {candidate.cluster_id for candidate, _story in selected_candidates}
-            supplemental_candidates: List[ClusterEditorialCandidate] = []
-            if len(selected_candidates) < target_floor:
-                needed = target_floor - len(selected_candidates)
-                supplemental_candidates = [
-                    candidate
-                    for candidate in ranked_publishable_candidates
-                    if candidate.cluster_id not in selected_cluster_ids
-                ][:needed]
-                if supplemental_candidates:
-                    logger.info(
-                        "Editorial selection returned %d stories; supplementing %d deterministic candidates to hit floor %d",
-                        len(selected_candidates),
-                        len(supplemental_candidates),
-                        target_floor,
-                    )
-            final_cluster_ids = selected_cluster_ids | {candidate.cluster_id for candidate in supplemental_candidates}
+            selected_candidate_rows = self._select_diverse_candidates(
+                preferred_candidates,
+                max_items=min(story_limit, len(preferred_candidates)),
+            )
+            final_candidates = self._supplement_diverse_candidates(
+                selected_candidate_rows,
+                ranked_publishable_candidates,
+                max_items=min(story_limit, max(target_floor, len(selected_candidate_rows))),
+            )
+            selected_candidates = [
+                (candidate, selected_story_by_cluster[candidate.cluster_id])
+                for candidate in final_candidates
+                if candidate.cluster_id in selected_story_by_cluster
+            ]
+            supplemental_candidates = [
+                candidate
+                for candidate in final_candidates
+                if candidate.cluster_id not in selected_story_by_cluster
+            ]
+            if len(selected_candidates) < target_floor and supplemental_candidates:
+                logger.info(
+                    "Editorial selection returned %d stories; supplementing %d deterministic candidates after diversity rules",
+                    len(selected_candidates),
+                    len(supplemental_candidates),
+                )
+            final_cluster_ids = {candidate.cluster_id for candidate in final_candidates}
             stats.feeds_rejected_editorial += max(0, len(publishable_candidates) - len(final_cluster_ids))
 
             for candidate, story in selected_candidates:
@@ -891,6 +912,145 @@ class PipelineOrchestrator:
                 return min(7, int(configured_limit), len(items))
         return min(5, int(configured_limit), len(items))
 
+    @staticmethod
+    def _candidate_tag(candidate: ClusterEditorialCandidate) -> str:
+        return str(candidate.base_feed.category or "other")
+
+    def _select_editorial_articles(self, articles: Sequence[RawArticle], max_articles: int = 8) -> List[RawArticle]:
+        if len(articles) <= max_articles:
+            return list(articles)
+
+        ordered = sorted(
+            articles,
+            key=lambda article: (
+                -trusted_article_timestamp(article).timestamp(),
+                article.source,
+                article.url,
+            ),
+        )
+        selected: List[RawArticle] = []
+        seen_sources: set[str] = set()
+
+        for article in ordered:
+            if article.source in seen_sources:
+                continue
+            selected.append(article)
+            seen_sources.add(article.source)
+            if len(selected) >= max_articles:
+                return selected
+
+        for article in ordered:
+            if article in selected:
+                continue
+            selected.append(article)
+            if len(selected) >= max_articles:
+                break
+
+        return selected
+
+    def _select_diverse_candidates(
+        self,
+        ranked_candidates: Sequence[ClusterEditorialCandidate],
+        *,
+        max_items: int,
+        preferred_cluster_ids: Optional[Sequence[UUID]] = None,
+    ) -> List[ClusterEditorialCandidate]:
+        if max_items <= 0 or not ranked_candidates:
+            return []
+
+        lookup = {candidate.cluster_id: candidate for candidate in ranked_candidates}
+        ordered: List[ClusterEditorialCandidate] = []
+        seen_ids: set[UUID] = set()
+
+        for cluster_id in preferred_cluster_ids or ():
+            candidate = lookup.get(cluster_id)
+            if candidate is None or candidate.cluster_id in seen_ids:
+                continue
+            ordered.append(candidate)
+            seen_ids.add(candidate.cluster_id)
+
+        for candidate in ranked_candidates:
+            if candidate.cluster_id in seen_ids:
+                continue
+            ordered.append(candidate)
+            seen_ids.add(candidate.cluster_id)
+
+        selected: List[ClusterEditorialCandidate] = []
+        selected_ids: set[UUID] = set()
+        tag_counts: Dict[str, int] = {}
+
+        for candidate in ordered:
+            tag = self._candidate_tag(candidate)
+            if tag_counts.get(tag, 0) >= 3:
+                continue
+            selected.append(candidate)
+            selected_ids.add(candidate.cluster_id)
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            if len(selected) >= max_items:
+                break
+
+        economy_candidate = next(
+            (candidate for candidate in ordered if self._candidate_tag(candidate) == "economy"),
+            None,
+        )
+        if economy_candidate is not None and economy_candidate.cluster_id not in selected_ids:
+            if len(selected) < max_items:
+                selected.append(economy_candidate)
+            else:
+                for index in range(len(selected) - 1, -1, -1):
+                    if self._candidate_tag(selected[index]) == "economy":
+                        continue
+                    selected[index] = economy_candidate
+                    break
+
+        return selected[:max_items]
+
+    def _supplement_diverse_candidates(
+        self,
+        selected: Sequence[ClusterEditorialCandidate],
+        ranked_candidates: Sequence[ClusterEditorialCandidate],
+        *,
+        max_items: int,
+    ) -> List[ClusterEditorialCandidate]:
+        if len(selected) >= max_items:
+            return list(selected[:max_items])
+
+        combined = list(selected)
+        selected_ids = {candidate.cluster_id for candidate in combined}
+        tag_counts: Dict[str, int] = {}
+        for candidate in combined:
+            tag = self._candidate_tag(candidate)
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+        for candidate in ranked_candidates:
+            if candidate.cluster_id in selected_ids:
+                continue
+            tag = self._candidate_tag(candidate)
+            if tag_counts.get(tag, 0) >= 3:
+                continue
+            combined.append(candidate)
+            selected_ids.add(candidate.cluster_id)
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            if len(combined) >= max_items:
+                break
+
+        if not any(self._candidate_tag(candidate) == "economy" for candidate in combined):
+            economy_candidate = next(
+                (candidate for candidate in ranked_candidates if self._candidate_tag(candidate) == "economy"),
+                None,
+            )
+            if economy_candidate is not None and economy_candidate.cluster_id not in selected_ids:
+                if len(combined) < max_items:
+                    combined.append(economy_candidate)
+                else:
+                    for index in range(len(combined) - 1, -1, -1):
+                        if self._candidate_tag(combined[index]) == "economy":
+                            continue
+                        combined[index] = economy_candidate
+                        break
+
+        return combined[:max_items]
+
     def _rank_publishable_candidates(
         self, candidates: Sequence[ClusterEditorialCandidate]
     ) -> List[ClusterEditorialCandidate]:
@@ -909,9 +1069,12 @@ class PipelineOrchestrator:
     def _article_prominence_score(article: RawArticle) -> int:
         metadata = article.metadata or {}
         try:
-            return max(0, int(metadata.get("source_prominence_score", 0) or 0))
+            score = max(0, int(metadata.get("source_prominence_score", 0) or 0))
         except Exception:
-            return 0
+            score = 0
+        if score > 0:
+            return score
+        return _SOURCE_PROMINENCE_FALLBACKS.get(article.source, 0)
 
     def _candidate_publisher_topline(self, candidate: ClusterEditorialCandidate) -> Dict[str, Any]:
         strongest_by_source: Dict[str, int] = {}
@@ -1000,13 +1163,30 @@ class PipelineOrchestrator:
         return latest
 
     @staticmethod
-    def _candidate_suspicious_publish_dates(candidate: ClusterEditorialCandidate, max_skew_hours: int = 72) -> int:
-        count = 0
-        for article in candidate.articles:
-            skew_hours = publish_date_skew_hours(article)
-            if skew_hours is not None and skew_hours > max_skew_hours:
-                count += 1
-        return count
+    def _suspicious_publish_date_count(articles: Sequence[RawArticle]) -> int:
+        return sum(1 for article in articles if has_suspicious_publish_date(article))
+
+    def _apply_publish_date_confidence_penalty(
+        self,
+        feed: Any,
+        articles: Sequence[RawArticle],
+    ) -> Any:
+        suspicious_count = self._suspicious_publish_date_count(articles)
+        if suspicious_count <= 0:
+            return feed
+
+        adjusted = feed.model_copy(deep=True)
+        base_confidence = float(adjusted.classification_confidence or 0.0)
+        adjusted.classification_confidence = max(0.0, base_confidence - (0.4 * suspicious_count))
+        metadata = dict(adjusted.metadata or {})
+        metadata["suspicious_publish_dates"] = suspicious_count
+        metadata["publish_date_confidence_penalty"] = round(0.4 * suspicious_count, 2)
+        adjusted.metadata = metadata
+        return adjusted
+
+    @staticmethod
+    def _candidate_suspicious_publish_dates(candidate: ClusterEditorialCandidate) -> int:
+        return sum(1 for article in candidate.articles if has_suspicious_publish_date(article))
 
     def _candidate_publish_score(self, candidate: ClusterEditorialCandidate) -> int:
         feed = candidate.base_feed
@@ -1083,6 +1263,8 @@ class PipelineOrchestrator:
 
         weak_categories = {"other", "technology", "international"}
         if category in weak_categories:
+            if category == "international" and not (impact_labels & _HIGH_IMPACT_LABELS) and confidence < 0.2:
+                return False
             if impact_labels & _HIGH_IMPACT_LABELS:
                 return score >= 16
             return score >= 26

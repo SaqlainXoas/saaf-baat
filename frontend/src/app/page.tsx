@@ -9,6 +9,11 @@ import SkipLink from "@/components/SkipLink";
 
 const MAX_STORIES = 9;
 
+function hasRenderableImpactLine(story: { metadata?: { why_it_matters?: unknown } }) {
+  const value = story.metadata?.why_it_matters;
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function toURLSearchParams(searchParams?: Record<string, string | string[] | undefined>) {
   const params = new URLSearchParams();
   if (!searchParams) return params;
@@ -26,13 +31,13 @@ export default async function Home({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const feedResult = await fetchFeedWithMeta();
-  const allStories = feedResult.stories;
+  const allStories = feedResult.stories.filter(hasRenderableImpactLine);
   const availableSources = deriveAvailableSources(allStories);
   const urlParams = toURLSearchParams(resolvedSearchParams);
   const filters = parseFilters(urlParams);
   const filtered = applyFilters(allStories, filters);
   const stories = filtered.slice(0, MAX_STORIES);
-  const latestCreatedAt = feedResult.latestPipelineRunAt;
+  const generatedAt = feedResult.generatedAt;
   const hasFilters = urlParams.has("impact") || urlParams.has("sources");
   const hasLiveDataError = feedResult.status === "error-live-required";
 
@@ -54,7 +59,8 @@ export default async function Home({
               availableSources={availableSources}
               status={feedResult.status}
               statusMessage={feedResult.message}
-              latestCreatedAt={latestCreatedAt}
+              generatedAt={generatedAt}
+              isFresh={feedResult.isFresh}
             />
           ) : (
             <div className="sb-container px-4 py-2" style={{ maxWidth: 900 }}>
@@ -65,11 +71,13 @@ export default async function Home({
 
         {/* ── Mobile: greeting + card deck ── */}
         <div className="lg:hidden max-w-md mx-auto px-4">
-          <MorningGreeting storyCount={stories.length} availableSources={availableSources} />
+          <MorningGreeting storyCount={stories.length} availableSources={availableSources} generatedAt={generatedAt} />
           <DataStatusBanner
             status={feedResult.status}
             message={feedResult.message}
-            latestCreatedAt={latestCreatedAt}
+            generatedAt={generatedAt}
+            isFresh={feedResult.isFresh}
+            storyCount={stories.length}
           />
 
           {hasLiveDataError ? (
@@ -91,10 +99,10 @@ function LiveDataErrorState({ message, compact = false }: { message?: string; co
   return (
     <div className={`text-center ${compact ? "py-10" : "py-20"} px-6`}>
       <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
-        Live brief unavailable
+        Unable to load brief
       </p>
       <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
-        {message || "The live morning brief could not be loaded right now."}
+        {message || "Please try again shortly."}
       </p>
       <Link
         href="/"
@@ -111,12 +119,12 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
   return (
     <div className="text-center py-20 px-6">
       <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
-        {hasFilters ? "No stories match this focus" : "Today’s brief is not ready yet"}
+        {hasFilters ? "No stories match this focus" : "Today's brief is being prepared"}
       </p>
       <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
         {hasFilters
           ? "Try a broader focus to see the full brief."
-          : "Check back shortly. The next live brief has not been published yet."}
+          : "Check back after 7am PKT."}
       </p>
       {hasFilters ? (
         <Link

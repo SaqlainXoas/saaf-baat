@@ -42,8 +42,22 @@ def _resolve_heartbeat_path(backend_dir: Path) -> Path:
 def _write_pipeline_heartbeat(backend_dir: Path, stats: object) -> None:
     path = _resolve_heartbeat_path(backend_dir)
     now_utc = datetime.now(timezone.utc).replace(microsecond=0)
+    existing_payload = {}
+    if path.exists():
+        try:
+            existing_payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            existing_payload = {}
+
+    last_successful = existing_payload.get("last_successful_run_at")
+    if getattr(stats, "feeds_inserted", 0) > 0:
+        last_successful = now_utc.isoformat().replace("+00:00", "Z")
+
     payload = {
-        "last_successful_pipeline_run_at": now_utc.isoformat().replace("+00:00", "Z"),
+        "last_run_at": now_utc.isoformat().replace("+00:00", "Z"),
+        "last_successful_run_at": last_successful,
+        "source_article_counts": dict(getattr(stats, "source_article_counts", {}) or {}),
+        "degraded_sources": list(getattr(stats, "degraded_sources", []) or []),
         "stats": stats.as_dict() if hasattr(stats, "as_dict") else str(stats),
     }
     try:

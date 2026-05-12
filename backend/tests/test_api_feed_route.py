@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from src.api.app import create_app
 from src.api.routes.feed import get_db
 from src.db.client import DatabaseError
-from src.db.models import AnalyzedFeed, ExtractedEntity
+from src.db.models import AnalyzedFeed
 
 
 class _FakeDB:
@@ -51,11 +51,11 @@ def test_feed_route_returns_items():
     res = client.get("/api/feed?limit=10")
     assert res.status_code == 200
     payload = res.json()
-    assert isinstance(payload, list) and len(payload) == 1
-    assert payload[0]["headline"] == "Test story"
-    assert payload[0]["snippet"] == "Two-line snippet."
-    assert payload[0]["story_id"]
-    assert payload[0]["sources"][0]["source"] == "dawn"
+    assert payload["stories"][0]["headline"] == "Test story"
+    assert payload["stories"][0]["snippet"] == "Two-line snippet."
+    assert payload["stories"][0]["story_id"]
+    assert payload["stories"][0]["sources"][0]["source"] == "dawn"
+    assert payload["is_fresh"] is True
 
 
 def test_feed_route_returns_503_when_db_unavailable():
@@ -79,7 +79,7 @@ def test_feed_route_returns_empty_list_when_no_rows():
 
     res = client.get("/api/feed?limit=10")
     assert res.status_code == 200
-    assert res.json() == []
+    assert res.json() == {"generated_at": None, "is_fresh": False, "stories": []}
 
 
 def test_feed_route_handles_missing_source_attribution_and_summary():
@@ -100,36 +100,8 @@ def test_feed_route_handles_missing_source_attribution_and_summary():
     res = client.get("/api/feed?limit=10")
     assert res.status_code == 200
     payload = res.json()
-    assert payload[0]["snippet"] == ""
-    assert payload[0]["sources"] == []
-
-
-def test_feed_route_caps_entities_in_payload():
-    items = [
-        AnalyzedFeed(
-            cluster_id=uuid4(),
-            headline="Entity-heavy story",
-            summary="Snippet",
-            category="economy",
-            impact_labels=["💳 WALLET"],
-            source_attribution={"dawn": 2, "geo": 1},
-            confirmed_facts=[
-                ExtractedEntity(text=f"Confirmed {i}", type="ORG", sources=3) for i in range(20)
-            ],
-            debated_claims=[
-                ExtractedEntity(text=f"Debated {i}", type="GPE", sources=1) for i in range(40)
-            ],
-        )
-    ]
-    app = create_app()
-    app.dependency_overrides[get_db] = lambda: _FakeDB(items)  # type: ignore[assignment]
-    client = TestClient(app)
-
-    res = client.get("/api/feed?limit=10")
-    assert res.status_code == 200
-    payload = res.json()
-    assert len(payload[0]["confirmed_facts"]) == 8
-    assert len(payload[0]["debated_claims"]) == 12
+    assert payload["stories"][0]["snippet"] == ""
+    assert payload["stories"][0]["sources"] == []
 
 
 def test_feed_route_sorts_by_editorial_priority_before_created_at():
@@ -161,5 +133,5 @@ def test_feed_route_sorts_by_editorial_priority_before_created_at():
     res = client.get("/api/feed?limit=10")
     assert res.status_code == 200
     payload = res.json()
-    assert payload[0]["headline"] == "Higher-priority story"
-    assert payload[1]["headline"] == "Lower-priority story"
+    assert payload["stories"][0]["headline"] == "Higher-priority story"
+    assert payload["stories"][1]["headline"] == "Lower-priority story"

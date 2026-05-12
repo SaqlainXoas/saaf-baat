@@ -45,22 +45,13 @@ def _heartbeat_file() -> Path:
     return _BACKEND_DIR.parent / path
 
 
-def _load_heartbeat_timestamp() -> Optional[datetime]:
+def _load_heartbeat_payload() -> dict[str, object]:
     path = _heartbeat_file()
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return None
-    return _parse_iso_datetime(payload.get("last_successful_pipeline_run_at"))
-
-
-def _stale_after_hours() -> int:
-    raw = (os.getenv("SAAF_FEED_STALE_AFTER_HOURS") or "6").strip()
-    try:
-        value = int(raw)
-        return value if value > 0 else 6
-    except ValueError:
-        return 6
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _to_utc_naive(value: datetime) -> datetime:
@@ -73,7 +64,19 @@ def _to_utc_naive(value: datetime) -> datetime:
 def health(db: SupabaseClient = Depends(get_db)) -> dict[str, object]:
     db_connected = False
     latest_feed_created_at: Optional[datetime] = None
-    last_successful_pipeline_run_at: Optional[datetime] = None
+    heartbeat = _load_heartbeat_payload()
+    last_run_at = _parse_iso_datetime(heartbeat.get("last_run_at"))
+    last_successful_run_at = _parse_iso_datetime(heartbeat.get("last_successful_run_at"))
+    degraded_sources = [
+        str(source)
+        for source in list(heartbeat.get("degraded_sources") or [])
+        if str(source).strip()
+    ]
+    source_article_counts = {
+        str(source): int(count)
+        for source, count in dict(heartbeat.get("source_article_counts") or {}).items()
+        if str(source).strip()
+    }
 
     try:
         db_connected = db.is_connected()
@@ -88,8 +91,7 @@ def health(db: SupabaseClient = Depends(get_db)) -> dict[str, object]:
         except Exception:
             latest_feed_created_at = None
 
-    last_successful_pipeline_run_at = _load_heartbeat_timestamp() or latest_feed_created_at
-    stale_after = _stale_after_hours()
+    last_successful_pipeline_run_at = last_successful_run_at or latest_feed_created_at
     if last_successful_pipeline_run_at is None:
         pipeline_is_stale = True
     else:
@@ -97,13 +99,16 @@ def health(db: SupabaseClient = Depends(get_db)) -> dict[str, object]:
             0.0,
             (datetime.utcnow() - _to_utc_naive(last_successful_pipeline_run_at)).total_seconds(),
         )
-        pipeline_is_stale = age_seconds >= stale_after * 3600
+        pipeline_is_stale = age_seconds >= 28 * 3600
 
     return {
         "status": "ok" if db_connected else "degraded",
         "database": "connected" if db_connected else "disconnected",
         "latest_feed_created_at": latest_feed_created_at,
-        "last_successful_pipeline_run_at": last_successful_pipeline_run_at,
-        "pipeline_stale_after_hours": stale_after,
+        "last_run_at": last_run_at,
+        "last_successful_run_at": last_successful_pipeline_run_at,
+        "degraded_sources": degraded_sources,
+        "source_article_counts": source_article_counts,
+        "pipeline_stale_after_hours": 28,
         "pipeline_is_stale": pipeline_is_stale,
     }

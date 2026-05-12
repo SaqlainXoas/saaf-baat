@@ -1,0 +1,44 @@
+[
+  {
+    "source": "dawn",
+    "url": "https://example.com/imf-dawn",
+    "headline": "Pakistan opens final IMF talks as budget pressure grows",
+    "main_text": "Pakistan opened another round of IMF talks as budget pressure, reserves, and fuel pricing remained in focus for households and businesses across the country.",
+    "publish_date": "2026-05-12T04:00:00Z"
+  },
+  {
+    "source": "geo",
+    "url": "https://example.com/imf-geo",
+    "headline": "IMF discussions keep fuel prices and reserves in focus",
+    "main_text": "Officials said IMF discussions were closely tied to reserves, fiscal choices, and fuel prices that could quickly shape household costs and business planning.",
+    "publish_date": "2026-05-12T04:10:00Z"
+  },
+  {
+    "source": "tribune",
+    "url": "https://example.com/imf-tribune",
+    "headline": "Budget and IMF pressure keep Pakistan economy on alert",
+    "main_text": "Budget pressure and IMF conditions kept Pakistan's economic outlook on alert, with policy choices expected to influence transport costs and consumer prices.",
+    "publish_date": "2026-05-12T04:20:00Z"
+  },
+  {
+    "source": "dawn",
+    "url": "https://example.com/rain-dawn",
+    "headline": "Heavy rain floods Karachi roads and disrupts civic services",
+    "main_text": "Heavy rain flooded roads in Karachi, disrupted civic services, and left commuters waiting for updated traffic and utility guidance from local officials.",
+    "publish_date": "2026-05-12T05:00:00Z"
+  },
+  {
+    "source": "geo",
+    "url": "https://example.com/rain-geo",
+    "headline": "Karachi commuters face delays after overnight rain",
+    "main_text": "Karachi commuters faced delays after overnight rain damaged road access and raised concerns about drainage, power reliability, and school travel.",
+    "publish_date": "2026-05-12T05:10:00Z"
+  },
+  {
+    "source": "tribune",
+    "url": "https://example.com/rain-tribune",
+    "headline": "Drainage failures deepen Karachi rain disruption",
+    "main_text": "Drainage failures deepened Karachi rain disruption as workers struggled to reopen key roads and restore normal city movement before the morning rush.",
+    "publish_date": "2026-05-12T05:20:00Z"
+  }
+]

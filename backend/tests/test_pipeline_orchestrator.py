@@ -11,6 +11,7 @@ import spacy
 import yaml
 
 from src.agents.analysis import AnalysisService, ConsensusDetector, EntityExtractor, RuleBasedClassifier
+from src.agents.editorial import ClusterEditorialCandidate
 from src.agents.clustering import ClusteringResult
 from src.db.client import DuplicateArticleError
 from src.db.models import AnalyzedFeed, Cluster, RawArticle
@@ -72,10 +73,9 @@ class FakeEditorialService:
                 cluster_id=str(candidate.cluster_id),
                 priority=100 - priority,
                 headline=f"Edited: {candidate.base_feed.headline}",
-                summary="Editorial summary for the morning brief.",
+                impact_line="This has direct public relevance.",
                 category=str(candidate.base_feed.category),
                 impact_labels=list(candidate.base_feed.impact_labels or ["🏛️ GOVERNANCE"]),
-                why_it_matters="This has direct public relevance.",
                 what_to_watch="Watch for the next official update.",
                 public_impact="high",
                 story_tags=["pakistan", "brief"],
@@ -260,24 +260,31 @@ def test_pipeline_orchestrator_chains_phases(tmp_path):
     extractor = EntityExtractor(nlp=nlp)
     consensus = ConsensusDetector(min_agreement_ratio=1.0)
     analyzer = AnalysisService(entity_extractor=extractor, consensus_detector=consensus, classifier=clf)
+    now = datetime.now(timezone.utc)
 
     a1 = RawArticle(
         source="dawn",
         url="https://example.com/a",
         headline="Pakistan talks to IMF",
         main_text=("Pakistan IMF rupee " * 30),
+        publish_date=now,
+        scraped_at=now,
     )
     a2 = RawArticle(
         source="tribune",
         url="https://example.com/b",
         headline="IMF meeting in Pakistan",
         main_text=("Pakistan IMF inflation " * 30),
+        publish_date=now,
+        scraped_at=now,
     )
     off = RawArticle(
         source="dawn",
         url="https://evil.com/phish",
         headline="Off domain",
         main_text=("Pakistan IMF " * 30),
+        publish_date=now,
+        scraped_at=now,
     )
 
     fake_scraper = FakeScraper({"dawn": [a1, off], "tribune": [a2]})
@@ -476,13 +483,13 @@ def test_editorial_selection_is_supplemented_to_story_floor(tmp_path):
 
     stats = runner.run()
 
-    assert stats.feeds_inserted == 5
-    assert stats.feeds_rejected_editorial == 1
-    assert len(db._feed_by_cluster) == 5
+    assert stats.feeds_inserted == 3
+    assert stats.feeds_rejected_editorial == 3
+    assert len(db._feed_by_cluster) == 3
     llm_augmented_count = sum(
         1 for feed in db._feed_by_cluster.values() if (feed.metadata or {}).get("llm_augmented")
     )
-    assert llm_augmented_count == 4
+    assert llm_augmented_count == 3
 
 
 def test_scrape_stage_uses_runtime_article_cap_over_yaml_default(tmp_path):
@@ -973,6 +980,7 @@ def test_pipeline_editorial_gate_rejects_unselected_clusters(tmp_path):
                 headline=f"Pakistan story {cluster_no} A",
                 main_text=("Pakistan inflation budget " * 30),
                 embedding=[1.0, 0.0, 0.0],
+                publish_date=datetime.now(timezone.utc),
             ),
             RawArticle(
                 source="tribune",
@@ -980,6 +988,7 @@ def test_pipeline_editorial_gate_rejects_unselected_clusters(tmp_path):
                 headline=f"Pakistan story {cluster_no} B",
                 main_text=("Pakistan inflation IMF " * 30),
                 embedding=[1.0, 0.0, 0.0],
+                publish_date=datetime.now(timezone.utc),
             ),
         ]
         for article in articles:
@@ -1132,6 +1141,7 @@ def test_publish_gate_keeps_high_impact_single_source_civic_story(tmp_path):
                 "to respond through the night. " * 8
             ),
             embedding=[1.0, 0.0, 0.0],
+            publish_date=datetime.now(timezone.utc),
         ),
         RawArticle(
             source="dawn",
@@ -1142,6 +1152,7 @@ def test_publish_gate_keeps_high_impact_single_source_civic_story(tmp_path):
                 "workers carried out rescue activity. " * 8
             ),
             embedding=[0.98, 0.02, 0.0],
+            publish_date=datetime.now(timezone.utc),
         ),
     ]
 
@@ -1364,6 +1375,7 @@ def test_soft_feature_headline_penalty_lowers_publish_score_blossom_season(tmp_p
                 headline="H",
                 main_text=("x " * 80),
                 scraped_at=now,
+                publish_date=now,
                 embedding=[1.0, 0.0, 0.0],
             ),
             RawArticle(
@@ -1372,6 +1384,7 @@ def test_soft_feature_headline_penalty_lowers_publish_score_blossom_season(tmp_p
                 headline="H2",
                 main_text=("x " * 80),
                 scraped_at=now,
+                publish_date=now,
                 embedding=[0.99, 0.01, 0.0],
             ),
         ]
@@ -1450,6 +1463,7 @@ def test_soft_feature_headline_penalty_lowers_publish_score_performer(tmp_path):
                 headline="H",
                 main_text=("x " * 80),
                 scraped_at=now,
+                publish_date=now,
                 embedding=[1.0, 0.0, 0.0],
             ),
             RawArticle(
@@ -1458,6 +1472,7 @@ def test_soft_feature_headline_penalty_lowers_publish_score_performer(tmp_path):
                 headline="H2",
                 main_text=("x " * 80),
                 scraped_at=now,
+                publish_date=now,
                 embedding=[0.99, 0.01, 0.0],
             ),
         ]
@@ -1567,7 +1582,242 @@ def test_suspicious_publish_date_penalty_lowers_publish_score(tmp_path):
 
     baseline = _run_and_get_score(suspicious=False)
     suspicious = _run_and_get_score(suspicious=True)
-    assert suspicious == baseline - 12
+    assert suspicious == baseline - 22
+
+
+def test_missing_publish_date_articles_are_rejected_and_source_is_marked_degraded(tmp_path):
+    sources_yaml = tmp_path / "sources.yaml"
+    sources_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "sources": {
+                    "dawn": {"url": "https://example.com", "sections": ["pakistan"], "enabled": True},
+                    "tribune": {"url": "https://example.com", "sections": ["business"], "enabled": False},
+                },
+                "scraping_config": {"max_articles_per_source": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    rules_path = Path(__file__).resolve().parent.parent / "config" / "classification_rules.yaml"
+    scraper = FakeScraper(
+        {
+            "dawn": [
+                RawArticle(
+                    source="dawn",
+                    url="https://example.com/no-date",
+                    headline="Undated item",
+                    main_text=("x " * 80),
+                    publish_date=None,
+                )
+            ]
+        }
+    )
+    db = FakeDB()
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(
+            sources_yaml=sources_yaml,
+            classification_yaml=rules_path,
+            recluster_recent_window=False,
+        ),
+        db=db,  # type: ignore[arg-type]
+        scraper=scraper,  # type: ignore[arg-type]
+    )
+
+    stats = runner.run()
+
+    assert stats.inserted == 0
+    assert stats.source_article_counts["dawn"] == 0
+    assert stats.degraded_sources == ["dawn"]
+
+
+def test_future_publish_date_penalty_lowers_classification_confidence(tmp_path):
+    sources_yaml = tmp_path / "sources.yaml"
+    sources_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "sources": {
+                    "dawn": {"url": "https://example.com", "sections": ["pakistan"], "enabled": False},
+                    "tribune": {"url": "https://example.com", "sections": ["business"], "enabled": False},
+                },
+                "scraping_config": {"max_articles_per_source": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    rules_path = Path(__file__).resolve().parent.parent / "config" / "classification_rules.yaml"
+
+    class _Analyzer:
+        def choose_representative_article(self, articles: List[RawArticle]) -> RawArticle:
+            return articles[0]
+
+        def analyze_cluster(self, cluster_id: UUID, articles: List[RawArticle]) -> AnalyzedFeed:
+            sources: Dict[str, int] = {}
+            for article in articles:
+                sources[article.source] = sources.get(article.source, 0) + 1
+            return AnalyzedFeed(
+                cluster_id=cluster_id,
+                headline="Fuel policy update",
+                summary="Deterministic summary",
+                category="economy",
+                confirmed_facts=[],
+                debated_claims=[],
+                impact_labels=["💳 WALLET"],
+                source_attribution=sources,
+                entity_counts={},
+                classification_confidence=0.8,
+                metadata={},
+            )
+
+    db = FakeDB()
+    cluster_id = db.create_cluster(article_ids=[])
+    now = datetime.now(timezone.utc)
+    articles = [
+        RawArticle(
+            source="dawn",
+            url="https://example.com/a",
+            headline="Fuel policy update expected",
+            main_text=("x " * 80),
+            publish_date=now + timedelta(hours=2),
+            scraped_at=now,
+            embedding=[1.0, 0.0, 0.0],
+        ),
+        RawArticle(
+            source="tribune",
+            url="https://example.com/b",
+            headline="Officials discuss fuel move",
+            main_text=("x " * 80),
+            publish_date=now,
+            scraped_at=now,
+            embedding=[0.99, 0.01, 0.0],
+        ),
+    ]
+    for article in articles:
+        db.insert_article(article)
+        db.assign_to_cluster(article.id, cluster_id)
+        db._clusters_by_id[cluster_id].add_article(article.id)
+
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(
+            sources_yaml=sources_yaml,
+            classification_yaml=rules_path,
+            recluster_recent_window=False,
+        ),
+        db=db,  # type: ignore[arg-type]
+        scraper=FakeScraper({}),  # type: ignore[arg-type]
+        analyzer=_Analyzer(),  # type: ignore[arg-type]
+    )
+
+    runner.run()
+
+    feed = db._feed_by_cluster[cluster_id]
+    assert feed.classification_confidence == 0.4
+    assert feed.metadata["suspicious_publish_dates"] == 1
+
+
+def test_diversity_rules_cap_politics_and_keep_economy(tmp_path):
+    sources_yaml = tmp_path / "sources.yaml"
+    sources_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "sources": {
+                    "dawn": {"url": "https://example.com", "sections": ["pakistan"], "enabled": False},
+                    "tribune": {"url": "https://example.com", "sections": ["business"], "enabled": False},
+                },
+                "scraping_config": {"max_articles_per_source": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    rules_path = Path(__file__).resolve().parent.parent / "config" / "classification_rules.yaml"
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(
+            sources_yaml=sources_yaml,
+            classification_yaml=rules_path,
+            recluster_recent_window=False,
+        ),
+        db=FakeDB(),  # type: ignore[arg-type]
+        scraper=FakeScraper({}),  # type: ignore[arg-type]
+    )
+
+    def _candidate(index: int, category: str) -> ClusterEditorialCandidate:
+        article = RawArticle(
+            source="dawn" if category == "politics" else "tribune",
+            url=f"https://example.com/{category}-{index}",
+            headline=f"{category.title()} headline {index}",
+            main_text=("x " * 80),
+            publish_date=datetime.now(timezone.utc),
+            embedding=[1.0, 0.0, 0.0],
+        )
+        feed = AnalyzedFeed(
+            cluster_id=uuid4(),
+            headline=article.headline,
+            summary="Snippet",
+            category=category,
+            impact_labels=["🏛️ GOVERNANCE"] if category == "politics" else ["💳 WALLET"],
+            source_attribution={article.source: 1},
+            metadata={"deterministic_publish_score": 90 - index},
+        )
+        return ClusterEditorialCandidate(
+            cluster_id=feed.cluster_id,
+            base_feed=feed,
+            representative_article=article,
+            articles=(article,),
+            algorithm_used="singleton",
+            avg_similarity=1.0,
+            min_member_similarity=1.0,
+        )
+
+    ranked_candidates = [_candidate(index, "politics") for index in range(6)] + [_candidate(6, "economy")]
+    selected = runner._select_diverse_candidates(ranked_candidates, max_items=7)
+
+    categories = [candidate.base_feed.category for candidate in selected]
+    assert categories.count("politics") == 3
+    assert "economy" in categories
+
+
+def test_editorial_candidate_articles_are_capped_at_eight(tmp_path):
+    sources_yaml = tmp_path / "sources.yaml"
+    sources_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "sources": {
+                    "dawn": {"url": "https://example.com", "sections": ["pakistan"], "enabled": False},
+                    "tribune": {"url": "https://example.com", "sections": ["business"], "enabled": False},
+                },
+                "scraping_config": {"max_articles_per_source": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    rules_path = Path(__file__).resolve().parent.parent / "config" / "classification_rules.yaml"
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(
+            sources_yaml=sources_yaml,
+            classification_yaml=rules_path,
+            recluster_recent_window=False,
+        ),
+        db=FakeDB(),  # type: ignore[arg-type]
+        scraper=FakeScraper({}),  # type: ignore[arg-type]
+    )
+
+    now = datetime.now(timezone.utc)
+    articles = [
+        RawArticle(
+            source=f"source-{index % 4}",
+            url=f"https://example.com/story-{index}",
+            headline=f"Story {index}",
+            main_text=("x " * 80),
+            publish_date=now - timedelta(minutes=index),
+            scraped_at=now - timedelta(minutes=index),
+            embedding=[1.0, 0.0, 0.0],
+        )
+        for index in range(12)
+    ]
+
+    selected = runner._select_editorial_articles(articles, max_articles=8)
+
+    assert len(selected) == 8
 
 
 def test_publish_score_carries_publisher_topline_metadata(tmp_path):
@@ -1732,10 +1982,9 @@ def test_editorial_guardrail_demotes_low_prominence_incident_below_topline_story
                     cluster_id=str(candidate.cluster_id),
                     priority=70 if is_topline else 95,
                     headline=candidate.base_feed.headline,
-                    summary=candidate.base_feed.summary or "Summary",
+                    impact_line="This has direct public relevance.",
                     category=str(candidate.base_feed.category),
                     impact_labels=list(candidate.base_feed.impact_labels or ["🏛️ GOVERNANCE"]),
-                    why_it_matters="This has direct public relevance.",
                     what_to_watch="Watch for the next official update.",
                     public_impact="high",
                     story_tags=["pakistan", "brief"],

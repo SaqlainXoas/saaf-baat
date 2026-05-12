@@ -9,8 +9,6 @@ function story(partial: Partial<StoryCardData>): StoryCardData {
     snippet: "sn",
     category: "c",
     impact_labels: ["💳 WALLET"],
-    confirmed_facts: [],
-    debated_claims: [],
     sources: [{ source: "dawn", count: 1 }],
     ...partial,
   };

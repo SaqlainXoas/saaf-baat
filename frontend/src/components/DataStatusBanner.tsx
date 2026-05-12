@@ -3,30 +3,43 @@ import type { DataStatus } from "@/data/api";
 export default function DataStatusBanner({
   status,
   message,
-  latestCreatedAt,
-  staleAfterHours = 6,
+  generatedAt,
+  isFresh,
+  storyCount,
 }: {
   status: DataStatus;
   message?: string;
-  latestCreatedAt?: string;
-  staleAfterHours?: number;
+  generatedAt?: string;
+  isFresh?: boolean;
+  storyCount?: number;
 }) {
-  const latestUpdate = parseLatestUpdate(latestCreatedAt);
-  const staleFeed = status === "live" && latestUpdate ? latestUpdate.ageHours >= staleAfterHours : false;
-  if (!staleFeed && (status === "live" || status === "not-found")) return null;
+  if (status === "not-found") return null;
+
+  const latestUpdate = parseLatestUpdate(generatedAt);
+  const staleFeed = status === "live" && storyCount !== 0 && isFresh === false;
+  const partialBrief = status === "live" && typeof storyCount === "number" && storyCount > 0 && storyCount < 5;
+  const emptyBrief = status === "live" && storyCount === 0;
+  if (!staleFeed && !partialBrief && !emptyBrief && status === "live") return null;
   const tone = status === "error-live-required" ? "error" : "warn";
 
   const body =
-    staleFeed
-      ? `This brief may be stale. Last successful live update: ${latestUpdate?.label}.`
+    emptyBrief
+      ? "Today's brief is being prepared. Check back after 7am PKT."
+      : partialBrief
+        ? "Partial brief — more stories being reviewed"
+        : staleFeed
+      ? "Brief not updated yet today. Showing last available brief."
       : message ||
         (status === "mock-no-api"
           ? "Showing the local preview brief because a live backend is not configured."
           : status === "error-live-required"
-            ? "Live briefing is required, but the frontend cannot reach the backend API."
+            ? "Unable to load brief. Please try again shortly."
             : "Live briefing is unavailable right now. Showing the local preview brief instead.");
 
-  const nonLiveSuffix = !staleFeed && latestUpdate ? ` Last successful live update: ${latestUpdate.label}.` : "";
+  const suffix =
+    latestUpdate && (staleFeed || status !== "live")
+      ? ` Last successful live update: ${latestUpdate.label}.`
+      : "";
 
   return (
     <div
@@ -36,7 +49,7 @@ export default function DataStatusBanner({
       data-tone={tone}
     >
       {body}
-      {nonLiveSuffix}
+      {suffix}
     </div>
   );
 }

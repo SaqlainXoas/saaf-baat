@@ -39,7 +39,7 @@ These decisions are currently intentional and active:
 
 ## Current Status
 
-As of `2026-04-08`, the backend and frontend are both on the intended live contract, the brief is fresh in Supabase, and the product is in final ship review rather than architecture rebuild mode.
+As of `2026-05-12`, the backend and frontend are on the intended morning-brief contract, the product now handles stale and missing briefs honestly, and the remaining work is live operational verification rather than product-definition churn.
 
 Working:
 
@@ -47,31 +47,33 @@ Working:
 - Gemini embeddings are working with DB-compatible `768` dimensions
 - deterministic event grouping replaced whole-batch density clustering in production
 - deterministic analysis and publish gating are wired end-to-end
-- Gemini-first structured editorial review is working live, with Groq fallback retained as backup
+- Gemini-only structured editorial review is the active editorial path
 - deterministic fallback now keeps the brief finite if editorial fails
 - Dawn same-site filtering is hardened across RSS-first and HTML discovery
 - recent constrained live runs now produce a finite `5-9` morning brief instead of collapsing into one blob or overflowing the feed
 - the latest fresh live run produced `7` published cards with all three core sources contributing
 - the brief now ranks toward Pakistan morning toplines first by carrying ordered discovery prominence into publish scoring
 - frontend now reads the backend `/api/feed` and `/api/stories/{cluster_id}` DTOs instead of direct Supabase table reads
+- `/api/feed` now exposes freshness explicitly through `generated_at` and `is_fresh`
 - detail pages can now render real original-source article links from the backend story route
 - frontend fetches now use live API data directly instead of serving stale cached brief data after a publish
+- homepage and detail routes now show explicit stale, empty, partial, and error states instead of failing silently
 - homepage and story detail UI now follow the Stitch-inspired editorial system more closely
 - story detail pages now behave like quick briefs instead of mini article pages
 - frontend test suites and production build are green on the current worktree
-- the latest verified `/health` check shows:
-  - `pipeline_is_stale: false`
-  - `latest_feed_created_at: 2026-04-08T10:17:46.144314Z`
-  - `last_successful_pipeline_run_at: 2026-04-08T10:17:47Z`
+- pipeline heartbeat state now records:
+  - `last_run_at`
+  - `last_successful_run_at`
+  - `source_article_counts`
+  - `degraded_sources`
+- `/health` now exposes `pipeline_is_stale` using a hard `28` hour threshold
 
 Still being monitored:
 
 - repeated-run consistency: keep the brief in `5-9` across additional live runs
 - final story quality: keep softer or second-tier stories out when stronger national/public-interest stories exist
-- suspicious publish-date handling: verify on future live rows that stale timestamps do not drive ranking or editorial pressure
-- publisher-prominence tuning: several stories still carry `publisher_topline_score = 0`, so topline ranking should keep being watched
-- payload semantics: extracted `confirmed_facts` and `debated_claims` still contain some noisy entity/date fragments even though the frontend now hides the worst of that
-- final homepage composition: the product is good enough to review seriously, but the public-facing homepage balance still needs final visual judgment in a real browser
+- fresh live verification: confirm the new freshness and health signals against the next real pipeline run
+- source qualification: add `thenews`, `reuters_pk`, and `business_recorder` only after they pass the reliability bar
 
 ## Current Source Status
 
@@ -92,11 +94,12 @@ Disabled for now:
 ```text
 scrape sources
 -> normalize + deduplicate
+-> reject null or suspicious publish dates aggressively
 -> embed articles with Gemini
 -> cluster related coverage
 -> score source prominence and national-topline strength
 -> run deterministic analysis
--> run bounded Gemini-first editorial review on candidates
+-> run bounded Gemini editorial review on candidates
 -> publish the best morning-brief cards
 -> serve via FastAPI to the Next.js frontend
 ```
@@ -111,13 +114,16 @@ scrape sources
 
 ### LLM Layer
 
-Gemini is the primary editorial layer, with Groq available as fallback, to decide whether a candidate cluster deserves publication and to shape structured card fields such as:
+Gemini is the single editorial layer. It decides whether a candidate cluster deserves publication and shapes structured card fields such as:
 
 - `why_it_matters`
 - `what_to_watch`
+- `impact_line`
 - priority
 - grade
 - tags
+
+The canonical prompt lives in `backend/config/editorial_prompt.md`.
 
 This is intentionally bounded. The system is not meant to become an opaque LLM-only summarizer.
 
@@ -146,13 +152,13 @@ The remaining live issues are narrower:
 
 ## Next Phase
 
-The current phase is `final frontend composition review with backend monitoring`.
+The current phase is `freshness-safe brief ship hardening with backend monitoring`.
 
 The next work items are:
 
-1. Review the live homepage and story detail hierarchy in a real browser and decide whether the lead-story composition is still too heavy.
+1. Run a fresh live pipeline and verify `/api/feed` and `/api/health` on the new contract.
 2. Keep monitoring constrained live runs for repeated `5-9` consistency and better topline selection.
-3. Re-check publish-date and freshness handling on future live rows.
+3. Qualify `thenews`, then `reuters_pk`, before expanding the core source set.
 4. Do only targeted backend ranking/prominence tuning unless a new live regression appears.
 
 ## Main Remaining Risks
@@ -161,9 +167,8 @@ These are the current areas still worth watching:
 
 - repeated-run confidence, not one-run confidence
 - occasional second-tier survivors if ranking/editorial pressure drifts
-- suspicious publish dates on future live rows
-- some remaining headline/detail payload noise below the UI layer
-- final live homepage composition judgment is still pending
+- operational verification of the new heartbeat and freshness signals on live runs
+- source qualification discipline as coverage expands beyond the current core set
 
 ## Repository Layout
 
@@ -224,13 +229,11 @@ Required:
 - `SUPABASE_URL`
 - `SUPABASE_KEY`
 - `GEMINI_API_KEY`
-- `GROQ_API_KEY` if editorial review is enabled
 
 Important optional controls:
 
 - `SAAF_ENABLE_EDITORIAL_LLM`
-- `SAAF_EDITORIAL_GEMINI_MODEL` (primary editorial model; default `gemini-3.1-flash-lite-preview`)
-- `SAAF_EDITORIAL_GROQ_MODEL` (fallback editorial model; legacy `SAAF_EDITORIAL_LLM_MODEL` still supported)
+- `SAAF_EDITORIAL_GEMINI_MODEL` (default `gemini-3.1-flash-lite-preview`)
 - `SAAF_EDITORIAL_CANDIDATE_LIMIT`
 - `SAAF_EDITORIAL_MAX_STORIES`
 - `SAAF_LOW_COST_MODE`
@@ -238,7 +241,20 @@ Important optional controls:
 - `SAAF_EMBEDDING_BACKFILL_LIMIT`
 - `SAAF_ENABLE_PLAYWRIGHT_FALLBACK`
 - `SAAF_PIPELINE_HEARTBEAT_FILE`
-- `SAAF_FEED_STALE_AFTER_HOURS`
+
+## API Notes
+
+Current feed contract:
+
+- `/api/feed` returns:
+  - `generated_at`
+  - `is_fresh`
+  - `stories`
+- `is_fresh` is `true` when the published brief was generated within the last `20` hours
+- if no brief exists or too few stories are available, the frontend surfaces explicit preparation or partial-brief messaging instead of rendering a silent empty state
+
+Other useful env values:
+
 - `BACKEND_CORS_ALLOW_ORIGINS`
 - `SAAF_FRONTEND_REVALIDATE_URL`
 - `SAAF_FRONTEND_REVALIDATE_SECRET`

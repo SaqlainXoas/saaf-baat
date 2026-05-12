@@ -10,8 +10,6 @@ function story(id: string): StoryCardData {
     snippet: `Snippet ${id}`,
     category: "economy",
     impact_labels: ["💳 WALLET"],
-    confirmed_facts: [{ text: `Fact ${id}`, type: "ORG", sources: 2 }],
-    debated_claims: [],
     sources: [{ source: "dawn", count: 1 }],
   };
 }

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from src.api.app import create_app
 from src.api.routes.stories import get_db
 from src.db.client import DatabaseError
-from src.db.models import AnalyzedFeed, Cluster, ExtractedEntity, RawArticle
+from src.db.models import AnalyzedFeed, Cluster, RawArticle
 
 
 class _FakeDB:
@@ -93,7 +93,7 @@ def test_story_detail_returns_503_when_db_unavailable():
     assert "Database unavailable" in res.json()["detail"]
 
 
-def test_story_detail_caps_entities_and_derives_sources_when_missing():
+def test_story_detail_derives_sources_when_missing():
     cluster_id = uuid4()
     feed = AnalyzedFeed(
         cluster_id=cluster_id,
@@ -102,12 +102,6 @@ def test_story_detail_caps_entities_and_derives_sources_when_missing():
         category="economy",
         impact_labels=["💳 WALLET"],
         source_attribution={},
-        confirmed_facts=[
-            ExtractedEntity(text=f"Confirmed {i}", type="ORG", sources=2) for i in range(30)
-        ],
-        debated_claims=[
-            ExtractedEntity(text=f"Debated {i}", type="GPE", sources=1) for i in range(50)
-        ],
     )
     a1 = RawArticle(
         id=uuid4(),
@@ -133,8 +127,6 @@ def test_story_detail_caps_entities_and_derives_sources_when_missing():
     res = client.get(f"/api/stories/{cluster_id}")
     assert res.status_code == 200
     body = res.json()
-    assert len(body["confirmed_facts"]) == 8
-    assert len(body["debated_claims"]) == 12
     assert [s["source"] for s in body["sources"]] == ["dawn", "geo"]
     assert all(article["publish_date"] is None for article in body["articles"])
 
