@@ -5,6 +5,8 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from uuid import UUID
 
@@ -15,6 +17,8 @@ from src.agents.clustering import publish_date_skew_hours, trusted_article_times
 from src.db.models import AnalyzedFeed, RawArticle
 
 logger = logging.getLogger(__name__)
+# Prompt lives in config/editorial_prompt.md — update there first
+_EDITORIAL_PROMPT_PATH = Path(__file__).resolve().parents[2] / "config" / "editorial_prompt.md"
 
 
 VALID_CATEGORIES = (
@@ -40,20 +44,17 @@ VALID_IMPACT_LABELS = (
     "🏛️ GOVERNANCE",
 )
 
-EDITORIAL_SYSTEM_PROMPT = (
-    "You are the Saaf Baat editorial desk. Build a finite Pakistan morning brief.\n"
-    "Select only the most important stories that an ordinary person in Pakistan should know this morning.\n"
-    "This is a national topline brief first, not just a list of coherent incidents.\n"
-    "Aim for 5-9 stories when the candidate pool supports it, and aim for 7-9 when enough strong candidates clearly deserve inclusion.\n"
-    "Only return fewer than 5 if fewer than 5 candidates have clear Pakistan public relevance.\n"
-    "Use only the provided evidence. Do not invent facts. Exclude gossip, celebrity, soft lifestyle, sports unless nationally consequential, and foreign stories unless the effect on Pakistan is clear.\n"
-    "Prefer the developments dominating core-source coverage across Pakistan first, then the strongest direct public-impact stories in governance, economy, security, utilities, transport, health, education, or major city life.\n"
-    "An isolated incident should not lead the brief when broader nationally dominant developments are available.\n"
-    "Deprioritize features, profiles, lifestyle, travel, seasonal colour, soft diplomacy reactions, and commentary when harder public-interest stories are available.\n"
-    "When evidence is thin or ambiguous, omit the cluster.\n"
-    "Headlines and summaries must be clean, calm, concrete, and non-sensational.\n"
-    "Return valid JSON only."
-)
+
+@lru_cache(maxsize=1)
+def _load_editorial_system_prompt() -> str:
+    text = _EDITORIAL_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    marker = "## Prompt"
+    if marker in text:
+        return text.split(marker, 1)[1].strip()
+    return text
+
+
+EDITORIAL_SYSTEM_PROMPT = _load_editorial_system_prompt()
 
 
 class EditorialError(RuntimeError):
@@ -122,10 +123,9 @@ class EditorialStory(BaseModel):
     cluster_id: str
     priority: int = Field(ge=0, le=100)
     headline: str = Field(min_length=8, max_length=180)
-    summary: str = Field(min_length=24, max_length=320)
+    impact_line: str = Field(min_length=16, max_length=220)
     category: str
     impact_labels: List[str] = Field(min_length=1, max_length=3)
-    why_it_matters: str = Field(min_length=16, max_length=220)
     what_to_watch: str = Field(min_length=12, max_length=180)
     public_impact: str
     story_tags: List[str] = Field(min_length=1, max_length=4)
@@ -313,7 +313,6 @@ def merge_editorial_story(
 ) -> AnalyzedFeed:
     feed = candidate.base_feed.model_copy(deep=True)
     feed.headline = story.headline.strip()
-    feed.summary = story.summary.strip()
     feed.category = story.category
     feed.impact_labels = story.impact_labels
 
@@ -324,7 +323,8 @@ def merge_editorial_story(
             "editorial_priority": int(story.priority),
             "editorial_confidence": float(story.confidence),
             "editorial_grade": story.public_impact,
-            "why_it_matters": story.why_it_matters.strip(),
+            "impact_line": story.impact_line.strip(),
+            "why_it_matters": story.impact_line.strip(),
             "what_to_watch": story.what_to_watch.strip(),
             "story_tags": list(story.story_tags),
             "selection_reason": story.selection_reason.strip(),
@@ -352,13 +352,18 @@ def build_editorial_user_prompt(candidate_rows: Sequence[Dict[str, Any]], *, max
                 "Return at most max_stories items in stories.",
                 "Aim to return at least target_story_range.min stories when enough candidates clearly support a Pakistan morning brief.",
                 "Each story must map to exactly one provided cluster_id.",
+                "headline must be 10-12 words, active voice, and direct.",
+                "impact_line must be one sentence on why the story matters to an ordinary person in Pakistan today.",
+                "what_to_watch must be one sentence on the next concrete development to follow.",
                 "Use impact_labels only from the allowed set.",
                 "Prefer Pakistan relevance, nationally dominant developments, and direct public impact over novelty, symbolism, or feature value.",
                 "Prefer hard-news developments over profiles, travel, lifestyle, seasonal, or commentary-style pieces.",
                 "Use publisher_topline_score and publisher_topline_sources as strong signals for what belongs near the top of the brief.",
                 "Do not let an isolated incident lead the brief if a broader governance, economy, utilities, diplomacy, weather, or public-life story has stronger publisher topline support.",
-                "Summary should explain what happened and why it matters in 1-2 sentences.",
-                "why_it_matters and what_to_watch must stay grounded in provided evidence.",
+                "impact_line and what_to_watch must stay grounded in provided evidence.",
+                "Never use passive voice.",
+                "Never write vague attribution like 'sources say'.",
+                "If you cannot write a confident impact_line, omit the cluster.",
                 "Treat suspicious_publish_dates as a warning signal, not a reason by itself to invent or exaggerate freshness.",
             ],
             "candidates": list(candidate_rows),
@@ -490,8 +495,9 @@ def _normalize_editorial_payload(
         if not isinstance(story_tags, list) or not story_tags:
             story_tags = _default_story_tags(candidate)
 
-        summary = item.get("summary") or base_feed.summary or candidate.representative_article.headline
-        why_it_matters = item.get("why_it_matters") or summary
+        impact_line = str(item.get("impact_line") or item.get("why_it_matters") or "").strip()
+        if not impact_line:
+            continue
         what_to_watch = item.get("what_to_watch") or "Watch for the next official update."
         confidence = item.get("confidence")
         if not isinstance(confidence, (int, float)):
@@ -502,10 +508,9 @@ def _normalize_editorial_payload(
                 "cluster_id": cluster_id,
                 "priority": int(priority),
                 "headline": item.get("headline") or base_feed.headline,
-                "summary": summary,
+                "impact_line": impact_line,
                 "category": category,
                 "impact_labels": impact_labels,
-                "why_it_matters": why_it_matters,
                 "what_to_watch": what_to_watch,
                 "public_impact": public_impact,
                 "story_tags": story_tags,

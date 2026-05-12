@@ -41,6 +41,7 @@ describe("BrandHeader", () => {
     renderHeader({ storyCount: 1 });
 
     expect(screen.getByText("Apr 8, 2026")).toBeDefined();
+    expect(screen.getByText("Today's Brief · Wednesday, April 8")).toBeDefined();
     expect(screen.getAllByText("1 essential story").length).toBeGreaterThan(0);
   });
 });

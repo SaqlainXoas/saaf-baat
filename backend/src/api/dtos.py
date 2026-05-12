@@ -25,8 +25,6 @@ class StoryCardDTO(BaseModel):
     snippet: str
     category: str
     impact_labels: List[str] = Field(default_factory=list)
-    confirmed_facts: List[EntityDTO] = Field(default_factory=list)
-    debated_claims: List[EntityDTO] = Field(default_factory=list)
     sources: List[SourceCountDTO] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
@@ -42,3 +40,8 @@ class StoryArticleDTO(BaseModel):
 class StoryDetailDTO(StoryCardDTO):
     articles: List[StoryArticleDTO] = Field(default_factory=list)
 
+
+class FeedResponseDTO(BaseModel):
+    generated_at: Optional[datetime] = None
+    is_fresh: bool = False
+    stories: List[StoryCardDTO] = Field(default_factory=list)

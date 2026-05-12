@@ -28,7 +28,8 @@ describe("Home page", () => {
       stories: [],
       status: "live",
       message: undefined,
-      latestPipelineRunAt: "2026-04-08T09:05:10Z",
+      generatedAt: "2026-04-08T09:05:10Z",
+      isFresh: true,
     });
 
     render(await Home({ searchParams: Promise.resolve({ impact: "GOVERNANCE" }) }));
@@ -36,5 +37,46 @@ describe("Home page", () => {
     expect(screen.getAllByText("No stories match this focus")).toHaveLength(2);
     expect(screen.getAllByRole("link", { name: "Clear focus" })).toHaveLength(2);
     expect(screen.queryByText("Clear filters")).toBeNull();
+  });
+
+  it("does not render homepage cards that are missing an impact line", async () => {
+    (fetchFeedWithMeta as jest.Mock).mockResolvedValue({
+      stories: [
+        {
+          story_id: "story-1",
+          created_at: "2026-05-12T01:00:00Z",
+          headline: "Incomplete card",
+          snippet: "Missing impact line should keep this off the homepage.",
+          category: "economy",
+          impact_labels: ["💳 WALLET"],
+          sources: [{ source: "dawn", count: 1 }],
+          metadata: {},
+        },
+      ],
+      status: "live",
+      message: undefined,
+      generatedAt: "2026-05-12T01:00:00Z",
+      isFresh: true,
+    });
+
+    render(await Home({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getAllByText("Today's brief is being prepared")).toHaveLength(2);
+    expect(screen.queryByText("DesktopBrief")).toBeNull();
+  });
+
+  it("shows the live failure message when the API request fails", async () => {
+    (fetchFeedWithMeta as jest.Mock).mockResolvedValue({
+      stories: [],
+      status: "error-live-required",
+      message: "Unable to load brief. Please try again shortly.",
+      generatedAt: undefined,
+      isFresh: false,
+    });
+
+    render(await Home({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getAllByText("Unable to load brief")).toHaveLength(2);
+    expect(screen.getAllByText("Unable to load brief. Please try again shortly.")).toHaveLength(2);
   });
 });

@@ -3,17 +3,20 @@
 import FocusControl from "@/components/FocusControl";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
-import { formatEditionDate, formatEssentialStoryCount } from "@/utils/edition";
+import { formatBriefEditionTitle, formatEditionDate, formatEssentialStoryCount } from "@/utils/edition";
 
 export default function MorningGreeting({
   storyCount,
   availableSources = [],
+  generatedAt,
 }: {
   storyCount: number;
   availableSources?: string[];
+  generatedAt?: string;
 }) {
   const city = process.env.NEXT_PUBLIC_CITY_NAME || "Islamabad";
   const dateStr = formatEditionDate();
+  const editionTitle = formatBriefEditionTitle(generatedAt);
 
   return (
     <header className="sb-hero-shell px-4 pt-4 pb-4">
@@ -45,10 +48,10 @@ export default function MorningGreeting({
           </div>
 
           <h1 className="sb-display-mobile mt-3">
-            Subah Bakhair, {city}
+            {editionTitle}
           </h1>
           <p className="text-sm mt-3 max-w-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
-            The morning&apos;s must-know stories, ranked fast.
+            Saaf Baat for {city}, ranked fast.
           </p>
         </div>
 

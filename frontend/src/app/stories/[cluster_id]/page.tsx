@@ -19,7 +19,7 @@ export default async function StoryDetail({
   params: Promise<{ cluster_id: string }>;
 }) {
   const { cluster_id } = await params;
-  const { story, status, message, latestPipelineRunAt } = await fetchStoryWithMeta(cluster_id);
+  const { story, status, message, generatedAt, isFresh } = await fetchStoryWithMeta(cluster_id);
 
   if (!story) {
     const isLiveModeError = status === "error-live-required";
@@ -42,7 +42,7 @@ export default async function StoryDetail({
             className="inline-block mt-4 text-sm font-bold sb-focusable px-2 py-1 rounded-lg"
             style={{ color: "var(--teal)" }}
           >
-            ← Back to brief
+            ← Today's Brief
           </Link>
         </div>
       </div>
@@ -73,11 +73,11 @@ export default async function StoryDetail({
           style={{ color: "var(--ink-muted)" }}
         >
           <span>←</span>
-          <span>Back to brief</span>
+          <span>Today's Brief</span>
         </Link>
         <div className="mt-3">
           <div className="max-w-[920px]">
-            <DataStatusBanner status={status} message={message} latestCreatedAt={latestPipelineRunAt} />
+            <DataStatusBanner status={status} message={message} generatedAt={generatedAt} isFresh={isFresh} />
           </div>
         </div>
 

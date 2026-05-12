@@ -24,8 +24,6 @@ export interface AnalyzedFeedRow {
   summary: string | null;
   category: string;
   impact_labels: string[] | null;
-  confirmed_facts: unknown[] | null;
-  debated_claims: unknown[] | null;
   source_attribution: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
 }
@@ -37,8 +35,6 @@ export interface StoryCardData {
   snippet: string; // mapped from analyzed_feed.summary
   category: string;
   impact_labels: string[];
-  confirmed_facts: EntityDTO[];
-  debated_claims: EntityDTO[];
   sources: SourceCountDTO[];
   metadata?: StoryMetadata;
 }
@@ -53,4 +49,10 @@ export interface StoryArticleData {
 
 export interface StoryDetailData extends StoryCardData {
   articles: StoryArticleData[];
+}
+
+export interface FeedResponseData {
+  generated_at?: string | null;
+  is_fresh: boolean;
+  stories: AnalyzedFeedRow[];
 }

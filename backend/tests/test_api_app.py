@@ -43,9 +43,12 @@ def test_docs_and_health_endpoints(tmp_path, monkeypatch: pytest.MonkeyPatch):
     assert body["status"] == "ok"
     assert body["database"] == "connected"
     assert body["latest_feed_created_at"].startswith(now_utc.isoformat().split("+")[0])
-    assert body["last_successful_pipeline_run_at"].startswith(now_utc.isoformat().split("+")[0])
-    assert body["pipeline_stale_after_hours"] >= 1
+    assert body["last_run_at"] is None
+    assert body["last_successful_run_at"].startswith(now_utc.isoformat().split("+")[0])
+    assert body["pipeline_stale_after_hours"] == 28
     assert body["pipeline_is_stale"] is False
+    assert body["degraded_sources"] == []
+    assert body["source_article_counts"] == {}
 
     root = client.get("/")
     assert root.status_code == 200
@@ -76,8 +79,9 @@ def test_health_degraded_when_db_unavailable(tmp_path, monkeypatch: pytest.Monke
     assert body["status"] == "degraded"
     assert body["database"] == "disconnected"
     assert body["latest_feed_created_at"] is None
-    assert body["last_successful_pipeline_run_at"] is None
-    assert body["pipeline_stale_after_hours"] >= 1
+    assert body["last_run_at"] is None
+    assert body["last_successful_run_at"] is None
+    assert body["pipeline_stale_after_hours"] == 28
     assert body["pipeline_is_stale"] is True
 
 
@@ -115,13 +119,19 @@ def test_health_uses_pipeline_heartbeat(tmp_path, monkeypatch: pytest.MonkeyPatc
     heartbeat = tmp_path / "pipeline_heartbeat.json"
     now_utc = datetime.now(timezone.utc).replace(microsecond=0)
     heartbeat.write_text(
-        json.dumps({"last_successful_pipeline_run_at": now_utc.isoformat().replace("+00:00", "Z")}),
+        json.dumps(
+            {
+                "last_run_at": now_utc.isoformat().replace("+00:00", "Z"),
+                "last_successful_run_at": now_utc.isoformat().replace("+00:00", "Z"),
+                "source_article_counts": {"dawn": 0, "geo": 3},
+                "degraded_sources": ["dawn"],
+            }
+        ),
         encoding="utf-8",
     )
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("BACKEND_CORS_ALLOW_ORIGINS", "http://localhost:3000")
     monkeypatch.setenv("SAAF_PIPELINE_HEARTBEAT_FILE", str(heartbeat))
-    monkeypatch.setenv("SAAF_FEED_STALE_AFTER_HOURS", "6")
 
     class _FakeHealthyDB:
         def is_connected(self) -> bool:
@@ -138,5 +148,8 @@ def test_health_uses_pipeline_heartbeat(tmp_path, monkeypatch: pytest.MonkeyPatc
     assert res.status_code == 200
     body = res.json()
     assert body["database"] == "connected"
-    assert body["last_successful_pipeline_run_at"].startswith(now_utc.isoformat().split("+")[0])
+    assert body["last_run_at"].startswith(now_utc.isoformat().split("+")[0])
+    assert body["last_successful_run_at"].startswith(now_utc.isoformat().split("+")[0])
     assert body["pipeline_is_stale"] is False
+    assert body["degraded_sources"] == ["dawn"]
+    assert body["source_article_counts"] == {"dawn": 0, "geo": 3}

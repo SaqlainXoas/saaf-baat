@@ -3,7 +3,7 @@
 ## Current Phase
 
 - Working directory: `/Users/saqlain/projects/personal/saaf-baat`
-- Active phase: `final frontend composition review with backend monitoring`
+- Active phase: `freshness-safe brief ship hardening with backend monitoring`
 - Core product target: a trustworthy Pakistan morning brief with `5-9` must-know stories
 - Source-of-truth docs:
   - `README.md`
@@ -95,6 +95,7 @@ Backend:
 - Models: `python -m spacy download en_core_web_sm`
 - API: `uvicorn main:app --reload`
 - Pipeline: `python run_pipeline.py --disable-playwright --log-level INFO --max-articles-per-source 12`
+- Daily cron: `0 0 * * * cd /Users/saqlain/projects/personal/saaf-baat/backend && /bin/zsh -lc 'source venv/bin/activate && python run_pipeline.py --disable-playwright --log-level INFO --max-articles-per-source 12'`
 - Quality report: `python scripts/quality_report.py --limit 20`
 - Tests: `pytest`
 

@@ -9,16 +9,15 @@ export const FEED: StoryCardData[] = [
       "State Bank confirms $1.2bn receipt. Market reacts positively, rupee gains as traders welcome the signal on the next tranche disbursement.",
     category: "economy",
     impact_labels: ["💳 WALLET", "🏛️ GOVERNANCE"],
-    confirmed_facts: [
-      { text: "IMF", type: "ORG", sources: 3 },
-      { text: "Pakistan", type: "GPE", sources: 3 },
-    ],
-    debated_claims: [{ text: "fuel cut", type: "MISC", sources: 2 }],
     sources: [
       { source: "dawn", count: 1 },
       { source: "geo", count: 1 },
       { source: "tribune", count: 1 },
     ],
+    metadata: {
+      why_it_matters: "Market confidence and household costs can shift quickly after IMF signals.",
+      what_to_watch: "Watch for the next policy move tied to reserves and pricing.",
+    },
   },
   {
     story_id: "0ac8a03e-ea08-48e7-8f8e-bc33b2cbb4ac",
@@ -28,17 +27,14 @@ export const FEED: StoryCardData[] = [
       "Traffic congestion built up across key arteries after overnight construction reduced lanes on the Lyari Expressway.",
     category: "city",
     impact_labels: ["🚦 COMMUTE", "🏢 WORK"],
-    confirmed_facts: [
-      { text: "Karachi", type: "GPE", sources: 2 },
-      { text: "diversion advisory", type: "MISC", sources: 2 },
-    ],
-    debated_claims: [
-      { text: "completion by weekend", type: "DATE", sources: 1 },
-    ],
     sources: [
       { source: "tribune", count: 1 },
       { source: "geo", count: 1 },
     ],
+    metadata: {
+      why_it_matters: "Traffic disruption quickly spills into work, school, and delivery schedules.",
+      what_to_watch: "Watch for new diversion notices before the evening rush.",
+    },
   },
   {
     story_id: "741d5c39-420b-4bb4-b1d5-2798d60f10c2",
@@ -48,14 +44,14 @@ export const FEED: StoryCardData[] = [
       "A targeted operation led to multiple arrests and the recovery of arms caches. Independent verification is still emerging from the area.",
     category: "security",
     impact_labels: ["🛡️ SAFETY"],
-    confirmed_facts: [{ text: "Balochistan", type: "GPE", sources: 2 }],
-    debated_claims: [
-      { text: "militant network", type: "MISC", sources: 1 },
-    ],
     sources: [
       { source: "dawn", count: 1 },
       { source: "geo", count: 1 },
     ],
+    metadata: {
+      why_it_matters: "Security operations can affect local safety conditions and state response.",
+      what_to_watch: "Watch for a fuller official account and any follow-up action.",
+    },
   },
   {
     story_id: "a1c2d3e4-5678-9012-abcd-ef1234567890",
@@ -65,17 +61,14 @@ export const FEED: StoryCardData[] = [
       "Thousands of students returned to classrooms as provincial authorities formally ended the emergency shutdown across the province.",
     category: "education",
     impact_labels: ["🏢 WORK"],
-    confirmed_facts: [
-      { text: "Punjab", type: "GPE", sources: 2 },
-      { text: "schools", type: "MISC", sources: 2 },
-    ],
-    debated_claims: [
-      { text: "exam schedule change", type: "MISC", sources: 1 },
-    ],
     sources: [
       { source: "dawn", count: 1 },
       { source: "tribune", count: 1 },
     ],
+    metadata: {
+      why_it_matters: "School closures and reopenings reshape family routines and workdays immediately.",
+      what_to_watch: "Watch for any exam-calendar or transport updates from the province.",
+    },
   },
   {
     story_id: "f5e4d3c2-1098-7654-fedc-ba9876543210",
@@ -85,15 +78,15 @@ export const FEED: StoryCardData[] = [
       "Despite seasonal demand increases, gas providers confirmed no price revision for the current billing cycle across all provinces.",
     category: "economy",
     impact_labels: ["⚡ UTILITIES", "💳 WALLET"],
-    confirmed_facts: [{ text: "gas prices", type: "MISC", sources: 3 }],
-    debated_claims: [
-      { text: "next month revision", type: "DATE", sources: 1 },
-    ],
     sources: [
       { source: "dawn", count: 1 },
       { source: "geo", count: 1 },
       { source: "tribune", count: 1 },
     ],
+    metadata: {
+      why_it_matters: "Utility prices move straight into household budgets and business costs.",
+      what_to_watch: "Watch for the next billing-cycle review or regulator notice.",
+    },
   },
 ];
 

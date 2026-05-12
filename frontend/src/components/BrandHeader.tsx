@@ -1,18 +1,21 @@
 import FocusControl from "@/components/FocusControl";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
-import { formatEditionStamp, formatEssentialStoryCount } from "@/utils/edition";
+import { formatBriefEditionTitle, formatEditionStamp, formatEssentialStoryCount } from "@/utils/edition";
 
 export default function BrandHeader({
   availableSources = [],
   storyCount,
+  generatedAt,
 }: {
   availableSources?: string[];
   storyCount?: number;
+  generatedAt?: string;
 }) {
   const city = process.env.NEXT_PUBLIC_CITY_NAME || "Islamabad";
   const dateLabel = formatEditionStamp();
   const storyCountLabel = typeof storyCount === "number" ? formatEssentialStoryCount(storyCount) : undefined;
+  const editionTitle = formatBriefEditionTitle(generatedAt);
 
   return (
     <header className="sb-home-header">
@@ -50,11 +53,11 @@ export default function BrandHeader({
               <span>Pakistan morning brief</span>
               <span style={{ color: "var(--teal)" }}>Edition</span>
             </div>
-            <h1 className="sb-display-home mt-1.5">
-              Subah Bakhair, <span className="not-italic">{city}</span>
+            <h1 className="sb-display-home mt-2">
+              {editionTitle}
             </h1>
             <p className="text-sm mt-1 max-w-lg leading-relaxed" style={{ color: "var(--ink-muted)" }}>
-              The morning&apos;s must-know stories.
+              Saaf Baat for {city}.
             </p>
           </div>
         </div>

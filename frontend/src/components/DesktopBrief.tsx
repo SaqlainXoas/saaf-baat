@@ -12,21 +12,29 @@ export default function DesktopBrief({
   availableSources,
   status,
   statusMessage,
-  latestCreatedAt,
+  generatedAt,
+  isFresh,
 }: {
   stories: StoryCardData[];
   availableSources: string[];
   status: Exclude<DataStatus, "not-found">;
   statusMessage?: string;
-  latestCreatedAt?: string;
+  generatedAt?: string;
+  isFresh?: boolean;
 }) {
   if (!stories.length) return null;
 
   return (
     <div className="sb-container px-6 py-8" style={{ maxWidth: 1240 }}>
-      <BrandHeader availableSources={availableSources} storyCount={stories.length} />
+      <BrandHeader availableSources={availableSources} storyCount={stories.length} generatedAt={generatedAt} />
       <div className="mt-3 max-w-[980px]">
-        <DataStatusBanner status={status} message={statusMessage} latestCreatedAt={latestCreatedAt} />
+        <DataStatusBanner
+          status={status}
+          message={statusMessage}
+          generatedAt={generatedAt}
+          isFresh={isFresh}
+          storyCount={stories.length}
+        />
       </div>
 
       <section className="mt-4 max-w-[980px] xl:pr-10">

@@ -16,8 +16,6 @@ describe("Story detail page", () => {
         snippet: "Officials say negotiations are still under way.",
         category: "governance",
         impact_labels: ["🏛️ GOVERNANCE"],
-        confirmed_facts: [{ text: "Budget talks", type: "EVENT", sources: 1 }],
-        debated_claims: [],
         sources: [{ source: "dawn", count: 1 }],
         metadata: {
           why_it_matters: "The outcome will shape the next fiscal package.",
@@ -27,7 +25,8 @@ describe("Story detail page", () => {
       },
       status: "live",
       message: undefined,
-      latestPipelineRunAt: "2026-04-08T06:00:00Z",
+      generatedAt: "2026-04-08T06:00:00Z",
+      isFresh: true,
     });
 
     render(await StoryDetail({ params: Promise.resolve({ cluster_id: "story-1" }) }));
@@ -47,8 +46,6 @@ describe("Story detail page", () => {
         snippet: "Officials say negotiations are still under way.",
         category: "governance",
         impact_labels: ["🏛️ GOVERNANCE"],
-        confirmed_facts: [{ text: "Budget talks", type: "EVENT", sources: 1 }],
-        debated_claims: [],
         sources: [{ source: "dawn", count: 1 }],
         metadata: {
           why_it_matters: "The outcome will shape the next fiscal package.",
@@ -58,7 +55,8 @@ describe("Story detail page", () => {
       },
       status: "live",
       message: undefined,
-      latestPipelineRunAt: "2026-04-08T06:00:00Z",
+      generatedAt: "2026-04-08T06:00:00Z",
+      isFresh: true,
     });
 
     render(await StoryDetail({ params: Promise.resolve({ cluster_id: "story-1" }) }));
@@ -77,8 +75,6 @@ describe("Story detail page", () => {
         snippet: "Officials say negotiations are still under way.",
         category: "governance",
         impact_labels: ["🏛️ GOVERNANCE"],
-        confirmed_facts: [{ text: "Budget talks", type: "EVENT", sources: 2 }],
-        debated_claims: [],
         sources: [
           { source: "dawn", count: 1 },
           { source: "geo", count: 1 },
@@ -99,12 +95,13 @@ describe("Story detail page", () => {
       },
       status: "live",
       message: undefined,
-      latestPipelineRunAt: "2026-04-08T06:00:00Z",
+      generatedAt: "2026-04-08T06:00:00Z",
+      isFresh: true,
     });
 
     render(await StoryDetail({ params: Promise.resolve({ cluster_id: "story-1" }) }));
 
-    expect(screen.getByRole("link", { name: /back to brief/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /today's brief/i })).toBeDefined();
     expect(screen.getAllByRole("link", { name: /finance ministry says talks continue/i })).toHaveLength(2);
     expect(screen.getByText("Top reporting")).toBeDefined();
   });
@@ -114,12 +111,13 @@ describe("Story detail page", () => {
       story: null,
       status: "not-found",
       message: undefined,
-      latestPipelineRunAt: undefined,
+      generatedAt: undefined,
+      isFresh: false,
     });
 
     render(await StoryDetail({ params: Promise.resolve({ cluster_id: "missing-story" }) }));
 
-    const backLink = screen.getByRole("link", { name: /back to brief/i });
+    const backLink = screen.getByRole("link", { name: /today's brief/i });
     expect(backLink.className).toContain("sb-focusable");
   });
 });

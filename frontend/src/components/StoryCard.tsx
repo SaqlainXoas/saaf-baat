@@ -28,6 +28,12 @@ export default function StoryCard({
   const whyItMatters = getMetadataString(story.metadata, "why_it_matters");
   const whatToWatch = getMetadataString(story.metadata, "what_to_watch");
   const updatedAt = formatRelativeTime(story.created_at);
+  const sourceChipLabel =
+    story.sources.length <= 1
+      ? sourceNames[0] || "Single source"
+      : story.sources.length <= 3
+        ? sourceNames.join(" · ")
+        : `${story.sources.length} sources`;
 
   const headlineClass = isHomepage
     ? "sb-headline-homepage"
@@ -49,15 +55,19 @@ export default function StoryCard({
       ? "sb-snippet-compact sb-clamp-2"
       : "sb-snippet-default sb-clamp-2";
 
-  const sourceSummary = sourceNames.join(" • ") || `${story.sources.length} source${story.sources.length === 1 ? "" : "s"}`;
-
   if (isHomepage) {
     return (
       <article className="sb-home-story">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3">
           <div className="min-w-0 lg:max-w-[72ch]">
             <div className="flex items-center gap-2 flex-wrap">
               <Pill label={primaryLabel} />
+              <span
+                className="sb-meta"
+                style={{ opacity: story.sources.length <= 1 ? 0.72 : 1 }}
+              >
+                {sourceChipLabel}
+              </span>
             </div>
 
             <h2 className={`${headlineClass} mt-2 sb-clamp-2`}>
@@ -67,18 +77,18 @@ export default function StoryCard({
             <p className={`${snippetClass} mt-1.5 sb-clamp-1 max-w-[68ch]`}>
               {story.snippet}
             </p>
-          </div>
 
-          <div className="sb-home-story-meta">
-            <span className="sb-meta sb-meta-strong">
-              {sourceSummary}
-            </span>
-            {!isBackground ? (
-              <span className="sb-home-link">
-                Open →
-              </span>
+            {whatToWatch ? (
+              <p className="sb-meta mt-2 max-w-[68ch]">
+                <span className="font-semibold" style={{ color: "var(--ink)" }}>
+                  What to watch:
+                </span>{" "}
+                {whatToWatch}
+              </p>
             ) : null}
           </div>
+
+          {!isBackground ? <span className="sb-home-link">Open →</span> : null}
         </div>
       </article>
     );
@@ -133,6 +143,15 @@ export default function StoryCard({
               {story.snippet}
             </p>
 
+            {isHomepageCard && whatToWatch ? (
+              <p className="sb-meta mt-3">
+                <span className="font-semibold" style={{ color: "var(--ink)" }}>
+                  What to watch:
+                </span>{" "}
+                {whatToWatch}
+              </p>
+            ) : null}
+
             {isDefault && (whatToWatch || whyItMatters) ? (
               <div className="mt-4 rounded-[22px] border px-4 py-3" style={{ borderColor: "var(--hairline)", background: "var(--surface-2)" }}>
                 <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
@@ -148,8 +167,11 @@ export default function StoryCard({
         )}
 
         <div className="flex items-center justify-between mt-4">
-          <span className="sb-meta">
-            {isHomepageCard ? sourceSummary : `Sources assessed: ${sourceSummary}`}
+          <span
+            className="sb-meta"
+            style={{ opacity: story.sources.length <= 1 ? 0.72 : 1 }}
+          >
+            {isHomepageCard ? sourceChipLabel : `Sources assessed: ${sourceChipLabel}`}
           </span>
           {!isBackground && (
             <span className="text-xs font-bold" style={{ color: "var(--teal)" }}>

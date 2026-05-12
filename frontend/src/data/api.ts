@@ -1,4 +1,10 @@
-import type { AnalyzedFeedRow, StoryArticleData, StoryCardData, StoryDetailData } from "./types";
+import type {
+  AnalyzedFeedRow,
+  FeedResponseData,
+  StoryArticleData,
+  StoryCardData,
+  StoryDetailData,
+} from "./types";
 import { FEED, getMockDetail } from "./mock-data";
 import { sortStoriesForBrief } from "@/utils/storyPresentation";
 
@@ -13,14 +19,16 @@ type FeedResult = {
   stories: StoryCardData[];
   status: Exclude<DataStatus, "not-found">;
   message?: string;
-  latestPipelineRunAt?: string;
+  generatedAt?: string;
+  isFresh?: boolean;
 };
 
 type StoryResult = {
   story: StoryDetailData | null;
   status: DataStatus;
   message?: string;
-  latestPipelineRunAt?: string;
+  generatedAt?: string;
+  isFresh?: boolean;
 };
 
 type ApiStoryDetailRow = AnalyzedFeedRow & {
@@ -82,8 +90,8 @@ function missingApiMessage() {
 }
 
 function liveFetchFailureMessage(status?: number) {
-  if (status) return `Live briefing is unavailable right now. Backend request failed with HTTP ${status}.`;
-  return "Live briefing is unavailable right now.";
+  if (status) return `Unable to load brief. Please try again shortly. (HTTP ${status})`;
+  return "Unable to load brief. Please try again shortly.";
 }
 
 function buildApiUrl(baseUrl: string, path: string) {
@@ -112,8 +120,6 @@ function toStoryCard(row: ApiStoryDetailRow): StoryCardData {
     snippet: row.snippet ?? row.summary ?? "",
     category: row.category,
     impact_labels: row.impact_labels || [],
-    confirmed_facts: Array.isArray(row.confirmed_facts) ? (row.confirmed_facts as StoryCardData["confirmed_facts"]) : [],
-    debated_claims: Array.isArray(row.debated_claims) ? (row.debated_claims as StoryCardData["debated_claims"]) : [],
     sources,
     metadata: row.metadata || {},
   };
@@ -137,10 +143,9 @@ async function fetchJson<T>(input: string) {
   return (await response.json()) as T;
 }
 
-async function fetchBackendFeed(baseUrl: string, limit: number): Promise<StoryCardData[]> {
+async function fetchBackendFeed(baseUrl: string, limit: number): Promise<FeedResponseData> {
   const url = buildApiUrl(baseUrl, `/feed?limit=${limit}`);
-  const rows = await fetchJson<ApiStoryDetailRow[]>(url);
-  return sortStoriesForBrief(rows.map(toStoryCard));
+  return fetchJson<FeedResponseData>(url);
 }
 
 async function fetchBackendStory(baseUrl: string, clusterId: string): Promise<StoryDetailData | null> {
@@ -149,22 +154,11 @@ async function fetchBackendStory(baseUrl: string, clusterId: string): Promise<St
   return row ? toStoryDetail(row) : null;
 }
 
-function getLatestCreatedAt(stories: Pick<StoryCardData, "created_at">[]) {
-  let latest: string | undefined;
-  let latestTime = 0;
-
-  stories.forEach((story) => {
-    const createdAt = story.created_at?.trim();
-    if (!createdAt) return;
-
-    const parsed = Date.parse(createdAt);
-    if (Number.isNaN(parsed) || parsed <= latestTime) return;
-
-    latestTime = parsed;
-    latest = createdAt;
-  });
-
-  return latest;
+function isFreshBrief(generatedAt?: string | null) {
+  if (!generatedAt) return false;
+  const parsed = Date.parse(generatedAt);
+  if (Number.isNaN(parsed)) return false;
+  return Date.now() - parsed <= 20 * 60 * 60 * 1000;
 }
 
 export async function fetchFeedWithMeta(): Promise<FeedResult> {
@@ -179,11 +173,13 @@ export async function fetchFeedWithMeta(): Promise<FeedResult> {
   }
 
   try {
-    const stories = await fetchBackendFeed(backendApiBase, 9);
+    const payload = await fetchBackendFeed(backendApiBase, 9);
+    const stories = sortStoriesForBrief((payload.stories || []).map(toStoryCard));
     return {
       stories,
       status: "live",
-      latestPipelineRunAt: getLatestCreatedAt(stories),
+      generatedAt: payload.generated_at || undefined,
+      isFresh: payload.is_fresh,
     };
   } catch (error) {
     if (strictLive) {
@@ -222,7 +218,8 @@ export async function fetchStoryWithMeta(clusterId: string): Promise<StoryResult
     return {
       story,
       status: "live",
-      latestPipelineRunAt: story.created_at,
+      generatedAt: story.created_at,
+      isFresh: isFreshBrief(story.created_at),
     };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) {

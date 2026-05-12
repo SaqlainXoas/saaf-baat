@@ -1,11 +1,9 @@
 name: Pipeline refresh
 
 on:
-  # Auto schedule disabled for now (pipeline was failing on timed runs).
-  # Re-enable by restoring the schedule block below.
-  # schedule:
-  #   # Every hour at minute 0 (UTC)
-  #   - cron: "0 * * * *"
+  schedule:
+    # 00:00 UTC = 05:00 PKT
+    - cron: "0 0 * * *"
   workflow_dispatch: {}
 
 jobs:

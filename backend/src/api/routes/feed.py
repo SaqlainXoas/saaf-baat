@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.api.dtos import SourceCountDTO, StoryCardDTO
-from src.api.entity_sanitizer import MAX_CONFIRMED_FACTS, MAX_DEBATED_CLAIMS, to_entity_dtos
+from src.api.dtos import FeedResponseDTO, SourceCountDTO, StoryCardDTO
 from src.db.client import DatabaseError, SupabaseClient
 
 router = APIRouter()
+_FRESH_BRIEF_WINDOW = timedelta(hours=20)
 
 
 @lru_cache(maxsize=1)
@@ -33,8 +33,6 @@ def _to_story_card(feed) -> StoryCardDTO:
         snippet=feed.summary or "",
         category=str(feed.category),
         impact_labels=list(feed.impact_labels or []),
-        confirmed_facts=to_entity_dtos(feed.confirmed_facts, MAX_CONFIRMED_FACTS),
-        debated_claims=to_entity_dtos(feed.debated_claims, MAX_DEBATED_CLAIMS),
         sources=sources,
         metadata=dict(feed.metadata or {}),
     )
@@ -60,16 +58,33 @@ def _story_sort_key(feed) -> tuple[float, float, float, str]:
     )
 
 
-@router.get("/feed", response_model=list[StoryCardDTO])
+def _normalize_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _is_fresh(generated_at: Optional[datetime]) -> bool:
+    if generated_at is None:
+        return False
+    return datetime.now(timezone.utc) - _normalize_utc(generated_at) <= _FRESH_BRIEF_WINDOW
+
+
+@router.get("/feed", response_model=FeedResponseDTO)
 def get_feed(
     category: Optional[str] = None,
     impact_label: Optional[str] = None,
     limit: int = Query(default=30, ge=1, le=200),
     db: SupabaseClient = Depends(get_db),
-) -> list[StoryCardDTO]:
+) -> FeedResponseDTO:
     try:
         feeds = db.get_analyzed_feed(category=category, impact_label=impact_label, limit=limit)
     except DatabaseError as exc:
         raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}")
     feeds = sorted(feeds, key=_story_sort_key)
-    return [_to_story_card(f) for f in feeds]
+    generated_at = max((_normalize_utc(feed.created_at) for feed in feeds), default=None)
+    return FeedResponseDTO(
+        generated_at=generated_at,
+        is_fresh=_is_fresh(generated_at),
+        stories=[_to_story_card(feed) for feed in feeds],
+    )

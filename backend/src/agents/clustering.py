@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
@@ -121,15 +121,35 @@ def publish_date_skew_hours(article: RawArticle) -> float | None:
     return abs((scraped - published).total_seconds()) / 3600.0
 
 
-def trusted_article_timestamp(article: RawArticle, max_publish_skew_hours: int = 72) -> datetime:
+def has_suspicious_publish_date(
+    article: RawArticle,
+    *,
+    future_grace_hours: int = 1,
+    past_grace_hours: int = 36,
+) -> bool:
+    published = article.publish_date
+    if published is None:
+        return True
+    if published.tzinfo is None:
+        published = published.replace(tzinfo=timezone.utc)
+
     scraped = article.scraped_at
     if scraped.tzinfo is None:
         scraped = scraped.replace(tzinfo=timezone.utc)
 
-    skew_hours = publish_date_skew_hours(article)
-    if skew_hours is None:
-        return scraped
-    if skew_hours > max_publish_skew_hours:
+    if published > scraped + timedelta(hours=future_grace_hours):
+        return True
+    if published < scraped - timedelta(hours=past_grace_hours):
+        return True
+    return False
+
+
+def trusted_article_timestamp(article: RawArticle, max_publish_skew_hours: int = 36) -> datetime:
+    scraped = article.scraped_at
+    if scraped.tzinfo is None:
+        scraped = scraped.replace(tzinfo=timezone.utc)
+
+    if has_suspicious_publish_date(article, past_grace_hours=max_publish_skew_hours):
         return scraped
     published = article.publish_date
     if published is None:
@@ -547,7 +567,7 @@ class EventGroupingService:
         min_group_avg_similarity: float = 0.74,
         min_headline_overlap: float = 0.20,
         min_entity_overlap: float = 0.15,
-        max_publish_skew_hours: int = 72,
+        max_publish_skew_hours: int = 36,
         max_required_supporting_members: int = 3,
     ):
         self.min_cluster_size = min_cluster_size
@@ -1028,4 +1048,7 @@ __all__ = [
     "find_representative_article",
     "calculate_intra_cluster_similarity",
     "create_cluster_mapping",
+    "has_suspicious_publish_date",
+    "publish_date_skew_hours",
+    "trusted_article_timestamp",
 ]
