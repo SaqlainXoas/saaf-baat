@@ -1,9 +1,6 @@
 name: Pipeline refresh
 
 on:
-  schedule:
-    # 00:00 UTC = 05:00 PKT
-    - cron: "0 0 * * *"
   workflow_dispatch: {}
 
 jobs:
