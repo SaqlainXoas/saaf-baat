@@ -3,22 +3,15 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from src.db.client import SupabaseClient
+from src.api.deps import get_db_or_none as get_db
 
 router = APIRouter()
 _BACKEND_DIR = Path(__file__).resolve().parents[3]
-
-
-@lru_cache(maxsize=1)
-def get_db() -> SupabaseClient:
-    return SupabaseClient()
 
 
 def _parse_iso_datetime(value: object) -> Optional[datetime]:
@@ -54,6 +47,14 @@ def _load_heartbeat_payload() -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _heartbeat_timestamp(heartbeat: dict[str, object], *keys: str) -> Optional[datetime]:
+    for key in keys:
+        parsed = _parse_iso_datetime(heartbeat.get(key))
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def _to_utc_naive(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value
@@ -61,12 +62,16 @@ def _to_utc_naive(value: datetime) -> datetime:
 
 
 @router.get("/health")
-def health(db: SupabaseClient = Depends(get_db)) -> dict[str, object]:
+def health(db=Depends(get_db)) -> dict[str, object]:
     db_connected = False
     latest_feed_created_at: Optional[datetime] = None
     heartbeat = _load_heartbeat_payload()
-    last_run_at = _parse_iso_datetime(heartbeat.get("last_run_at"))
-    last_successful_run_at = _parse_iso_datetime(heartbeat.get("last_successful_run_at"))
+    last_run_at = _heartbeat_timestamp(heartbeat, "last_run_at")
+    last_successful_run_at = _heartbeat_timestamp(
+        heartbeat,
+        "last_successful_run_at",
+        "last_successful_pipeline_run_at",
+    )
     degraded_sources = [
         str(source)
         for source in list(heartbeat.get("degraded_sources") or [])
@@ -77,6 +82,39 @@ def health(db: SupabaseClient = Depends(get_db)) -> dict[str, object]:
         for source, count in dict(heartbeat.get("source_article_counts") or {}).items()
         if str(source).strip()
     }
+    # The pipeline records whether each LLM stage actually ran. Total editorial
+    # unavailability used to be invisible: the brief silently filled with
+    # template copy and looked merely flat (I-5). It is reported here instead.
+    stats = dict(heartbeat.get("stats") or {})
+    editorial_status = str(stats.get("editorial_status") or "unknown")
+    story_analysis_status = str(stats.get("story_analysis_status") or "unknown")
+    triage_status = str(stats.get("triage_status") or "unknown")
+    embedding_status = str(stats.get("embedding_status") or "unknown")
+    llm_calls = {
+        "triage": int(stats.get("triage_calls") or 0),
+        "adjudication": int(stats.get("adjudication_calls") or 0),
+        "story_analysis": int(stats.get("story_analysis_calls") or 0),
+    }
+    # Calls alone cannot distinguish "ran eight times and worked" from "ran
+    # eight times and fell back on every one". The pipeline records all five
+    # and they reach .pipeline_heartbeat.json; only the call count reached the
+    # endpoint, so the health surface was thinner than the contract.
+    story_analysis_counts = {
+        "calls": int(stats.get("story_analysis_calls") or 0),
+        "successes": int(stats.get("story_analysis_successes") or 0),
+        "question_rejections": int(stats.get("story_analysis_question_rejections") or 0),
+        "fallbacks": int(stats.get("story_analysis_fallbacks") or 0),
+        "failures": int(stats.get("story_analysis_failures") or 0),
+    }
+
+    endpoint_health = [
+        dict(row) for row in list(heartbeat.get("endpoint_health") or []) if isinstance(row, dict)
+    ]
+    quarantined_endpoints = [
+        str(row.get("url") or "")
+        for row in endpoint_health
+        if str(row.get("status") or "") != "ok"
+    ]
 
     try:
         db_connected = db.is_connected()
@@ -91,7 +129,16 @@ def health(db: SupabaseClient = Depends(get_db)) -> dict[str, object]:
         except Exception:
             latest_feed_created_at = None
 
-    last_successful_pipeline_run_at = last_successful_run_at or latest_feed_created_at
+    last_successful_run_source = "none"
+    if last_successful_run_at is not None:
+        last_successful_pipeline_run_at = last_successful_run_at
+        last_successful_run_source = "heartbeat"
+    elif latest_feed_created_at is not None:
+        last_successful_pipeline_run_at = latest_feed_created_at
+        last_successful_run_source = "latest_feed_created_at"
+    else:
+        last_successful_pipeline_run_at = None
+
     if last_successful_pipeline_run_at is None:
         pipeline_is_stale = True
     else:
@@ -101,14 +148,79 @@ def health(db: SupabaseClient = Depends(get_db)) -> dict[str, object]:
         )
         pipeline_is_stale = age_seconds >= 28 * 3600
 
+    if not db_connected:
+        pipeline_status_reason = "Database unavailable; pipeline freshness cannot be confirmed."
+    elif editorial_status == "unavailable":
+        pipeline_status_reason = (
+            "No editorial provider was reachable on the last run, so it published "
+            "nothing and the previous brief still stands. It will be served as "
+            "stale rather than replaced with template copy."
+        )
+    elif story_analysis_status in {"partial", "unavailable"}:
+        pipeline_status_reason = (
+            f"Story analysis was {story_analysis_status} on the last run. "
+            "The factual cards remain available, but one or more detail pages "
+            "fell back to their short snippets."
+        )
+    elif embedding_status == "unavailable":
+        pipeline_status_reason = (
+            "No embedding provider was reachable on the last run; nothing new "
+            "could be clustered, so the brief did not change."
+        )
+    elif triage_status in {"unavailable", "degraded"}:
+        # An article triage never saw is not publishable, so a bad triage run
+        # shrinks the brief rather than breaking it - which is exactly why it
+        # has to be said out loud. This used to report status "ok".
+        pipeline_status_reason = (
+            f"Triage was {triage_status} on the last run; untriaged clusters "
+            "could not be published, so the brief may be short."
+        )
+    elif last_successful_run_source == "heartbeat":
+        if pipeline_is_stale:
+            pipeline_status_reason = "Pipeline heartbeat is older than the 28-hour freshness window."
+        else:
+            pipeline_status_reason = "Pipeline heartbeat is within the 28-hour freshness window."
+    elif last_successful_run_source == "latest_feed_created_at":
+        if pipeline_is_stale:
+            pipeline_status_reason = (
+                "Pipeline heartbeat is missing; newest analyzed feed row is older than the 28-hour freshness window."
+            )
+        else:
+            pipeline_status_reason = (
+                "Pipeline heartbeat is missing; using newest analyzed feed row as the fallback freshness signal."
+            )
+    else:
+        pipeline_status_reason = "No pipeline heartbeat or analyzed feed rows were found."
+
+    # Triage counts too. It was reported but excluded from the verdict, so a
+    # run where triage failed on every batch - and therefore published nothing
+    # it could describe honestly - still answered "ok".
+    degraded = (
+        not db_connected
+        or editorial_status in {"unavailable", "degraded"}
+        or story_analysis_status in {"partial", "unavailable"}
+        or triage_status in {"unavailable", "degraded"}
+        or embedding_status == "unavailable"
+    )
+
     return {
-        "status": "ok" if db_connected else "degraded",
+        "status": "ok" if not degraded else "degraded",
         "database": "connected" if db_connected else "disconnected",
         "latest_feed_created_at": latest_feed_created_at,
         "last_run_at": last_run_at,
         "last_successful_run_at": last_successful_pipeline_run_at,
+        "last_successful_run_source": last_successful_run_source,
         "degraded_sources": degraded_sources,
         "source_article_counts": source_article_counts,
+        "endpoint_health": endpoint_health,
+        "quarantined_endpoint_count": len(quarantined_endpoints),
         "pipeline_stale_after_hours": 28,
         "pipeline_is_stale": pipeline_is_stale,
+        "pipeline_status_reason": pipeline_status_reason,
+        "editorial_status": editorial_status,
+        "story_analysis_status": story_analysis_status,
+        "story_analysis": story_analysis_counts,
+        "triage_status": triage_status,
+        "embedding_status": embedding_status,
+        "llm_calls": llm_calls,
     }

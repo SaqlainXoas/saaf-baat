@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS raw_articles (
     -- Constraints
     CONSTRAINT valid_source CHECK (LENGTH(source) > 0),
     CONSTRAINT valid_headline CHECK (LENGTH(headline) > 0),
-    CONSTRAINT valid_main_text CHECK (LENGTH(main_text) > 50),
+    -- Tier B corroboration rows carry only a headline until the body is
+    -- fetched lazily; metadata->>'body_status' records which state a row is in.
+    CONSTRAINT valid_main_text CHECK (LENGTH(main_text) > 0),
     CONSTRAINT valid_content_hash CHECK (LENGTH(content_hash) = 64)
 );
 

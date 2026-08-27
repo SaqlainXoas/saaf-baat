@@ -1,0 +1,2265 @@
+{
+  "https://dawn.com/news/2025197/a-sequel-to-how-to-lose-a-guy-in-10-days-is-in-the-works-with-kate-hudson-as-producer": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025196/trump-veers-from-boredom-to-denial-after-6-months-of-war-on-iran": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025190/faster-stronger-occasionally-upright-see-humanoid-robots-compete-in-beijing-games": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "feature",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025118/4-women-from-gb-successfully-summit-spantik": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025187/mission-to-retrieve-pakistani-climber-asma-mushtaqs-body-from-spatnik-resumes": {
+    "category": "security",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025188/to-be-a-karachi-bugti-who-yearns-for-watan-and-dry-wood": {
+    "category": "city",
+    "impact_labels": [],
+    "story_type": "feature",
+    "pk_relevance": "local",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025184/bitcoin-rises-above-80000-as-soft-dollar-debasement-fears-boost-momentum": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025182/documentary-naza-on-mass-killing-of-palestinian-civilians-vying-for-golden-lion-at-venice-film-festival": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025084/kp-assembly-urges-sc-to-initiate-contempt-proceedings-against-federal-govt": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025082/balochistans-former-governor-imranullah-khan-laid-to-rest-in-charsadda": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025072/controversy-resurfaces-over-construction-of-plaza-at-temple-site-in-khyber": {
+    "category": "city",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025081/kp-approves-5-year-billion-tree-plus-afforestation-project": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025102/pace-bowler-naveen-ul-haq-returns-to-afghan-squad-for-india-t20is": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025165/new-zealand-moves-to-ban-social-media-for-under-16s": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025100/new-zealand-beat-pakistan-4-2-in-fih-world-cup-classification-match": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025022/imaan-and-hadis-family-legal-team-voice-concerns-over-medical-facilities-at-adiala-jail": {
+    "category": "security",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025104/india-in-drivers-seat-in-second-sri-lanka-test": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025058/brick-kilns-industrial-units-prohibited-plastic-punjab-environment-protection-agency-report-shows-decline-in-site-inspections": {
+    "category": "health",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025164/bangladesh-court-upholds-death-sentences-over-burning-alive-of-teen": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025062/punjab-assembly-objects-to-e-challan-proposal-suthra-punjab-affairs": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025086/lesco-barred-from-severing-residential-meter-of-pm-aides-brother": {
+    "category": "economy",
+    "impact_labels": [
+      "⚡ UTILITIES"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025049/two-cops-booked-for-torturing-man-to-death-in-bahawalpur": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025087/excavation-of-newly-built-roads-banned-in-punjab": {
+    "category": "city",
+    "impact_labels": [
+      "🚦 COMMUTE",
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025167/indias-security-chief-visits-china-for-border-talks": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025177/editorial-good-intentions-alone-are-not-enough-to-address-long-standing-weaknesses-in-farm-productivity": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025148/fixing-agriculture": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025090/senate-body-reviews-plan-to-modernise-200-year-old-rail-network-in-sindh": {
+    "category": "economy",
+    "impact_labels": [
+      "🚦 COMMUTE"
+    ],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025097/robbers-snatch-rs6m-from-customer-outside-bank-in-karachis-safoora": {
+    "category": "security",
+    "impact_labels": [
+      "💳 WALLET",
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025169/pti-protest-over-alleged-violation-of-sc-order-on-imrans-hospital-transfer-disrupts-senate-business": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025061/islamabad-high-court-raises-concern-over-misuse-of-criminal-law-in-monetary-disputes": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025094/malaria-registers-gradual-surge-across-sindh": {
+    "category": "health",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025152/march-with-hope-but-verify": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025171/why-young-activists-invoke-mixed-responses-in-south-asia": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025066/2-accused-granted-four-day-physical-remand-in-tiktoker-murder-case": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025093/ppp-sindh-assembly-oppose-any-new-province-nasir-shah": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025153/politics-awakens": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025170/rains-have-rejuvenated-far-more-than-the-greenery-in-islamabad-as-politics-seems-to-be-awakening-from-its-hibernation": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025073/pakistan-medical-association-demands-unsafe-water-sellers-be-tried-under-penal-laws": {
+    "category": "health",
+    "impact_labels": [
+      "🛡️ SAFETY",
+      "⚡ UTILITIES"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025144/pti-protest-disrupts-senate-business": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://dawn.com/news/2025163/un-chief-proposes-mechanism-for-shipping-essential-goods-through-hormuz": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625747/us-south-korea-agree-to-closely-cooperate-on-resolving-north-koreas-nuclear-issue": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625745/bangladesh-interested-in-joining-makkah-defense-pact-official": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625742/houses-damaged-after-tornado-hits-aude-in-southern-france": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625741/us-supreme-court-hands-a-win-to-trump-over-mail-in-ballot-restrictions": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625740/alonso-makes-winning-start-with-chelsea": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625738/bitcoin-rises-above-80000-as-soft-dollar-debasement-fears-boost-momentum": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625737/iran-vows-to-retaliate-after-us-widens-sanctions": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625736/oil-steadies-as-investors-weigh-impact-of-latest-us-sanctions-on-iran": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625735/federer-set-for-brief-ashe-return": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625734/vondrousova-appeals-doping-suspension-to-cas": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625733/carse-dropped-from-england-squad-after-nightclub-incident": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625730/assembly-demands-treatment-for-imran": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625724/applicants-await-apni-chhat-apna-ghar-loans": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET",
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625719/digging-of-new-roads-banned": {
+    "category": "city",
+    "impact_labels": [
+      "🚦 COMMUTE",
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625720/police-powers-layyah-floods-dominate-stormy-pa-session": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625715/drug-addicts-chew-into-historic-teen-hatti-bridge": {
+    "category": "city",
+    "impact_labels": [
+      "🛡️ SAFETY",
+      "🚦 COMMUTE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625702/back-to-school-back-to-traffic-jams": {
+    "category": "city",
+    "impact_labels": [
+      "🚦 COMMUTE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625690/cdf-presses-for-end-to-us-iran-stalemate": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625692/pakistan-google-team-up-for-ai-driven-future": {
+    "category": "technology",
+    "impact_labels": [
+      "🏢 WORK"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625688/sc-declines-early-hearing-of-pleas": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625683/students-protest-after-clash-with-varsity-official": {
+    "category": "education",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625686/pti-walks-out-of-senate-over-imran-health-row": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625676/keti-bunder-zardari-urges-integrated-plan": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.8
+  },
+  "https://tribune.com.pk/story/2625664/gold-up-as-global-rates-hit-3-month-high": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625663/psx-ends-lower-despite-moodys-upgrade": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625657/uzbekistans-sco-freight-traffic-jumps-40-to-335m-tonnes": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625659/oil-slips-ahead-of-us-announcement": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET",
+      "⚡ UTILITIES"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625655/moodys-upgrades-pakistans-rating-1": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625662/isgs-to-execute-refinery-policy": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625658/wheat-shortfall-could-cost-12-billion": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625637/farmers-must-be-heard": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625638/schoolchildrens-safety": {
+    "category": "city",
+    "impact_labels": [
+      "🛡️ SAFETY",
+      "🚦 COMMUTE"
+    ],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625639/unfit-for-human-consumption": {
+    "category": "health",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625636/technology-and-reinforcement-of-privilege": {
+    "category": "education",
+    "impact_labels": [
+      "🏢 WORK"
+    ],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625640/79-years-and-counting-still-catching-up": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625641/pakistans-water-crisis-built-on-theft-not-scarcity": {
+    "category": "other",
+    "impact_labels": [
+      "⚡ UTILITIES"
+    ],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625628/how-token-dependence-is-reshaping-economic-sovereignty-in-the-ai-age": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625600/jurel-ton-puts-india-in-command": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://tribune.com.pk/story/2625599/sonova-unveils-new-ai-powered-hearing-aid-platform-to-support-growth-targets": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://tribune.com.pk/story/2625595/alibaba-launches-wan30-ai-video-model-after-10-billion-share-sale": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436462/hungary-foreign-ministry-files-report-on-964-mln-pandemic-era-ventilator-deals": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436461/sc-registrar-returns-ptis-contempt-plea-over-imran-khans-transfer-to-pims": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436428/oil-steadies-as-investors-weigh-impact-of-latest-us-sanctions-on-iran": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET",
+      "⚡ UTILITIES"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436460/tesla-raises-prices-of-cybertrucks-in-the-us": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436438/pakistan-and-iran-made-significant-progress-in-talks-on-conflict-naqvi-says": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436459/federer-playing-flushing-meadows-exhibition-in-long-overdue-us-open-sendoff": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://brecorder.com/news/40436458/fonseca-pulls-out-of-us-open-injured": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://brecorder.com/news/40436457/ann-li-cruises-through-opening-match-in-monterrey": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://brecorder.com/news/40436454/pakistan-oxygen-appoints-zubair-siddiqui-as-ceo": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436456/chelsea-start-alonso-era-with-exciting-3-2-win-at-neighbours-fulham": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://brecorder.com/news/40436455/england-drop-carse-after-investigation-into-club-incident": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://brecorder.com/news/40436453/six-months-into-iran-war-almost-half-of-global-oil-flows-from-war-zones": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET",
+      "⚡ UTILITIES"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436448/pd-identifies-coal-discount-gaps-causing-rs380mn-annual-losses-to-pakistan": {
+    "category": "economy",
+    "impact_labels": [
+      "⚡ UTILITIES",
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436452/australian-shares-advance-as-miners-gain-lower-crude-boosts-sentiment": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436451/australian-dollar-holds-firm-as-rba-keeps-jawboning-on-hikes": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436450/corn-rises-as-us-crop-condition-ratings-decline-more-than-expected": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436449/thailand-car-production-rises-61-yy-in-july": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436447/copper-falls-as-higher-dollar-outweighs-fresh-supply-woes": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436446/chinese-yuan-slips-from-3-12-year-high-after-pboc-signals-unease-over-rapid-gains": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436445/thai-bahtus-dollar-weaker-on-tuesday": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436444/japan-will-carefully-consider-tax-incentives-for-retail-jgb-investors-minister-says": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436443/india-bonds-may-edge-up-as-oil-remains-steady-despite-us-sanctions-on-iran": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436442/south-korea-shares-fall-amid-chip-selloff": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436441/japans-nikkei-falls-as-chip-related-shares-decline-on-caution-ahead-of-nvidia-earnings": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436440/bitcoin-rises-above-80000-as-soft-dollar-debasement-fears-boost-momentum": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436439/ubl-to-invest-up-to-rs22bn-in-khushhali-microfinance-bank": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.95
+  },
+  "https://brecorder.com/news/40436435/expanding-exports-govt-directs-ftws-to-prepare-country-specific-plans": {
+    "category": "economy",
+    "impact_labels": [
+      "🏢 WORK"
+    ],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436437/houses-damaged-after-tornado-hits-aude-in-southern-france": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://brecorder.com/news/40436436/sheins-up-to-18-billion-hong-kong-ipo-order-book-covered-sources-say": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436434/psx-benchmark-index-up-over-600-points-in-early-trade": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.95
+  },
+  "https://brecorder.com/news/40436433/heavy-rain-forecast-as-typhoon-saudel-girds-towards-japan-and-taiwan": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://brecorder.com/news/40436432/dollar-struggles-for-traction-as-markets-weigh-iran-sanctions-treasury-buybacks": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436431/asia-shares-fall-on-tech-nerves-oil-prices-slip": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436430/indian-rupee-may-cling-to-subdued-rhythm-improved-portfolio-inflows-lend-support": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436429/indian-shares-seen-lower-as-mideast-tensions-persist-nifty-expiry-looms": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436427/gold-rises-to-highest-since-mid-may-as-buying-momentum-builds": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://brecorder.com/news/40436367/govt-approves-prices-for-52-advanced-life-saving-drugs": {
+    "category": "health",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.95
+  },
+  "https://brecorder.com/news/40436381/scs-18th-august-order-theres-no-evidence-that-naqvi-interfered-with-the-implementation-counsel": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.95
+  },
+  "https://brecorder.com/news/40436407/petroleum-imports-via-bonded-storage-approved-ecc-okays-153855m-pial-nbp-guarantee": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET",
+      "⚡ UTILITIES"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.95
+  },
+  "https://brecorder.com/news/40436399/amendments-to-csm-proposed-nepra-acts-to-enable-bulk-consumers-to-procure-power": {
+    "category": "economy",
+    "impact_labels": [
+      "⚡ UTILITIES",
+      "🏢 WORK"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679070-supreme-court-returns-contempt-plea-over-imran-khans-hospital-transfer": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679068-recovery-operation-resumes-to-retrieve-mountaineer-asma-mushtaqs-body-from-spantik": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679064-case-registered-against-unidentified-suspects-after-five-labourers-gunned-down-in-pishin": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679053-significant-progress-islamabad-tehran-discuss-hormuz-reopening-expedited-end-to-iran-us-conflict": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679069-angel-reese-breaks-wnba-single-game-season-rebounding-records": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679074-meghans-montecito-life-came-crashing-after-one-archie-lilibet-dilemma": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679071-north-west-gets-candid-about-her-parents-one-big-piercing-rule": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679072-jordana-brewster-recalls-paul-walkers-reaction-to-fans-calling-him-brian": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679062-bitcoin-rises-above-80000-as-soft-dollar-debasement-fears-boost-momentum": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679067-gordon-ramsay-shares-sweet-tribute-for-amazing-wife": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679065-patriots-send-wr-kayshon-boutte-to-houston-in-exchange-for-safety-jaylen-reed": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679066-princes-william-harry-joint-appearance-looms-as-diana-charity-issues-update": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679061-dc-anchor-joseph-olmo-surprises-with-exit-keeping-future-plans-under-wraps": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679059-taylor-swift-returns-to-stage-for-first-time-since-travis-kelce-wedding": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679060-palace-aide-unveils-grand-plan-firm-has-for-prince-harry-meghans-return": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679058-princess-kate-takes-key-step-to-secure-charlottes-interests-amid-big-shift": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679056-barbara-eden-remembers-late-shelley-fabares-it-was-more-fun-than-work": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679057-israels-netanyahu-claims-iran-tried-to-kill-one-of-his-sons": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679054-the-case-for-devolution": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679051-kit-harington-joins-hbos-harry-potter": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679050-taylor-swift-opens-up-on-surprising-origins-of-i-knew-you-were-trouble": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679055-chinas-xi-likely-to-visit-india-with-big-delegation-for-first-time-in-seven-years": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://geo.tv/latest/679043-tom-selleck-joins-elizabeth-bankss-untitled-apple-tv-comedy-series": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679048-trump-approval-stays-at-33-as-american-support-for-iran-war-declines": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679040-is-there-a-how-to-lose-a-guy-in-10-days-sequel-coming": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679038-james-blunt-denies-being-famous-man-in-hayden-panettieres-yacht-story": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679037-ai-could-help-terrorists-build-bioweapons-researchers-raise-alarm": {
+    "category": "technology",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://geo.tv/latest/679036-scientists-grow-human-brains-in-lab-for-seven-years-in-stunning-breakthrough": {
+    "category": "health",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679035-southwest-flight-attendant-jenny-lupton-found-dead-in-hawaii-hotel-fall": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679034-kenya-arrests-four-after-18-elephants-die-in-mysterious-poisoning-case": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.95
+  },
+  "https://geo.tv/latest/679033-selena-gomez-supports-benny-blancos-unusual-weight-loss-experiment": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://geo.tv/latest/679042-field-marshal-asim-munir-mohsin-naqvi-conclude-day-long-visit-to-iran": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://geo.tv/latest/679027-imran-khan-taken-to-pims-over-security-concerns-says-tariq-fazal": {
+    "category": "politics",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://geo.tv/latest/679008-england-drop-carse-for-second-test-against-pakistan": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://geo.tv/latest/679005-jemima-goldsmith-urges-uk-govt-to-break-silence-over-imran-khans-human-rights": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://geo.tv/latest/678987-new-zealand-beat-pakistan-4-2-in-hockey-world-cup-classification-fixture": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://geo.tv/latest/678990-domestic-worker-confesses-to-strangling-hina-javed-say-sources": {
+    "category": "city",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://geo.tv/latest/678973-judicial-commission-on-mir-raza-alis-murder-tasked-to-submit-report-in-30-days": {
+    "category": "city",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://geo.tv/latest/678969-pakistan-seeks-imos-urgent-intervention-to-secure-release-of-held-seafarers": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://geo.tv/latest/678962-govt-giving-undue-margin-to-petrol-dealers-ji-protest-against-levy-continues": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET",
+      "🚦 COMMUTE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/strict-data-analysis-to-curb-tax-return-fraud-in-punjab": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.8
+  },
+  "https://arynews.tv/alonso-makes-winning-start-with-chelsea-as-rogers-scores-on-debut": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://arynews.tv/punjab-decides-to-restore-sports-activities-in-schools": {
+    "category": "education",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/texas-seeks-federal-probe-of-airport-ablution-facilities": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/jui-f-keeps-pti-alliance-option-open-rules-out-new-provinces": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/raja-nasir-abbas-says-opposition-unity-put-pakistan-on-right-track": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/traffic-police-bans-heavy-vehicles-entry-karachi-two-days": {
+    "category": "city",
+    "impact_labels": [
+      "🚦 COMMUTE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 1.0
+  },
+  "https://arynews.tv/united-states-sanctions-oil-trader-wellbred-over-iran-links": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/canada-announce-response-trumps-new-tariffs": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/macron-announces-e6-billion-saudi-backed-theme-park-project-biggest-since-disneyland-paris": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/target-apologizes-for-children-clown-halloween-costume": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://arynews.tv/asia-shares-fall-on-tech-nerves-oil-prices-slip": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/us-state-probes-openai-over-rogue-ai-hack": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/mir-raza-alis-father-demands-jit-probe": {
+    "category": "city",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/uks-burnham-drops-thames-water-administration-plan-the-times-reports": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/field-marshal-iranian-leadership-discuss-reopening-of-hormuz": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/iphone-18-pro-leaks-that-are-adding-up-price-camera-to-chip-what-will-sting-and-what-will-impress": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "feature",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/roche-eli-lillys-alzheimer-blood-test-gets-fda-clearance": {
+    "category": "health",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/five-year-old-ayat-noors-body-handed-over-to-heirs-after-15-days": {
+    "category": "city",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/punjab-directs-schools-to-implement-eiss-security-app": {
+    "category": "education",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/asim-munir-held-positive-meeting-with-iranian-president-naqvi": {
+    "category": "security",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/iran-vows-to-retaliate-after-us-widens-sanctions": {
+    "category": "international",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/us-threatens-countries-doing-business-with-iran": {
+    "category": "international",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/gaza-rescuers-say-israeli-strikes-kill-five-including-two-children": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/eli-lilly-launches-oral-weight-loss-drug-foundayo-in-uk": {
+    "category": "health",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/ogra-increases-petrol-diesel-prices": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET",
+      "🚦 COMMUTE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://arynews.tv/rgx-121-places-clinical-hold-on-regenxbios-gene-therapy": {
+    "category": "health",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/ji-protest-has-become-embarrassing-should-announce-its-end-rana-sanaullah": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/tech-drags-sp-500-nasdaq-lower-as-more-iran-sanctions-nvidia-earnings-loom": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/gta-6-cyberleek-launches-poll-to-leak-lucia-prologue-footage": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/pakistan-offers-bangladesh-cooperation-on-legal-reforms-and-digital-justice": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/government-support-confirmed-for-small-shopkeepers-in-fbr-session": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET",
+      "🏢 WORK"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/mir-raza-ali-case-24-questions-sent-to-sindh-cm-remain-unanswered-says-jibran-nasir": {
+    "category": "city",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/nokia-300-charge-launches-with-massive-battery": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/mir-raza-alis-father-questions-delay-in-jit-formation": {
+    "category": "city",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/rockstar-games-responds-to-gta-6-leaks": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/afghanistan-name-squad-for-t20is-against-india-zadran-to-lead": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://arynews.tv/hockey-world-cup-2026-new-zealand-douses-pakistans-comeback-fire-in-4-2-triumph": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://arynews.tv/punjab-bans-digging-on-newly-built-roads": {
+    "category": "city",
+    "impact_labels": [
+      "🚦 COMMUTE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://arynews.tv/sindh-cannot-be-divided-while-zardari-is-president-nasir-hussain-shah": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/ajk-legislative-assembly-elects-speaker-deputy-today": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/uk-backed-programme-helps-200-000-children-improve-literacy": {
+    "category": "education",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/us-strategic-oil-reserve-continues-decline-hits-lowest-level-since-1982": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/experts-warn-india-s-suspension-iwt-threaten-regional-stability": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/hina-javed-murder-case-takes-new-turn-servant-changes-statements": {
+    "category": "city",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/scam-hit-rda-turns-sap-system-tighten-financial-controls": {
+    "category": "city",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/kp-govt-distributes-315-534-flour-bags-official-rate-one-week": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "routine",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/substitute-lives-shangla-youth-killed-coal-mine-accidents-pml-n-leader": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "opinion",
+    "pk_relevance": "local",
+    "confidence": 0.8
+  },
+  "https://nation.com.pk/25-Aug-2026/furniture-distribution-drive-launched-govt-schools-across-shangla": {
+    "category": "education",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/827-accountability-cases-reported-kp-officials-since-oct-2025": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/un-resident-coordinator-pays-farewell-call-na-speaker": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/meeting-reviews-distribution-laptops-among-students": {
+    "category": "education",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/modernising-agriculture-sector-among-govt-s-priorities-sacm-kp": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "local",
+    "confidence": 0.8
+  },
+  "https://nation.com.pk/25-Aug-2026/iesco-linemen-protest-transfers-promotion": {
+    "category": "city",
+    "impact_labels": [
+      "🏢 WORK"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/us-carry-strikes-iran-needed-hegseth": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/cdf-iran-leaders-discuss-hormuz-reopening": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/pm-shehbaz-cm-murad-agree-maintain-political-harmony": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/moody-s-upgrades-pakistan-s-rating-b3-says-credit-profile-remains-vulnerable": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/grand-opposition-alliance-rejects-new-provinces-proposal": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/us-treasury-chief-threatens-new-sanctions-nations-tied-iran": {
+    "category": "international",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/lawyers-delegations-call-chief-justice": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/punjab-assembly-speaker-backs-opposition-s-stance-e-challan-issue": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/dar-urges-imo-chief-help-secure-release-10-pakistani-seafarers": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/abbasi-miftah-meet-fazlur-rehman-amid-political-consultations": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/cm-maryam-approves-beautification-10-lahore-roads": {
+    "category": "city",
+    "impact_labels": [
+      "🚦 COMMUTE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/opposition-stalls-senate-business-imran-khan-s-health": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/lack-quorum-na-chronic-issue": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/khan-make-deals-pti-chief-rubbishes-speculationskhan-make-deals-pti-chief-rubbishes-speculations": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/ihc-seeks-jail-authorities-response-pleas-three-adiala-prisoners-private-medical-treatment": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/five-construction-workers-killed-pishin-gun-attack": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/lhc-restrains-lesco-disconnecting-residential-power-supply-industrial-dues": {
+    "category": "economy",
+    "impact_labels": [
+      "⚡ UTILITIES"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/cm-maryam-sets-march-2027-deadline-gujranwala-yellow-line": {
+    "category": "city",
+    "impact_labels": [
+      "🚦 COMMUTE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/pml-n-secures-six-eight-reserved-seats-ajk-assembly": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/british-national-shot-dead-mirpur-nephew-arrested-four-days": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/dar-kuwait-s-fm-discuss-bilateral-ties": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/bisp-introduces-digital-wallets-transparent-secure-payments-women": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/sips-reforms-islamabad-police-stations-ordered": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/health-minister-calls-coordinated-strategy-curb-malnutrition-stunting": {
+    "category": "health",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/35-bed-acid-burn-centre-becomes-operational-holy-family-hospital": {
+    "category": "health",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://nation.com.pk/25-Aug-2026/quaid-e-azam-iqbal-corners-opened-national-book-foundation": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/national/pakistans-pink-salt-exports-reach-36m": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/national/missing-aabpara-boy-traced-to-karachi-reunited-with-parents": {
+    "category": "city",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/national/pakistan-turkiye-fms-r4-fms-moot": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/business/commerce-minister-directs-stronger-efforts-to-expand-pakistans-exports": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/national/interior-minister-reviews-diplomatic-enclave-development-orders-new-security-plan": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/national/ahmed-faraz-remembered-on-18th-death-anniversary": {
+    "category": "other",
+    "impact_labels": [],
+    "story_type": "feature",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/punjab/dpo-conducts-surprise-inspection-of-urban-area-police-station": {
+    "category": "security",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/business/currency-rates-of-nbp-872": {
+    "category": "economy",
+    "impact_labels": [
+      "💳 WALLET"
+    ],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/national/no-blind-spots-in-high-security-zone-dig-security-umar-orders-round-the-clock-camera-readiness": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/domestic/house-theft-lands-suspect-behind-bars-as-ict-police-recover-valuables-worth-over-rs-0-6-miln": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/national/senate-session-begins-6": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "routine",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://app.com.pk/punjab/ccri-urges-growers-to-ensure-clean-cotton-picking": {
+    "category": "economy",
+    "impact_labels": [
+      "🏢 WORK"
+    ],
+    "story_type": "routine",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://app.com.pk/national/repeated-military-reviews-raise-questions-over-indias-future-designs-in-iiojk-analysts": {
+    "category": "security",
+    "impact_labels": [
+      "🛡️ SAFETY"
+    ],
+    "story_type": "opinion",
+    "pk_relevance": "national",
+    "confidence": 0.8
+  },
+  "https://app.com.pk/national/coas-syedasim-munir-mohsin-naqvi-conclude-day-long-iran-visit-amid-efforts-for-regional-peace": {
+    "category": "politics",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "national",
+    "confidence": 1.0
+  },
+  "https://app.com.pk/national/mna-syeda-nosheen-iftikhar-hosts-dustoor-civic-labs-participants": {
+    "category": "politics",
+    "impact_labels": [],
+    "story_type": "routine",
+    "pk_relevance": "local",
+    "confidence": 0.9
+  },
+  "https://thenews.com.pk/latest/1413534-new-zealand-social-media-ban-main-opposition-labour-backs-under-16-bill": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413538-australia-bans-ai-generated-music-from-official-charts-after-madonna-cover-backlash": {
+    "category": "technology",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413537-perez-hiltons-latest-health-update-emerges-after-disturbing-livestream": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413536-prince-harry-s-security-woes-spark-civil-war": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413533-us-suspends-government-operations-in-mexicali-over-security-threat-issues-new-advisory": {
+    "category": "international",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413532-jodie-sweetin-recalls-visiting-disney-world-with-full-house-costar-john-stamos-have-mercy": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413531-angel-reese-makes-wnba-history-with-record-26-rebounds-vs-sparks": {
+    "category": "sports",
+    "impact_labels": [],
+    "story_type": "sport",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413526-prince-harry-forced-to-put-his-foot-down-following-latest-humiliating-rumours": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413529-why-hayden-panettiere-keeps-coming-back-to-brian-hickerson-despite-domestic-violence": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413524-us-canada-dispute-deepens-as-trump-threatens-50-auto-tariffs": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413528-taylor-swifts-plans-to-honor-her-country-roots-come-to-light": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413527-are-uk-drone-factories-at-risk-of-attack-russia-issues-warning-over-ukraine-support": {
+    "category": "security",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413521-why-prince-harry-meghan-moving-back-to-britain-surprising-reason-revealed": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413523-taylor-swift-shares-how-she-copes-when-life-amid-fame-becomes-unmanageable": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413522-saoirse-ronan-drops-shocking-bond-role-shes-dead-serious-about": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413520-olivia-jade-really-likes-tennis-star-taylor-fritz": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413519-barbara-eden-pays-heartfelt-tribute-to-sweet-shelley-fabares-after-her-death": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413518-carney-rejects-us-trade-demands-over-french-language-as-trump-threatens-new-tariffs": {
+    "category": "economy",
+    "impact_labels": [],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413513-everything-to-know-about-how-to-lose-a-guy-in-10-days-sequel-as-new-confirmations-emerge": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413516-taylor-swift-gets-candid-about-her-savage-way-of-handling-trolls": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413517-us-could-revoke-up-to-200000-visas-under-trump-asylum-crackdown": {
+    "category": "international",
+    "impact_labels": [
+      "🏛️ GOVERNANCE"
+    ],
+    "story_type": "hard_news",
+    "pk_relevance": "foreign_with_pk_effect",
+    "confidence": 0.9
+  },
+  "https://thenews.com.pk/latest/1413515-target-apologises-after-halloween-costume-sparks-racism-backlash": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413512-brett-goldstein-reveals-what-helped-with-depression-before-ted-lasso-fame": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413511-dua-lipa-celebrates-first-birthday-as-a-married-woman": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413507-kanye-west-concerts-in-russia-in-limbo-cancelled-or-not": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413510-black-mirror-season-8-what-we-know-so-far": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413509-acdcs-chris-slade-retires-from-drumming-after-decades-long-career": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413490-prince-harry-meghan-markle-want-to-take-one-step-at-a-time-after-uk-return": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413508-dua-lipa-spills-wedding-day-advices-and-meaningful-changes-since-marrying-callum-turner": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413494-meghan-markle-acting-comeback-could-make-her-a-lot-of-money": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413491-kate-middleton-praised-for-her-exotic-warmth-after-hair-makeover": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413505-dolly-parton-admits-some-rumours-about-her-are-true": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413503-nancy-guthrie-update-porch-guy-spotted-by-social-media-users": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413493-inside-prince-harry-meghan-markle-extended-stay-of-time-in-uk": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413504-sandra-bullock-shares-how-her-children-processed-bryan-randalls-als": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413502-katie-prices-latest-message-raises-questions-about-her-marriage": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413500-chris-hardwick-is-blown-away-as-the-wall-hits-100-episodes": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413497-kit-haringtons-surprising-connection-to-gilderoy-lockhart-in-harry-potter-revealed": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413499-trey-plutnicki-marries-cecilia-lole-with-a-colorful-twist": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  },
+  "https://thenews.com.pk/latest/1413484-hayden-panettieres-boyfriends-attempts-to-make-amends-after-punching-actress-revealed": {
+    "category": "entertainment",
+    "impact_labels": [],
+    "story_type": "entertainment",
+    "pk_relevance": "foreign",
+    "confidence": 1.0
+  }
+}

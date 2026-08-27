@@ -14,7 +14,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Category(str, Enum):
@@ -58,7 +58,7 @@ class ExtractedEntity(BaseModel):
     text: str
     type: EntityType
     sources: int = 1  # Number of sources mentioning this entity
-    
+
     model_config = ConfigDict(use_enum_values=True)
 
 
@@ -72,7 +72,7 @@ class SourceAttribution(BaseModel):
 class RawArticle(BaseModel):
     """
     Represents a scraped news article before processing.
-    
+
     The content_hash is auto-generated from headline + main_text
     to enable deduplication across sources.
     """
@@ -80,7 +80,11 @@ class RawArticle(BaseModel):
     source: str = Field(..., min_length=1, description="News source identifier (e.g., 'dawn', 'tribune')")
     url: str = Field(..., description="Original article URL")
     headline: str = Field(..., min_length=1, description="Article headline/title")
-    main_text: str = Field(..., min_length=50, description="Article body content")
+    # Tier B corroboration records legitimately carry only a headline until
+    # they are selected and the body is fetched lazily, so the floor here is
+    # "non-empty" rather than "full article". metadata["body_status"] records
+    # which of full / summary / headline_only this row actually is.
+    main_text: str = Field(..., min_length=1, description="Article body content")
     author: Optional[str] = None
     publish_date: Optional[datetime] = None
     scraped_at: datetime = Field(default_factory=datetime.utcnow)
@@ -88,12 +92,12 @@ class RawArticle(BaseModel):
     cluster_id: Optional[UUID] = None
     embedding: Optional[List[float]] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+
     model_config = ConfigDict(
         json_encoders={datetime: lambda v: v.isoformat() if v else None},
         validate_assignment=True,
     )
-    
+
     @field_validator("url")
     @classmethod
     def validate_url(cls, v: str) -> str:
@@ -101,7 +105,7 @@ class RawArticle(BaseModel):
         if not v.startswith(("http://", "https://")):
             raise ValueError("URL must start with http:// or https://")
         return v
-    
+
     @model_validator(mode="after")
     def generate_content_hash(self) -> "RawArticle":
         """Auto-generate content hash from headline and main_text."""
@@ -109,7 +113,7 @@ class RawArticle(BaseModel):
             content = f"{self.headline}{self.main_text}"
             self.content_hash = hashlib.sha256(content.encode()).hexdigest()
         return self
-    
+
     def to_db_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
         data = self.model_dump(exclude={"embedding"})
@@ -128,7 +132,7 @@ class RawArticle(BaseModel):
 class Cluster(BaseModel):
     """
     Represents a group of related articles about the same story.
-    
+
     Clusters are formed by the embedding + clustering pipeline
     and contain references to all articles in the group.
     """
@@ -163,7 +167,7 @@ class Cluster(BaseModel):
         if article_id in self.article_ids:
             self.article_ids.remove(article_id)
             self.updated_at = datetime.utcnow()
-    
+
     def to_db_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
         data = self.model_dump(exclude={"centroid_embedding"})
@@ -183,7 +187,7 @@ class Cluster(BaseModel):
 class AnalyzedFeed(BaseModel):
     """
     Represents a fully processed story ready for frontend display.
-    
+
     Contains:
     - Headline and summary
     - Category classification
@@ -206,13 +210,13 @@ class AnalyzedFeed(BaseModel):
     classification_confidence: Optional[float] = Field(default=None, ge=0, le=1)
     is_published: bool = True
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+
     model_config = ConfigDict(
         json_encoders={datetime: lambda v: v.isoformat() if v else None},
         use_enum_values=True,
         validate_assignment=True,
     )
-    
+
     def to_db_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
         data = self.model_dump()
@@ -225,19 +229,19 @@ class AnalyzedFeed(BaseModel):
         data["confirmed_facts"] = [e.model_dump() if isinstance(e, BaseModel) else e for e in self.confirmed_facts]
         data["debated_claims"] = [e.model_dump() if isinstance(e, BaseModel) else e for e in self.debated_claims]
         return data
-    
+
     @classmethod
     def from_db_dict(cls, data: Dict[str, Any]) -> AnalyzedFeed:
         """Create instance from database record."""
         # Convert entity dicts back to ExtractedEntity
         if data.get("confirmed_facts"):
             data["confirmed_facts"] = [
-                ExtractedEntity(**e) if isinstance(e, dict) else e 
+                ExtractedEntity(**e) if isinstance(e, dict) else e
                 for e in data["confirmed_facts"]
             ]
         if data.get("debated_claims"):
             data["debated_claims"] = [
-                ExtractedEntity(**e) if isinstance(e, dict) else e 
+                ExtractedEntity(**e) if isinstance(e, dict) else e
                 for e in data["debated_claims"]
             ]
         return cls(**data)

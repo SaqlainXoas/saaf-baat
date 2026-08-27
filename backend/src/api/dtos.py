@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import date, datetime
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -35,10 +35,15 @@ class StoryArticleDTO(BaseModel):
     headline: str
     url: str
     publish_date: Optional[datetime] = None
+    published_on: Optional[date] = None
+    publish_date_status: Literal["precise", "date_only", "missing"] = "missing"
 
 
 class StoryDetailDTO(StoryCardDTO):
+    analysis: Optional[str] = None
+    question: Optional[str] = None
     articles: List[StoryArticleDTO] = Field(default_factory=list)
+    analysis_sources: List[StoryArticleDTO] = Field(default_factory=list)
 
 
 class FeedResponseDTO(BaseModel):

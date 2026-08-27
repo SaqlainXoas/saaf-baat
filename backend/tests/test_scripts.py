@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
 # backend/ root, derived the same way conftest.py does it
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -22,22 +21,31 @@ class TestRunSchemaPathResolution:
         assert (_BACKEND_DIR / "scripts").is_dir()
 
     def test_run_schema_script_exists(self):
-        """scripts/run_schema.py must exist."""
-        assert (_BACKEND_DIR / "scripts" / "run_schema.py").is_file()
+        """The Postgres schema scripts live under scripts/postgres/.
+
+        They sat in scripts/ next to init_db.py, reading as the setup path they
+        stopped being when storage moved to local SQLite.
+        """
+        assert (_BACKEND_DIR / "scripts" / "postgres" / "run_schema.py").is_file()
+        assert (_BACKEND_DIR / "scripts" / "postgres" / "create_schema.py").is_file()
+        assert not (_BACKEND_DIR / "scripts" / "run_schema.py").exists()
 
     def test_schema_sql_reachable_via_run_schema_path_logic(self):
         """Replicate the exact path logic from run_schema.py and verify the target exists.
 
         run_schema.py computes:
-            _backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            _backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))))
             schema_path  = os.path.join(_backend_dir, 'src', 'db', 'schema.sql')
 
         We simulate __file__ as the real script path and assert the result is a file.
         """
-        run_schema_file = str(_BACKEND_DIR / "scripts" / "run_schema.py")
+        run_schema_file = str(_BACKEND_DIR / "scripts" / "postgres" / "run_schema.py")
 
-        # Mirror the two os.path.dirname calls that run_schema.py executes
-        _backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(run_schema_file)))
+        # Mirror the three os.path.dirname calls that run_schema.py executes
+        _backend_dir = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(run_schema_file)))
+        )
         schema_path = os.path.join(_backend_dir, "src", "db", "schema.sql")
 
         assert os.path.isfile(schema_path), (
@@ -45,8 +53,8 @@ class TestRunSchemaPathResolution:
         )
 
     def test_create_schema_script_exists(self):
-        """scripts/create_schema.py must also exist (moved alongside run_schema.py)."""
-        assert (_BACKEND_DIR / "scripts" / "create_schema.py").is_file()
+        """create_schema.py moved with it."""
+        assert (_BACKEND_DIR / "scripts" / "postgres" / "create_schema.py").is_file()
 
 
 class TestE2EPipelinePathResolution:

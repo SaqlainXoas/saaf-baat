@@ -11,23 +11,20 @@ black==23.12.1
 ruff==0.1.9
 mypy==1.7.1
 
-# Web Scraping
-newspaper3k==0.2.8
-news-please==1.5.35
-playwright==1.40.0
-playwright-stealth==1.0.6
-beautifulsoup4==4.12.2
-lxml==4.9.4
+# Ingest — RSS + news sitemaps. No browser, no parser ensemble: the
+# publishers already serve structured, dated, full-text content.
 feedparser>=6.0
+requests>=2.31
+lxml==4.9.4
+beautifulsoup4==4.12.2
 
-# Stealth Network & Parser Ensemble
+# Lazy body fetch (selected stories only)
 curl_cffi>=0.5.10
 trafilatura>=1.6.0
-readability-lxml>=0.8.1
 
 # NLP & ML
 spacy==3.8.11
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+en-core-web-sm==3.8.0
 sentence-transformers==2.2.2
 scikit-learn==1.3.2
 hdbscan==0.8.33
@@ -36,6 +33,8 @@ numpy>=1.26.0
 pandas==2.1.4
 
 # Database & APIs
+# Default storage is local SQLite (stdlib) — see src/db/sqlite_client.py.
+# supabase is only needed when SAAF_DB_BACKEND=supabase.
 supabase==2.27.3
 python-dotenv==1.0.0
 pydantic==2.12.0

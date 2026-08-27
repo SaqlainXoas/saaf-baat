@@ -2,20 +2,33 @@ import { render, screen } from "@testing-library/react";
 import MorningGreeting from "@/components/MorningGreeting";
 
 describe("MorningGreeting", () => {
-  it("renders the city name", () => {
-    render(<MorningGreeting storyCount={5} />);
-    expect(screen.getAllByText(/Islamabad/).length).toBeGreaterThan(0);
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
-  it("shows story count in context line", () => {
+  it("opens with the morning greeting", () => {
+    // The greeting is the thing this product opens with, and it was missing
+    // from the code entirely - the header led with "Today's Brief · <date>".
+    render(<MorningGreeting storyCount={5} />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Subah bakhair");
+  });
+
+  it("keeps the morning greeting whatever time the page is opened", () => {
+    // A morning brief is a morning brief at 2pm. This used to vary by the hour
+    // in Karachi and greeted the same edition "Assalam-o-alaikum" after noon.
+    jest.useFakeTimers().setSystemTime(new Date("2026-05-10T11:00:00Z"));
+    render(<MorningGreeting storyCount={5} />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Subah bakhair");
+  });
+
+  it("says where and when, once", () => {
+    render(<MorningGreeting storyCount={5} />);
+    expect(screen.getAllByText(/Islamabad/).length).toBe(1);
+  });
+
+  it("states the story count", () => {
     render(<MorningGreeting storyCount={7} />);
     expect(screen.getByText(/7 essential stories/)).toBeDefined();
-  });
-
-  it("renders the brief identity headline", () => {
-    render(<MorningGreeting storyCount={3} />);
-    const el = screen.getByText(/Today's Brief ·/);
-    expect(el).toBeDefined();
   });
 
   it("does not render fake weather", () => {
@@ -23,14 +36,15 @@ describe("MorningGreeting", () => {
     expect(screen.queryByText(/°C/)).toBeNull();
   });
 
-  it("guides the user to start with the lead story", () => {
-    render(<MorningGreeting storyCount={5} />);
-    expect(screen.getByText(/Saaf Baat for Islamabad, ranked fast/i)).toBeDefined();
-  });
-
   it("renders a real edition date instead of a placeholder label", () => {
     render(<MorningGreeting storyCount={5} />);
     expect(screen.queryByText(/^Today$/)).toBeNull();
-    expect(screen.getByText(/^[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2}$/)).toBeDefined();
+    expect(screen.getByText(/[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2}/)).toBeDefined();
+  });
+
+  it("shows the brief's own date when the brief is stale", () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-05-12T08:00:00Z"));
+    render(<MorningGreeting storyCount={5} generatedAt="2026-05-10T22:30:00Z" isFresh={false} />);
+    expect(screen.getByText(/Mon, 11 May/)).toBeDefined();
   });
 });

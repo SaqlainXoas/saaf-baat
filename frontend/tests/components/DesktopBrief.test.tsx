@@ -2,8 +2,14 @@ import { render, screen, within } from "@testing-library/react";
 import DesktopBrief from "@/components/DesktopBrief";
 import type { StoryCardData } from "@/data/types";
 
-jest.mock("@/components/BrandHeader", () => () => <div>Brand Header</div>);
-jest.mock("@/components/DataStatusBanner", () => () => <div>Data Banner</div>);
+jest.mock("@/components/BrandHeader", () => {
+  const MockBrandHeader = () => <div>Brand Header</div>;
+  return MockBrandHeader;
+});
+jest.mock("@/components/DataStatusBanner", () => {
+  const MockDataStatusBanner = () => <div>Data Banner</div>;
+  return MockDataStatusBanner;
+});
 
 function story(id: string): StoryCardData {
   return {
@@ -39,5 +45,44 @@ describe("DesktopBrief", () => {
     render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
     expect(screen.queryByText("Top of the brief")).toBeNull();
     expect(screen.queryByText("More to know")).toBeNull();
+  });
+
+  it("numbers every story, the way mobile does", () => {
+    // Desktop rendered twelve identical rows with no rank at all while mobile
+    // carried numerals - the wider screen showed strictly less than the phone.
+    const { container } = render(
+      <DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />,
+    );
+    const ranks = Array.from(container.querySelectorAll(".sb-deck-rank-number")).map(
+      (node) => node.textContent,
+    );
+    expect(ranks).toEqual(["1", "2", "3", "4"]);
+  });
+
+  it("distinguishes the lead story from the rest", () => {
+    const { container } = render(
+      <DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />,
+    );
+    expect(container.querySelectorAll(".sb-story-card-lead")).toHaveLength(1);
+    expect(container.querySelectorAll(".sb-story-card-supporting")).toHaveLength(3);
+  });
+
+  it("shows how far through the finite brief the reader is", () => {
+    render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
+    expect(screen.getByText("1 / 4")).toBeDefined();
+    expect(screen.getByText("Story 1 of 4")).toBeDefined();
+  });
+
+  it("ends the brief on purpose", () => {
+    render(<DesktopBrief stories={stories} availableSources={["dawn"]} status="live" />);
+    expect(screen.getByText(/You're all caught up/)).toBeDefined();
+    expect(screen.getByText(/ends here on purpose/)).toBeDefined();
+  });
+
+  it("renders nothing at all when there are no stories", () => {
+    const { container } = render(
+      <DesktopBrief stories={[]} availableSources={[]} status="live" />,
+    );
+    expect(container.firstChild).toBeNull();
   });
 });

@@ -192,10 +192,6 @@ body {
     backdrop-filter: blur(18px);
   }
 
-  .sb-hero-divider {
-    border-top: 1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent);
-  }
-
   .sb-card {
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--surface) 97%, transparent), color-mix(in srgb, var(--surface-2) 24%, var(--surface)));
@@ -228,20 +224,6 @@ body {
     border-top: 1px solid color-mix(in srgb, var(--outline-ghost) 78%, transparent);
   }
 
-  .sb-list {
-    background: color-mix(in srgb, var(--surface-2) 70%, var(--surface-base));
-    border: 1px solid var(--outline-ghost);
-    border-radius: var(--radius-2xl);
-    box-shadow: var(--elev-1);
-    overflow: hidden;
-  }
-
-  .sb-list-item {
-    background: var(--surface);
-    border-bottom: 1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent);
-    transition: background-color 160ms ease;
-  }
-
   @media (hover: hover) and (pointer: fine) {
     .sb-list-item:hover {
       background: color-mix(in srgb, var(--surface) 92%, var(--hover));
@@ -255,10 +237,6 @@ body {
   .sb-focusable:focus-visible {
     outline: none;
     box-shadow: var(--focus-ring);
-  }
-
-  .sb-muted {
-    color: var(--ink-muted);
   }
 
   .sb-meta {
@@ -299,62 +277,40 @@ body {
     padding: 14px 16px;
   }
 
-  .sb-home-header {
-    padding: 0 0 2px;
+  .sb-analysis-copy {
+    color: var(--ink);
+    font-size: 17px;
+    line-height: 1.72;
+    /* Not `max-w-[72ch]`: Tailwind's `ch` is the width of the `0` glyph, which
+       does not match this font's average lowercase character, so 72ch
+       (709.92px) rendered 83 characters per line at 1440px. Measured, not
+       estimated: at 640px this font still ran a median 81 chars/line, so the
+       cap comes from the measurement rather than from a ch count. 540px
+       renders ~68 - inside the comfortable 60-70 range for body prose. */
+    max-width: 540px;
   }
 
-  .sb-status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--outline-ghost) 74%, transparent);
-    background: color-mix(in srgb, var(--surface) 84%, var(--surface-base));
-    box-shadow: 0 24px 56px -34px rgba(29, 28, 22, 0.28);
+  .sb-analysis-note {
+    color: var(--ink-muted);
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 540px;
   }
 
-  .sb-home-story {
-    padding: 18px 20px 17px;
-    background: color-mix(in srgb, var(--surface) 78%, transparent);
-    border: 1px solid color-mix(in srgb, var(--outline-ghost) 46%, transparent);
-    border-radius: 20px;
-    box-shadow: 0 16px 36px -42px rgba(29, 28, 22, 0.2);
+  .sb-question-callout {
+    border-radius: var(--radius-xl);
+    border: 1px solid color-mix(in srgb, var(--amber) 60%, var(--outline-ghost));
+    border-left: 4px solid var(--amber);
+    background: color-mix(in srgb, var(--amber-bg) 78%, var(--surface));
+    padding: 18px 20px;
   }
 
-  .sb-brief-flow {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .sb-home-story-meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-    min-width: 164px;
-  }
-
-  .sb-meta-strong {
-    color: color-mix(in srgb, var(--ink-muted) 88%, var(--ink));
-  }
-
-  .sb-home-link {
+  .sb-question-heading {
+    color: var(--ink);
     font-size: 12px;
-    font-weight: 700;
-    color: var(--teal);
-  }
-
-  .sb-status-icon {
-    width: 36px;
-    height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--teal) 18%, var(--surface)), color-mix(in srgb, var(--amber) 18%, var(--surface)));
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
   }
 
   .sb-display-home {
@@ -377,27 +333,12 @@ body {
     font-style: italic;
   }
 
-  .sb-sidebar-note {
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, var(--surface-base)), color-mix(in srgb, var(--surface-2) 82%, var(--surface-base)));
-    border: 1px solid color-mix(in srgb, var(--outline-ghost) 70%, transparent);
-    border-radius: 28px;
-    padding: 22px;
-    box-shadow: var(--elev-1);
-  }
-
   .sb-summary-stack {
     overflow: hidden;
     border-radius: 24px;
     border: 1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent);
     box-shadow: 0 20px 44px -40px rgba(29, 28, 22, 0.18);
     background: color-mix(in srgb, var(--surface) 96%, var(--surface-base));
-  }
-
-  .sb-summary-panel {
-    border-radius: 24px;
-    border: 1px solid transparent;
-    padding: 18px 18px 16px;
   }
 
   .sb-summary-panel-agreed {
@@ -420,40 +361,6 @@ body {
     font-size: 14px;
     font-weight: 700;
     color: var(--ink);
-  }
-
-  .sb-summary-label {
-    font-size: 11px;
-    line-height: 1.2;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--ink);
-    font-weight: 800;
-  }
-
-  .sb-summary-item {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    font-size: 13px;
-    line-height: 1.5;
-    color: inherit;
-  }
-
-  .sb-summary-bullet {
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    line-height: 1;
-    font-weight: 800;
-    background: rgba(255, 255, 255, 0.48);
-    color: inherit;
-    flex-shrink: 0;
-    margin-top: 1px;
   }
 
   .sb-summary-detail-item {
@@ -496,27 +403,11 @@ body {
     border: 1px solid color-mix(in srgb, var(--outline-ghost) 68%, transparent);
   }
 
-  .sb-clamp-1 {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1;
-    overflow: hidden;
-  }
-
   .sb-clamp-2 {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
-  }
-
-  .sb-headline-featured {
-    font-size: 32px;
-    font-weight: 600;
-    line-height: 1.12;
-    letter-spacing: -0.03em;
-    color: var(--ink);
-    font-family: var(--font-display);
   }
 
   .sb-headline-supporting {
@@ -528,76 +419,75 @@ body {
     font-family: var(--font-display);
   }
 
-  .sb-headline-default {
-    font-size: var(--text-xl);
-    font-weight: 700;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-    font-family: var(--font-display);
-  }
-
-  .sb-headline-compact {
-    font-size: 28px;
-    font-weight: 600;
-    line-height: 1.18;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-    font-family: var(--font-display);
-  }
-
-  .sb-headline-detail {
-    font-size: 64px;
-    font-weight: 600;
-    line-height: var(--leading-tight);
-    letter-spacing: -0.035em;
-    color: var(--ink);
-    font-family: var(--font-display);
-  }
-
-  .sb-snippet-featured {
-    font-size: 15px;
-    line-height: 1.5;
-    color: var(--ink-muted);
-  }
-
   .sb-snippet-supporting {
     font-size: 15px;
     line-height: 1.5;
     color: var(--ink-muted);
   }
 
-  .sb-snippet-default {
-    font-size: var(--text-sm);
-    line-height: 1.5;
-    color: var(--ink-muted);
+  /* The mobile deck: one numbered flow, cards sized so roughly one and a bit
+     fills the viewport. Snap is `proximity`, never `mandatory` - a news reader
+     skims and skips, and twelve mandatory full-screen stops would make the
+     brief slower to get through than a plain list. */
+  .sb-deck {
+    scroll-snap-type: y proximity;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
   }
 
-  .sb-snippet-compact {
-    font-size: 14px;
-    line-height: 1.55;
-    color: var(--ink-muted);
+  /* Cards take their natural height. A forced min-height left the card
+     floating in a tall empty box, which reads as less finished than the list
+     it replaced - the rhythm comes from the gap and the snap, not from
+     padding every card out to the same size. */
+  .sb-deck-item {
+    scroll-snap-align: start;
+    scroll-margin-top: var(--space-7);
   }
 
-  .sb-headline-homepage {
-    font-size: 30px;
-    font-weight: 600;
-    line-height: 1.14;
-    letter-spacing: -0.018em;
-    color: var(--ink);
+  .sb-deck-rank {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+
+  .sb-deck-rank-number {
     font-family: var(--font-display);
+    font-size: var(--text-xl);
+    line-height: 1;
+    color: var(--teal);
   }
 
-  .sb-snippet-homepage {
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--ink-muted);
+  /* A deck card has the room a list row did not, and a headline broken
+     mid-word is the opposite of scannable. */
+  .sb-deck-item h2 {
+    -webkit-line-clamp: 3;
   }
 
-  .sb-snippet-detail {
-    font-size: 22px;
-    line-height: 1.6;
-    color: var(--ink-muted);
+  /* Finiteness, visible from screen one. Sticks under the header so the
+     reader always knows how much of the brief is left. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* Why it matters — the middle third of the product promise. It reads at full
+     ink weight because it is the line the brief exists to deliver; the snippet
+     under it is supporting detail. */
+  .sb-impact-line {
+    margin-top: var(--space-2);
+    font-size: 15px;
+    line-height: var(--leading-normal);
+    color: var(--ink);
+    font-weight: 500;
   }
 
   .sb-headline-brief {
@@ -625,10 +515,16 @@ body {
     border: 1px solid color-mix(in srgb, var(--outline-ghost) 74%, transparent);
   }
 
+  /* 24px is the WCAG 2.5.8 floor for a pointer target and these were 21.
+     Growing the hit area rather than the type keeps the control quiet. */
   .sb-theme-option {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 26px;
     border: 0;
     border-radius: 999px;
-    padding: 4px 8px;
+    padding: 4px 10px;
     font-size: 11px;
     line-height: 1.2;
     color: var(--ink-muted);
@@ -652,14 +548,6 @@ body {
     );
     background-size: 240% 100%;
     animation: sb-shimmer 1.4s ease-in-out infinite;
-  }
-
-  .sb-featured-enter {
-    animation: sb-featured-in 160ms ease-out;
-  }
-
-  .sb-list-stagger-in {
-    animation: sb-list-in 220ms ease-out both;
   }
 
   .sb-sheet-backdrop-open,
@@ -695,6 +583,301 @@ body {
       transform: translateY(10px) scale(0.99);
     }
   }
+
+  /* ==========================================================================
+     Masthead - the greeting the brief opens with
+     ========================================================================== */
+
+  .sb-masthead {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .sb-masthead-mobile {
+    padding-top: var(--space-4);
+  }
+
+  .sb-wordmark {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--teal);
+    /* Two words, one line. On a 375px phone the theme toggle and Focus button
+       squeezed the flex row until the brand name broke across two lines. */
+    white-space: nowrap;
+  }
+
+  .sb-masthead-kicker {
+    margin-top: var(--space-3);
+  }
+
+  .sb-masthead-note {
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+    color: var(--ink-muted);
+    max-width: 60ch;
+  }
+
+  .sb-display-home {
+    font-size: 54px;
+    font-weight: 600;
+    line-height: 1.0;
+    letter-spacing: -0.035em;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-style: italic;
+  }
+
+  .sb-display-mobile {
+    font-size: 38px;
+    font-weight: 600;
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-style: italic;
+  }
+
+  /* ==========================================================================
+     Story card - one shape, two weights
+     ========================================================================== */
+
+  .sb-story-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sb-story-card-lead {
+    padding: var(--space-6) var(--space-6) var(--space-5);
+  }
+
+  .sb-story-card-supporting {
+    padding: var(--space-5) var(--space-5) var(--space-4);
+  }
+
+  /* The lead card is the day's story and should read as one. Elevation and
+     a tinted edge do the work that four extra pixels of headline never did:
+     before this, lead and supporting differed only by font-size. */
+  .sb-story-card-lead {
+    box-shadow: var(--elev-2);
+    border-color: color-mix(in srgb, var(--teal-light) 30%, var(--outline-ghost));
+  }
+
+  .sb-headline-lead {
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.028em;
+    color: var(--ink);
+    font-family: var(--font-display);
+    margin-top: var(--space-3);
+  }
+
+  .sb-headline-supporting {
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.18;
+    letter-spacing: -0.022em;
+    color: var(--ink);
+    font-family: var(--font-display);
+    margin-top: var(--space-3);
+  }
+
+  .sb-snippet-lead {
+    font-size: 15px;
+    line-height: var(--leading-relaxed);
+    color: var(--ink-muted);
+    margin-top: var(--space-2);
+  }
+
+  .sb-snippet-supporting {
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+    color: var(--ink-muted);
+    margin-top: var(--space-2);
+  }
+
+  .sb-watch-line {
+    margin-top: var(--space-3);
+    line-height: var(--leading-normal);
+  }
+
+  .sb-watch-label {
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .sb-story-card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid color-mix(in srgb, var(--outline-ghost) 60%, transparent);
+  }
+
+  .sb-open-link {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    color: var(--teal);
+    flex-shrink: 0;
+  }
+
+  .sb-clamp-3 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
+
+  /* ==========================================================================
+     Finiteness - shown identically on both surfaces
+     ========================================================================== */
+
+  .sb-brief-progress {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0 var(--space-3);
+  }
+
+  .sb-brief-progress-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: linear-gradient(
+      to bottom,
+      var(--paper) 62%,
+      color-mix(in srgb, var(--paper) 0%, transparent)
+    );
+  }
+
+  .sb-brief-progress-count {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sb-brief-progress-track {
+    flex: 1;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--hairline);
+    overflow: hidden;
+  }
+
+  .sb-brief-progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--teal);
+    transition: width 220ms ease;
+  }
+
+  .sb-brief-end {
+    margin-top: var(--space-8);
+    padding-bottom: var(--space-8);
+    text-align: center;
+  }
+
+  .sb-brief-end-rule {
+    display: block;
+    width: 44px;
+    height: 2px;
+    margin: 0 auto var(--space-5);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--teal) 60%, transparent);
+  }
+
+  .sb-brief-end-title {
+    font-family: var(--font-display);
+    font-size: 21px;
+    font-style: italic;
+    color: var(--ink);
+  }
+
+  .sb-brief-end-note {
+    margin: var(--space-2) auto 0;
+    max-width: 38ch;
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+    color: var(--ink-muted);
+  }
+
+  /* ==========================================================================
+     Desktop layout - a reading column and a rail, not a column and dead space
+     ========================================================================== */
+
+  .sb-desktop-shell {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: var(--space-7) var(--space-6) 0;
+  }
+
+  .sb-desktop-banner {
+    margin-top: var(--space-5);
+    max-width: 720px;
+  }
+
+  .sb-desktop-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 720px) minmax(0, 1fr);
+    gap: var(--space-8);
+    align-items: start;
+    margin-top: var(--space-6);
+  }
+
+  .sb-desktop-column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    min-width: 0;
+  }
+
+  .sb-desktop-rail {
+    position: sticky;
+    top: var(--space-6);
+    padding-top: var(--space-2);
+  }
+
+  .sb-desktop-rail-inner {
+    padding: var(--space-5);
+    border-radius: var(--radius-xl);
+    border: 1px solid color-mix(in srgb, var(--outline-ghost) 70%, transparent);
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+  }
+
+  .sb-rail-note {
+    margin-top: var(--space-2);
+    font-size: var(--text-xs);
+    line-height: var(--leading-relaxed);
+    color: var(--ink-muted);
+  }
+
+  .sb-brief-item {
+    scroll-margin-top: var(--space-7);
+  }
+
+  /* R-7 asked for roughly 1.2 cards a viewport, and the honest answer is that
+     no min-height achieves it. Phase 5 tried one on every card; this pass
+     tried one on the lead card alone. Both produce the same thing on a phone:
+     a card whose content ends two-thirds of the way down and a large empty
+     box under it, which reads as unfinished.
+
+     What does fill the first screen is more of the story. The lead card shows
+     four lines of the summary where a supporting card shows two - density of
+     information rather than of whitespace. It lands at roughly 1.4 cards a
+     viewport on a 375x812 phone. */
+  .sb-deck-item-lead .sb-snippet-lead,
+  .sb-brief-item-lead .sb-snippet-lead {
+    -webkit-line-clamp: 4;
+  }
+
 }
 
 @keyframes sb-shimmer {
@@ -706,34 +889,10 @@ body {
   }
 }
 
-@keyframes sb-featured-in {
-  from {
-    opacity: 0.35;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes sb-list-in {
-  from {
-    opacity: 0.3;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .sb-card-interactive,
   .sb-theme-option,
-  .sb-list-item,
-  .sb-featured-enter,
-  .sb-list-stagger-in,
+  .sb-brief-progress-fill,
   .sb-sheet-backdrop-open,
   .sb-sheet-backdrop-closed,
   .sb-sheet-panel-open,
@@ -745,73 +904,65 @@ body {
   .sb-skeleton {
     animation: none;
   }
+
+  /* Snap moves the page under a reader who did not ask it to. */
+  .sb-deck {
+    scroll-snap-type: none;
+  }
 }
 
-  @media (max-width: 1024px) {
+@media (max-width: 1024px) {
+  /* One column: the rail needs its own width to be worth the space, and the
+     column would otherwise squeeze below a comfortable measure. */
+  .sb-desktop-grid {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+
+  .sb-desktop-column {
+    width: 100%;
+    max-width: 640px;
+  }
+
+  .sb-desktop-shell {
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+  }
+
+  /* Below the two-column breakpoint the rail has nowhere to sit, and the
+     sticky counter above the deck already carries the same information. */
+  .sb-desktop-rail {
+    display: none;
+  }
+
   .sb-display-home {
-    font-size: 42px;
+    font-size: 44px;
   }
 
-  .sb-headline-homepage {
+  .sb-headline-lead {
     font-size: 27px;
-  }
-
-  .sb-headline-featured {
-    font-size: 30px;
-  }
-
-  .sb-headline-supporting {
-    font-size: 29px;
-  }
-
-  .sb-headline-detail {
-    font-size: 48px;
   }
 
   .sb-headline-brief {
     font-size: 34px;
   }
-
-  .sb-home-story {
-    padding: 16px 18px;
-  }
 }
 
 @media (max-width: 640px) {
-  .sb-display-home {
-    font-size: 36px;
+  .sb-display-mobile {
+    font-size: 34px;
   }
 
-  .sb-headline-homepage {
-    font-size: 24px;
-  }
-
-  .sb-headline-featured {
-    font-size: 28px;
+  .sb-headline-lead {
+    font-size: 25px;
   }
 
   .sb-headline-supporting {
-    font-size: 26px;
-  }
-
-  .sb-headline-compact {
-    font-size: 24px;
-  }
-
-  .sb-headline-detail {
-    font-size: 38px;
-  }
-
-  .sb-home-story {
-    padding: 14px 14px 15px;
-  }
-
-  .sb-snippet-detail {
-    font-size: 18px;
+    font-size: 20px;
   }
 
   .sb-headline-brief {
-    font-size: 30px;
+    font-size: 28px;
   }
 
   .sb-snippet-brief {

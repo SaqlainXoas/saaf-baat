@@ -1,5 +1,24 @@
 name: Pipeline refresh
 
+# NOTE ON WHAT THIS DOES AND DOES NOT DO
+#
+# This job runs the real pipeline against live feeds every morning and then
+# throws the result away. Storage defaults to local SQLite
+# (`SAAF_DB_BACKEND=sqlite`, file at `backend/data/saafbaat.db`) and a GitHub
+# runner is ephemeral, so nothing this job publishes is served to anyone.
+#
+# It is therefore a **scheduled smoke test**, not a publishing step: it proves
+# the ingest endpoints are alive, the LLM stages answer, and a brief can be
+# produced today. Until hosting exists, treat a green run as "the pipeline still
+# works" and nothing more. The brief and heartbeat are uploaded as artifacts so
+# the run leaves evidence behind.
+#
+# The workflow used to set SUPABASE_URL/SUPABASE_KEY without setting
+# SAAF_DB_BACKEND=supabase, which read as if it published to Supabase while in
+# fact writing to the runner's throwaway SQLite file. The secrets are gone
+# rather than left dangling; add them back together with
+# `SAAF_DB_BACKEND: supabase` on the day there is a database to write to.
+
 on:
   workflow_dispatch: {}
 
@@ -8,10 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SAAF_DB_BACKEND: sqlite
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      SAAF_ENABLE_PLAYWRIGHT_FALLBACK: "0"
       SAAF_LOW_COST_MODE: "1"
       SAAF_MAX_ARTICLES_PER_SOURCE: "20"
       SAAF_EMBEDDING_BACKFILL_LIMIT: "50"
@@ -22,6 +39,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install backend deps
         run: |
@@ -29,6 +48,28 @@ jobs:
           python -m pip install -r backend/requirements.txt
 
       - name: Run pipeline
+        working-directory: backend
+        run: python run_pipeline.py --low-cost-mode --log-level INFO
+
+      # A run that finishes without crashing is not a run that published a
+      # brief. Without this the job stayed green when every LLM stage was
+      # unavailable and zero cards were written, which is the opposite of
+      # degrading loudly.
+      - name: Assert the run was not degraded
+        working-directory: backend
+        run: python scripts/check_run_health.py --min-cards 6
+
+      - name: Publish the brief as an artifact
+        if: always()
+        working-directory: backend
         run: |
-          cd backend
-          python run_pipeline.py --disable-playwright --low-cost-mode --log-level INFO
+          mkdir -p ../run-output
+          cp .pipeline_heartbeat.json ../run-output/ 2>/dev/null || true
+          python scripts/export_brief.py --out ../run-output/brief.json || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: brief-${{ github.run_id }}
+          path: run-output/
+          retention-days: 14

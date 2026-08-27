@@ -1,0 +1,94 @@
+# What the brief for 2026-08-27 should have contained.
+#
+# DERIVED, NOT JUDGED. Every entry below is a story that at least
+# 3 distinct publishers in the captured pool ran on this
+# morning - a fact recorded in the fixture, measured by
+# `scripts/derive_expectations.py`, and independent of anything the selector
+# does. It is not an editor's opinion about what mattered.
+#
+# Read that honestly in both directions:
+#   * A missed must-have is real. Most of the Pakistani press led with it and
+#     the brief did not carry it.
+#   * A perfect score is a floor, not a ceiling. This method cannot see the
+#     important story only one outlet had, and it will include a wire story
+#     everyone reprinted without anyone thinking it was important.
+#
+# Regenerate with:
+#     python scripts/derive_expectations.py 2026-08-27 --write
+#
+# It must not be edited to make a failing run pass. If a run misses an entry
+# here, that is a selection bug to fix, not a line to delete.
+day: '2026-08-27'
+must_have:
+- id: killed-operations-balochistan
+  description: 'Interior Minister praises security forces after 11 militants killed in KP,
+    Balochistan operations Carried by 5 publishers: app, ary, dawn, nation, tribune. Triage:
+    nationally relevant.'
+  keywords:
+  - killed
+  - operations
+  - balochistan
+  - security
+  min_keyword_hits: 2
+- id: punjab-safety-hospitals
+  description: 'Punjab CM Maryam orders fresh safety audit of hospitals after Pims tragedy
+    Carried by 4 publishers: ary, dawn, geo, nation. Triage: nationally relevant.'
+  keywords:
+  - punjab
+  - safety
+  - hospitals
+  - maryam
+  min_keyword_hits: 2
+- id: arabia-steadfast-saudi
+  description: 'PM reaffirms Pakistan''s appreciation for Saudi Arabia''s ''steadfast support,
+    generous assistance'' Carried by 3 publishers: app, dawn, geo. Triage: nationally relevant.'
+  keywords:
+  - arabia
+  - steadfast
+  - saudi
+  - support
+  min_keyword_hits: 2
+must_not_have:
+- id: nepal-flood-missing
+  description: 'Hundreds missing after devastating flood hits Nepal-Tibet border, 95 bodies
+    recovered Carried by 5 publishers: app, ary, brecorder, geo, tribune. Triage: no Pakistan
+    relevance.'
+  keywords:
+  - nepal
+  - flood
+  - missing
+  - devastating
+  min_keyword_hits: 2
+- id: children-social-media
+  description: 'Meta agrees to pay $18 billion to settle US lawsuits over children''s social
+    media addiction Carried by 4 publishers: ary, brecorder, geo, tribune. Triage: no Pakistan
+    relevance.'
+  keywords:
+  - children
+  - social
+  - media
+  - meta
+  min_keyword_hits: 2
+brief_size:
+  min: 6
+  max: 12
+# Recorded from the run that first scored this day (2026-08-27). Raise it as
+# selection improves; never lower it to make a run pass.
+#
+# 0.67 is 2 of 3, and the miss is `arabia-steadfast-saudi` -- "PM reaffirms
+# appreciation for Saudi Arabia's steadfast support". THIS ONE NEEDS A HUMAN
+# READ. The corroboration oracle made it a must-have because 3 publishers ran
+# it and triage called it national, but it is a ceremonial diplomatic courtesy,
+# which the editorial prompt explicitly excludes ("soft diplomacy reactions",
+# "ceremonial calls-on"). Selection may well be right and the oracle wrong.
+# If you agree it should not be a must-have, move it to the editor's-call
+# section by hand and raise baseline_recall to 1.0 -- do not delete it just to
+# turn the run green.
+# 2 of 3 exactly. Written in full because 0.67 rounds *up* past 2/3 and
+# fails the ratchet against the very run it was recorded from.
+baseline_recall: 0.6666666666666666
+
+# Articles the grouper put in a cluster holding more than one event, per
+# `measure_cluster_quality`. Recorded 2026-08-27 with the 36h event window.
+# Lower it as grouping improves; never raise it to make a run pass.
+max_merged_articles: 7

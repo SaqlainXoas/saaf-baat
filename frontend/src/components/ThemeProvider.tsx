@@ -25,6 +25,26 @@ export function useTheme(): ThemeContextValue {
   return useContext(ThemeContext);
 }
 
+// This provider wraps the whole app, so anything it throws takes the page down.
+// localStorage is not always available - Safari private browsing throws on
+// write, and a locked-down profile can throw on read - and losing a theme
+// preference must never cost the reader their brief.
+function readStoredTheme(): string | null {
+  try {
+    return window.localStorage.getItem(THEME_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredTheme(theme: ThemeName): void {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // The theme still applies for this session; it just will not be remembered.
+  }
+}
+
 export default function ThemeProvider({
   children,
   defaultTheme = "system",
@@ -36,8 +56,7 @@ export default function ThemeProvider({
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
 
   useEffect(() => {
-    const stored = normaliseTheme(window.localStorage.getItem(THEME_STORAGE_KEY), defaultTheme);
-    setTheme(stored);
+    setTheme(normaliseTheme(readStoredTheme(), defaultTheme));
   }, [defaultTheme]);
 
   useEffect(() => {
@@ -56,7 +75,7 @@ export default function ThemeProvider({
   }, [theme]);
 
   useEffect(() => {
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    writeStoredTheme(theme);
   }, [theme]);
 
   const value = useMemo(

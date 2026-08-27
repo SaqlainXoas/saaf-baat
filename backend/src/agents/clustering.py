@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
@@ -107,56 +107,21 @@ def _set_overlap(left: Set[str], right: Set[str]) -> float:
     return float(len(left & right) / len(union))
 
 
-def publish_date_skew_hours(article: RawArticle) -> float | None:
-    scraped = article.scraped_at
-    if scraped.tzinfo is None:
-        scraped = scraped.replace(tzinfo=timezone.utc)
-
-    published = article.publish_date
-    if published is None:
-        return None
-    if published.tzinfo is None:
-        published = published.replace(tzinfo=timezone.utc)
-
-    return abs((scraped - published).total_seconds()) / 3600.0
-
-
-def has_suspicious_publish_date(
-    article: RawArticle,
-    *,
-    future_grace_hours: int = 1,
-    past_grace_hours: int = 36,
-) -> bool:
-    published = article.publish_date
-    if published is None:
-        return True
-    if published.tzinfo is None:
-        published = published.replace(tzinfo=timezone.utc)
-
-    scraped = article.scraped_at
-    if scraped.tzinfo is None:
-        scraped = scraped.replace(tzinfo=timezone.utc)
-
-    if published > scraped + timedelta(hours=future_grace_hours):
-        return True
-    if published < scraped - timedelta(hours=past_grace_hours):
-        return True
-    return False
-
-
 def trusted_article_timestamp(article: RawArticle, max_publish_skew_hours: int = 36) -> datetime:
-    scraped = article.scraped_at
-    if scraped.tzinfo is None:
-        scraped = scraped.replace(tzinfo=timezone.utc)
+    """
+    When the event happened, per the publisher.
 
-    if has_suspicious_publish_date(article, past_grace_hours=max_publish_skew_hours):
-        return scraped
+    The skew heuristics this replaced inferred from page content what the feed
+    states directly. They are unreachable now: ingest drops any item with no
+    publish_date and quarantines any endpoint whose newest item is stale, so
+    every stored article already has a publisher date inside the window
+    (`issues.md` I-6). `max_publish_skew_hours` is kept for call compatibility.
+    """
     published = article.publish_date
-    if published is None:
-        return scraped
-    if published.tzinfo is None:
-        published = published.replace(tzinfo=timezone.utc)
-    return published
+    if published is not None:
+        return published if published.tzinfo else published.replace(tzinfo=timezone.utc)
+    scraped = article.scraped_at
+    return scraped if scraped.tzinfo else scraped.replace(tzinfo=timezone.utc)
 
 
 # ============================================================================
@@ -175,19 +140,19 @@ class ClusteringError(Exception):
 @dataclass
 class ClusteringResult:
     """Result of clustering operation."""
-    
+
     labels: NDArray[np.int64]
     """Cluster labels for each input point. -1 indicates noise."""
-    
+
     algorithm_used: str
     """Name of the algorithm that produced these results."""
-    
+
     num_clusters: int
     """Number of clusters found (excluding noise)."""
-    
+
     noise_ratio: float
     """Ratio of points classified as noise (0.0 to 1.0)."""
-    
+
     @classmethod
     def from_labels(cls, labels: NDArray[np.int64], algorithm: str) -> "ClusteringResult":
         """Create result from labels array."""
@@ -195,7 +160,7 @@ class ClusteringResult:
         num_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
         noise_count = np.sum(labels == -1)
         noise_ratio = noise_count / len(labels) if len(labels) > 0 else 0.0
-        
+
         return cls(
             labels=labels,
             algorithm_used=algorithm,
@@ -228,324 +193,15 @@ class EventGroupingResult:
 @dataclass(frozen=True)
 class _PreparedArticle:
     index: int
+    source: str
     event_time: datetime
     headline_tokens: Set[str]
     entity_cues: Set[str]
 
 
 # ============================================================================
-# HDBSCAN Clusterer
+# Event grouping
 # ============================================================================
-
-class HDBSCANClusterer:
-    """
-    HDBSCAN clustering for news articles.
-    
-    HDBSCAN is the primary clustering algorithm because:
-    - Automatically determines number of clusters
-    - Handles varying cluster densities (breaking news vs minor stories)
-    - Identifies outliers/noise naturally
-    - Works well with precomputed cosine distance for text embeddings
-    """
-    
-    def __init__(
-        self,
-        min_cluster_size: int = 3,
-        min_samples: int = 2,
-        metric: str = "cosine",
-        cluster_selection_epsilon: float = 0.0,
-    ):
-        """
-        Initialize HDBSCAN clusterer.
-        
-        Args:
-            min_cluster_size: Minimum articles to form a cluster (story).
-            min_samples: Core point threshold for density estimation.
-            metric: Distance metric ('cosine' recommended for embeddings).
-            cluster_selection_epsilon: Distance threshold for flat clustering.
-        """
-        self.min_cluster_size = min_cluster_size
-        self.min_samples = min_samples
-        self.metric = metric
-        self.cluster_selection_epsilon = cluster_selection_epsilon
-        self._model = None
-    
-    def fit_predict(self, embeddings: NDArray[np.float32]) -> NDArray[np.int64]:
-        """
-        Cluster embeddings and return labels.
-        
-        Args:
-            embeddings: Array of shape (n_samples, n_features).
-            
-        Returns:
-            Array of cluster labels. -1 indicates noise/outlier.
-            
-        Raises:
-            ClusteringError: If embeddings are empty.
-        """
-        if len(embeddings) == 0:
-            raise ClusteringError("Cannot cluster empty embeddings array")
-        
-        # Handle single point - it's always noise
-        if len(embeddings) == 1:
-            return np.array([-1], dtype=np.int64)
-        
-        try:
-            import hdbscan
-        except ImportError:
-            raise ClusteringError(
-                "hdbscan package not installed. Run: pip install hdbscan"
-            )
-        
-        # For cosine distance, compute precomputed distance matrix
-        # HDBSCAN's BallTree doesn't support cosine directly
-        if self.metric == "cosine":
-            from sklearn.metrics.pairwise import cosine_distances
-            # HDBSCAN requires float64 for precomputed distances
-            distance_matrix = cosine_distances(embeddings).astype(np.float64)
-            
-            self._model = hdbscan.HDBSCAN(
-                min_cluster_size=self.min_cluster_size,
-                min_samples=self.min_samples,
-                metric="precomputed",
-                cluster_selection_epsilon=self.cluster_selection_epsilon,
-            )
-            labels = self._model.fit_predict(distance_matrix)
-        else:
-            self._model = hdbscan.HDBSCAN(
-                min_cluster_size=self.min_cluster_size,
-                min_samples=self.min_samples,
-                metric=self.metric,
-                cluster_selection_epsilon=self.cluster_selection_epsilon,
-            )
-            labels = self._model.fit_predict(embeddings)
-        
-        return labels.astype(np.int64)
-
-
-# ============================================================================
-# DBSCAN Clusterer (Fallback)
-# ============================================================================
-
-class DBSCANClusterer:
-    """
-    DBSCAN clustering as fallback when HDBSCAN quality is poor.
-    
-    DBSCAN is simpler and can work better on certain data distributions,
-    especially when clusters are more uniform in density.
-    """
-    
-    def __init__(
-        self,
-        eps: float = 0.3,
-        min_samples: int = 2,
-        metric: str = "cosine",
-    ):
-        """
-        Initialize DBSCAN clusterer.
-        
-        Args:
-            eps: Maximum distance between points in same neighborhood.
-                 For cosine metric, 0.3 means similarity > 0.7.
-            min_samples: Minimum points to form a core point.
-            metric: Distance metric ('cosine' recommended for embeddings).
-        """
-        self.eps = eps
-        self.min_samples = min_samples
-        self.metric = metric
-        self._model = None
-    
-    def fit_predict(self, embeddings: NDArray[np.float32]) -> NDArray[np.int64]:
-        """
-        Cluster embeddings and return labels.
-        
-        Args:
-            embeddings: Array of shape (n_samples, n_features).
-            
-        Returns:
-            Array of cluster labels. -1 indicates noise/outlier.
-            
-        Raises:
-            ClusteringError: If embeddings are empty.
-        """
-        if len(embeddings) == 0:
-            raise ClusteringError("Cannot cluster empty embeddings array")
-        
-        # Handle single point - it's always noise
-        if len(embeddings) == 1:
-            return np.array([-1], dtype=np.int64)
-        
-        try:
-            from sklearn.cluster import DBSCAN
-        except ImportError:
-            raise ClusteringError(
-                "scikit-learn not installed. Run: pip install scikit-learn"
-            )
-        
-        self._model = DBSCAN(
-            eps=self.eps,
-            min_samples=self.min_samples,
-            metric=self.metric,
-        )
-        
-        labels = self._model.fit_predict(embeddings)
-        
-        return labels.astype(np.int64)
-
-
-# ============================================================================
-# Clustering Service
-# ============================================================================
-
-class ClusteringService:
-    """
-    Unified clustering service with quality validation and automatic fallback.
-    
-    Uses HDBSCAN as primary algorithm, falls back to DBSCAN if quality
-    thresholds are not met.
-    """
-    
-    def __init__(
-        self,
-        # For a small news aggregator (tens-hundreds of docs/run), it is normal to
-        # produce just 1 coherent cluster and lots of noise. Downstream pipeline
-        # guardrails enforce story coherence, so these checks should not zero out
-        # all labels.
-        min_clusters: int = 1,
-        max_noise_ratio: float = 0.95,
-        min_cluster_size: int = 3,
-        hdbscan_params: Optional[Dict] = None,
-        dbscan_params: Optional[Dict] = None,
-    ):
-        """
-        Initialize clustering service.
-        
-        Args:
-            min_clusters: Minimum acceptable number of clusters.
-            max_noise_ratio: Maximum acceptable noise ratio (0.0-1.0).
-            min_cluster_size: Minimum articles per cluster.
-            hdbscan_params: Custom parameters for HDBSCAN.
-            dbscan_params: Custom parameters for DBSCAN.
-        """
-        self.min_clusters = min_clusters
-        self.max_noise_ratio = max_noise_ratio
-        self.min_cluster_size = min_cluster_size
-        
-        self.primary_algorithm = "hdbscan"
-        self.fallback_algorithm = "dbscan"
-        
-        # Initialize clusterers
-        hdbscan_config = {"min_cluster_size": min_cluster_size}
-        if hdbscan_params:
-            hdbscan_config.update(hdbscan_params)
-        self._hdbscan = HDBSCANClusterer(**hdbscan_config)
-        
-        dbscan_config = {"min_samples": 2}
-        if dbscan_params:
-            dbscan_config.update(dbscan_params)
-        self._dbscan = DBSCANClusterer(**dbscan_config)
-    
-    def _is_quality_clustering(self, labels: NDArray[np.int64]) -> bool:
-        """
-        Check if clustering result meets quality thresholds.
-        
-        Quality criteria:
-        - At least min_clusters distinct clusters
-        - Noise ratio below max_noise_ratio
-        
-        Args:
-            labels: Cluster labels array.
-            
-        Returns:
-            True if quality is acceptable, False otherwise.
-        """
-        if len(labels) == 0:
-            return False
-        
-        # Count clusters (excluding noise label -1)
-        unique_labels = set(labels)
-        num_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
-        
-        # Calculate noise ratio
-        noise_count = np.sum(labels == -1)
-        noise_ratio = noise_count / len(labels)
-        
-        # Check thresholds
-        if num_clusters < self.min_clusters:
-            logger.debug(
-                f"Quality check failed: {num_clusters} clusters < {self.min_clusters} min"
-            )
-            return False
-        
-        if noise_ratio > self.max_noise_ratio:
-            logger.debug(
-                f"Quality check failed: {noise_ratio:.2f} noise > {self.max_noise_ratio} max"
-            )
-            return False
-        
-        return True
-    
-    def cluster(self, embeddings: NDArray[np.float32]) -> ClusteringResult:
-        """
-        Cluster embeddings with automatic fallback.
-        
-        Tries HDBSCAN first. If quality is poor, falls back to DBSCAN.
-        
-        Args:
-            embeddings: Array of shape (n_samples, n_features).
-            
-        Returns:
-            ClusteringResult with labels and metadata.
-        """
-        if len(embeddings) == 0:
-            raise ClusteringError("Cannot cluster empty embeddings array")
-
-        hdbscan_labels: Optional[NDArray[np.int64]] = None
-
-        # Try primary algorithm (HDBSCAN)
-        try:
-            labels = self._hdbscan.fit_predict(embeddings)
-            hdbscan_labels = labels
-
-            if self._is_quality_clustering(labels):
-                logger.info(
-                    f"HDBSCAN clustering successful: "
-                    f"{len(set(labels)) - (1 if -1 in labels else 0)} clusters"
-                )
-                return ClusteringResult.from_labels(labels, self.primary_algorithm)
-
-            logger.info("HDBSCAN clustering produced low-quality output, trying DBSCAN fallback")
-
-        except Exception as e:
-            logger.warning(f"HDBSCAN failed: {e}, trying DBSCAN fallback")
-
-        # Fallback to DBSCAN
-        try:
-            labels = self._dbscan.fit_predict(embeddings)
-            if self._is_quality_clustering(labels):
-                logger.info(
-                    f"DBSCAN fallback accepted: "
-                    f"{len(set(labels)) - (1 if -1 in labels else 0)} clusters"
-                )
-                return ClusteringResult.from_labels(labels, self.fallback_algorithm)
-
-            # Do not discard the labels. Downstream pipeline guardrails enforce semantic
-            # coherence and will reject mixed-topic clusters.
-            logger.warning(
-                "DBSCAN output failed quality checks (clusters=%d, noise=%.2f). Returning labels anyway.",
-                len(set(labels)) - (1 if -1 in set(labels) else 0),
-                float(np.sum(labels == -1) / len(labels)),
-            )
-            return ClusteringResult.from_labels(labels, f"{self.fallback_algorithm}_low_quality")
-
-        except Exception as e:
-            if hdbscan_labels is not None:
-                logger.warning("DBSCAN failed (%s); returning HDBSCAN labels anyway", e)
-                return ClusteringResult.from_labels(hdbscan_labels, f"{self.primary_algorithm}_unvalidated")
-
-            logger.error(f"Both clustering algorithms failed: {e}")
-            raise ClusteringError(f"Clustering failed: {e}")
-
 
 class EventGroupingService:
     """
@@ -560,7 +216,7 @@ class EventGroupingService:
 
     def __init__(
         self,
-        min_cluster_size: int = 2,
+        min_cluster_size: int = 1,
         max_time_delta_hours: int = 18,
         min_pair_similarity: float = 0.80,
         min_group_centroid_similarity: float = 0.76,
@@ -569,6 +225,10 @@ class EventGroupingService:
         min_entity_overlap: float = 0.15,
         max_publish_skew_hours: int = 36,
         max_required_supporting_members: int = 3,
+        adjudicator: Optional[object] = None,
+        adjudication_band_below: float = 0.06,
+        adjudication_band_above: float = 0.04,
+        max_adjudication_pairs: int = 24,
     ):
         self.min_cluster_size = min_cluster_size
         self.max_time_delta_hours = max_time_delta_hours
@@ -579,6 +239,14 @@ class EventGroupingService:
         self.min_entity_overlap = min_entity_overlap
         self.max_publish_skew_hours = max_publish_skew_hours
         self.max_required_supporting_members = max(1, int(max_required_supporting_members))
+        # Injected, not constructed: this module stays LLM-free and merely
+        # consults a callable for the pairs its own signals cannot settle.
+        self.adjudicator = adjudicator
+        self.adjudication_band_below = float(adjudication_band_below)
+        self.adjudication_band_above = float(adjudication_band_above)
+        self.max_adjudication_pairs = int(max_adjudication_pairs)
+        self._adjudicated: Dict[Tuple[int, int], bool] = {}
+        self.last_adjudication: Optional[object] = None
 
     @staticmethod
     def _normalize_embeddings(articles: Sequence[RawArticle]) -> NDArray[np.float32]:
@@ -606,6 +274,7 @@ class EventGroupingService:
         return [
             _PreparedArticle(
                 index=index,
+                source=article.source,
                 event_time=trusted_article_timestamp(article, self.max_publish_skew_hours),
                 headline_tokens=_headline_tokens(article),
                 entity_cues=_entity_cues(article),
@@ -678,18 +347,29 @@ class EventGroupingService:
         prepared: Sequence[_PreparedArticle],
     ) -> Tuple[bool, float, float, float]:
         similarity = float(embeddings[left_idx] @ embeddings[right_idx])
-        if similarity < self.min_pair_similarity:
+        pair_key = (min(left_idx, right_idx), max(left_idx, right_idx))
+        if similarity < self.min_pair_similarity and not self._adjudicated.get(pair_key):
             return False, similarity, 0.0, 0.0
 
         headline_overlap, entity_overlap = self._pair_overlap(
             prepared[left_idx],
             prepared[right_idx],
         )
+        if (
+            prepared[left_idx].source == prepared[right_idx].source
+            and not (prepared[left_idx].headline_tokens & prepared[right_idx].headline_tokens)
+        ):
+            return False, similarity, headline_overlap, entity_overlap
         shared_cues = len(
             (prepared[left_idx].headline_tokens & prepared[right_idx].headline_tokens)
             | (prepared[left_idx].entity_cues & prepared[right_idx].entity_cues)
         )
         compatible = self._has_required_overlap(headline_overlap, entity_overlap, shared_cues)
+        verdict = self._adjudicated.get((min(left_idx, right_idx), max(left_idx, right_idx)))
+        if verdict is not None:
+            # Only reached for pairs the band pre-pass judged ambiguous. The
+            # group coherence gates downstream still get their veto.
+            compatible = bool(verdict)
         return compatible, similarity, headline_overlap, entity_overlap
 
     def _candidate_score(
@@ -819,12 +499,131 @@ class EventGroupingService:
 
         return merged
 
+    def _collect_ambiguous_pairs(
+        self,
+        articles: Sequence[RawArticle],
+        embeddings: NDArray[np.float32],
+        prepared: Sequence[_PreparedArticle],
+    ) -> List[object]:
+        """
+        Find the pairs the deterministic signals disagree about.
+
+        Two signals decide a pair: embedding similarity, and headline/entity
+        overlap. Where both agree the deterministic answer stands and costs
+        nothing. Where they disagree *and* similarity sits in a narrow band
+        around the threshold, the current code silently prefers "different
+        events" — that is the coin flip worth spending a call on.
+        """
+        from src.agents.adjudication import AdjudicationPair
+
+        low = self.min_pair_similarity - self.adjudication_band_below
+        high = self.min_pair_similarity + self.adjudication_band_above
+
+        scored: List[Tuple[float, object]] = []
+        for left in range(len(articles)):
+            for right in range(left + 1, len(articles)):
+                similarity = float(embeddings[left] @ embeddings[right])
+                if not (low <= similarity <= high):
+                    continue
+                if not self._time_window_ok(prepared[right], [left], prepared):
+                    continue
+
+                headline_overlap, entity_overlap = self._pair_overlap(prepared[left], prepared[right])
+                shared_headline_tokens = (
+                    prepared[left].headline_tokens & prepared[right].headline_tokens
+                )
+                shared_cues = len(
+                    shared_headline_tokens
+                    | (prepared[left].entity_cues & prepared[right].entity_cues)
+                )
+                overlap_says_same = self._has_required_overlap(
+                    headline_overlap, entity_overlap, shared_cues
+                )
+                similarity_says_same = similarity >= self.min_pair_similarity
+                if overlap_says_same == similarity_says_same:
+                    continue
+
+                # Two distinctive *headline* tokens, not shared cues: entity
+                # overlap is dominated by generic names on this corpus, so it
+                # cannot tell a near-miss from two unrelated Pakistani stories.
+                #
+                # Measured on the golden day, over the same 120 articles:
+                #   no floor                -> 24 pairs, model answered
+                #                              "different" to all 24
+                #   >= 1 shared headline    -> 51 pairs, mostly sharing only
+                #                              the token "pakistan"
+                #   >= 2 shared headlines   -> 2 pairs, both real near-misses
+                #                              ([iran, sanctions], [kills, two])
+                # Anything looser spends the budget confirming what the
+                # deterministic gates already had right.
+                if len(shared_headline_tokens) < 2:
+                    continue
+
+                scored.append(
+                    (
+                        float(len(shared_headline_tokens)) + headline_overlap,
+                        AdjudicationPair(
+                            left_index=left,
+                            right_index=right,
+                            left_source=articles[left].source,
+                            left_headline=articles[left].headline or "",
+                            right_source=articles[right].source,
+                            right_headline=articles[right].headline or "",
+                            similarity=similarity,
+                            headline_overlap=headline_overlap,
+                            entity_overlap=entity_overlap,
+                            left_url=str(articles[left].url),
+                            right_url=str(articles[right].url),
+                        ),
+                    )
+                )
+
+        # Strongest corroborating evidence first: those are the pairs where
+        # the deterministic split is most likely to be the wrong call.
+        scored.sort(key=lambda row: -row[0])
+        return [pair for _distance, pair in scored[: self.max_adjudication_pairs]]
+
+    def _run_adjudication(
+        self,
+        articles: Sequence[RawArticle],
+        embeddings: NDArray[np.float32],
+        prepared: Sequence[_PreparedArticle],
+    ) -> None:
+        self._adjudicated = {}
+        self.last_adjudication = None
+        if self.adjudicator is None:
+            return
+
+        pairs = self._collect_ambiguous_pairs(articles, embeddings, prepared)
+        if not pairs:
+            return
+
+        try:
+            result = self.adjudicator.adjudicate(pairs)
+        except Exception as exc:
+            # An adjudication outage must not take the run down: without
+            # verdicts the deterministic answer stands, which is today's
+            # behaviour.
+            logger.warning("Adjudication unavailable, keeping deterministic grouping: %s", exc)
+            return
+
+        self._adjudicated = dict(result.verdicts)
+        self.last_adjudication = result
+        logger.info(
+            "Adjudicated %d ambiguous pairs in %d calls: %d merged, %d failed",
+            len(pairs),
+            int(getattr(result, "calls", 0)),
+            int(getattr(result, "merged", 0)),
+            int(getattr(result, "failures", 0)),
+        )
+
     def group_articles(self, articles: Sequence[RawArticle]) -> EventGroupingResult:
         if not articles:
             raise ClusteringError("Cannot group an empty article sequence")
 
         embeddings = self._normalize_embeddings(articles)
         prepared = self._prepare_articles(articles)
+        self._run_adjudication(articles, embeddings, prepared)
         order = sorted(
             range(len(articles)),
             key=lambda idx: (
@@ -891,24 +690,24 @@ class EventGroupingService:
 def calculate_centroid(embeddings: NDArray[np.float32]) -> NDArray[np.float32]:
     """
     Calculate normalized centroid of embeddings.
-    
+
     Args:
         embeddings: Array of shape (n_samples, n_features).
-        
+
     Returns:
         Normalized centroid vector of shape (n_features,).
     """
     if len(embeddings) == 0:
         raise ValueError("Cannot calculate centroid of empty array")
-    
+
     # Calculate mean
     centroid = np.mean(embeddings, axis=0)
-    
+
     # Normalize for cosine similarity
     norm = np.linalg.norm(centroid)
     if norm > 0:
         centroid = centroid / norm
-    
+
     return centroid.astype(np.float32)
 
 
@@ -918,20 +717,20 @@ def find_representative_article(
 ) -> int:
     """
     Find index of article closest to cluster centroid.
-    
+
     Args:
         embeddings: Array of shape (n_samples, n_features).
         centroid: Centroid vector of shape (n_features,).
-        
+
     Returns:
         Index of the most representative article.
     """
     if len(embeddings) == 0:
         raise ValueError("Cannot find representative of empty array")
-    
+
     # Calculate cosine similarities (dot product for normalized vectors)
     similarities = embeddings @ centroid
-    
+
     # Return index of highest similarity
     return int(np.argmax(similarities))
 
@@ -941,95 +740,35 @@ def calculate_intra_cluster_similarity(
 ) -> float:
     """
     Calculate average pairwise cosine similarity within cluster.
-    
+
     Args:
         embeddings: Array of shape (n_samples, n_features).
-        
+
     Returns:
         Average similarity (0.0 to 1.0). Returns 1.0 for single point.
     """
     n = len(embeddings)
-    
+
     if n == 0:
         raise ValueError("Cannot calculate similarity of empty array")
-    
+
     if n == 1:
         return 1.0  # Single point has perfect "similarity"
-    
+
     # Calculate all pairwise similarities using matrix multiplication
     # For normalized vectors, similarity = dot product
     similarity_matrix = embeddings @ embeddings.T
-    
+
     # Extract upper triangle (excluding diagonal) for unique pairs
     upper_indices = np.triu_indices(n, k=1)
     pairwise_similarities = similarity_matrix[upper_indices]
-    
+
     # Return average
     return float(np.mean(pairwise_similarities))
 
 
 # ============================================================================
 # Cluster Mapping
-# ============================================================================
-
-def create_cluster_mapping(
-    article_ids: List[str],
-    labels: NDArray[np.int64],
-    embeddings: NDArray[np.float32],
-) -> Dict[str, Dict]:
-    """
-    Create mapping from cluster IDs to article data.
-    
-    Args:
-        article_ids: List of article identifiers.
-        labels: Cluster labels for each article.
-        embeddings: Embeddings array.
-        
-    Returns:
-        Dict mapping cluster_id to:
-        - article_ids: List of article IDs in cluster
-        - centroid: Cluster centroid embedding
-        - similarity: Intra-cluster similarity score
-    """
-    if len(article_ids) != len(labels) or len(article_ids) != len(embeddings):
-        raise ValueError("article_ids, labels, and embeddings must have same length")
-    
-    mapping: Dict[str, Dict] = {}
-    
-    # Get unique cluster labels (excluding noise)
-    unique_labels = set(labels)
-    cluster_labels = [l for l in unique_labels if l != -1]
-    
-    for cluster_label in cluster_labels:
-        # Get indices for this cluster
-        indices = np.where(labels == cluster_label)[0]
-        
-        # Get article IDs
-        cluster_article_ids = [article_ids[i] for i in indices]
-        
-        # Get embeddings for this cluster
-        cluster_embeddings = embeddings[indices]
-        
-        # Calculate centroid
-        centroid = calculate_centroid(cluster_embeddings)
-        
-        # Calculate intra-cluster similarity
-        similarity = calculate_intra_cluster_similarity(cluster_embeddings)
-        
-        # Create cluster ID
-        cluster_id = f"cluster-{cluster_label}"
-        
-        mapping[cluster_id] = {
-            "article_ids": cluster_article_ids,
-            "centroid": centroid,
-            "similarity": similarity,
-        }
-    
-    return mapping
-
-
-# ============================================================================
-# Module Exports
 # ============================================================================
 
 __all__ = [
@@ -1040,15 +779,9 @@ __all__ = [
     "EventGroup",
     "EventGroupingResult",
     "EventGroupingService",
-    "HDBSCANClusterer",
-    "DBSCANClusterer",
-    "ClusteringService",
     # Functions
     "calculate_centroid",
     "find_representative_article",
     "calculate_intra_cluster_similarity",
-    "create_cluster_mapping",
-    "has_suspicious_publish_date",
-    "publish_date_skew_hours",
     "trusted_article_timestamp",
 ]

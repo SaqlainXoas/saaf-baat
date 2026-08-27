@@ -1,0 +1,91 @@
+# What the brief for 2026-08-25 should have contained.
+#
+# DERIVED, NOT JUDGED. Every entry below is a story that at least
+# 3 distinct publishers in the captured pool ran on this
+# morning - a fact recorded in the fixture, measured by
+# `scripts/derive_expectations.py`, and independent of anything the selector
+# does. It is not an editor's opinion about what mattered.
+#
+# Read that honestly in both directions:
+#   * A missed must-have is real. Most of the Pakistani press led with it and
+#     the brief did not carry it.
+#   * A perfect score is a floor, not a ceiling. This method cannot see the
+#     important story only one outlet had, and it will include a wire story
+#     everyone reprinted without anyone thinking it was important.
+#
+# Regenerate with:
+#     python scripts/derive_expectations.py 2026-08-25 --write
+#
+# It must not be edited to make a failing run pass. If a run misses an entry
+# here, that is a selection bug to fix, not a line to delete.
+day: '2026-08-25'
+must_have:
+- id: imran-pti-senate
+  description: 'PTI protest over alleged violation of SC order on Imran''s hospital transfer
+    disrupts Senate business Carried by 5 publishers: brecorder, dawn, geo, nation, tribune.
+    Triage: nationally relevant.'
+  keywords:
+  - imran
+  - pti
+  - senate
+  - transfer
+  min_keyword_hits: 2
+- id: iran-conflict-significant
+  description: '''Significant progress'': Islamabad, Tehran discuss Hormuz reopening, ''expedited''
+    end to Iran-US conflict Carried by 4 publishers: brecorder, geo, nation, tribune. Triage:
+    nationally relevant.'
+  keywords:
+  - iran
+  - conflict
+  - significant
+  - end
+  min_keyword_hits: 2
+must_not_have:
+- id: sequel-guy-lose
+  description: 'Everything to know about ''How to Lose a Guy in 10 Days'' sequel as new confirmations
+    emerge Carried by 3 publishers: dawn, geo, thenews. Triage: excluded category entertainment.'
+  keywords:
+  - sequel
+  - guy
+  - lose
+  - how
+  min_keyword_hits: 2
+- id: cup-world-zealand
+  description: 'Hockey World Cup 2026: New Zealand douses Pakistan’s comeback fire in 4-2
+    triumph Carried by 3 publishers: ary, dawn, geo. Triage: excluded category sports.'
+  keywords:
+  - cup
+  - world
+  - zealand
+  - hockey
+  min_keyword_hits: 2
+- id: backlash-costume-target
+  description: 'Target apologizes for children’s clown Halloween costume after backlash Carried
+    by 3 publishers: ary, thenews, tribune. Triage: excluded category entertainment.'
+  keywords:
+  - backlash
+  - costume
+  - target
+  - halloween
+  min_keyword_hits: 2
+- id: england-carse-drop
+  description: 'England drop Carse after investigation into club incident Carried by 3 publishers:
+    brecorder, geo, tribune. Triage: excluded category sports.'
+  keywords:
+  - england
+  - carse
+  - drop
+  min_keyword_hits: 2
+brief_size:
+  min: 6
+  max: 12
+# Recorded from the run that first scored this day. Raise it as selection
+# improves; never lower it to make a run pass.
+baseline_recall: 1.0
+
+# Articles the grouper merged into a cluster holding more than one event, as
+# measured by `measure_cluster_quality`. A merged article is a story the editor
+# never sees as a candidate: one live cluster held four unrelated events under
+# the headline of the smallest of them. Recorded from the run that first scored
+# this day. Lower it as grouping improves; never raise it to make a run pass.
+max_merged_articles: 12

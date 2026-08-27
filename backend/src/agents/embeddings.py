@@ -6,7 +6,9 @@ to match pgvector VECTOR(768) columns in the database schema.
 """
 from __future__ import annotations
 
+import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -19,6 +21,9 @@ try:
 except Exception:  # pragma: no cover - handled by runtime guard
     genai = None
     types = None
+
+
+logger = logging.getLogger(__name__)
 
 
 class EmbeddingError(Exception):
@@ -60,6 +65,11 @@ class GeminiEmbeddingProvider:
     DEFAULT_OUTPUT_DIMENSIONALITY = 768
     MIN_OUTPUT_DIMENSIONALITY = 128
     MAX_OUTPUT_DIMENSIONALITY = 3072
+    # The free tier bills one request per *text*, not per batch call, and caps
+    # it at 100 per minute. A 300-article day exceeds that in a single call, so
+    # batches must be paced rather than fired back to back.
+    DEFAULT_REQUESTS_PER_MINUTE = 100
+    DEFAULT_MAX_RETRIES = 4
 
     def __init__(
         self,
@@ -68,6 +78,8 @@ class GeminiEmbeddingProvider:
         task_type: str | None = None,
         output_dimensionality: int | None = None,
         rate_limit_delay: float = 0.0,
+        requests_per_minute: int | None = None,
+        max_retries: int | None = None,
     ):
         """
         Initialize Gemini embedding provider.
@@ -106,6 +118,12 @@ class GeminiEmbeddingProvider:
                 f"{self.MIN_OUTPUT_DIMENSIONALITY} and {self.MAX_OUTPUT_DIMENSIONALITY}"
             )
         self.rate_limit_delay = rate_limit_delay
+        self.requests_per_minute = int(
+            requests_per_minute
+            if requests_per_minute is not None
+            else _env_int("SAAF_EMBEDDING_RPM", self.DEFAULT_REQUESTS_PER_MINUTE)
+        )
+        self.max_retries = max(1, int(max_retries or self.DEFAULT_MAX_RETRIES))
 
         self._client = genai.Client(api_key=self.api_key)
 
@@ -138,7 +156,19 @@ class GeminiEmbeddingProvider:
             embeddings = self._extract_embeddings(result, expected_count=len(texts))
         except Exception as e:
             error_msg = str(e).lower()
-            if "resource exhausted" in error_msg or "rate limit" in error_msg:
+            # The API says RESOURCE_EXHAUSTED with an underscore; matching only
+            # the spaced form let real 429s through as generic failures, which
+            # skipped the retry path entirely.
+            if any(
+                marker in error_msg
+                for marker in (
+                    "resource exhausted",
+                    "resource_exhausted",
+                    "rate limit",
+                    "quota",
+                    "429",
+                )
+            ):
                 raise RateLimitError(f"API rate limit exceeded: {e}") from e
             raise EmbeddingError(f"Failed to generate embeddings: {e}") from e
 
@@ -170,11 +200,13 @@ class GeminiEmbeddingProvider:
 
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
-            result = self.embed(batch)
+            result = self._embed_with_retry(batch)
             all_embeddings.append(result.embeddings)
 
-            if i + batch_size < len(texts) and self.rate_limit_delay > 0:
-                time.sleep(self.rate_limit_delay)
+            if i + batch_size < len(texts):
+                delay = max(self.rate_limit_delay, self._pace_seconds(len(batch)))
+                if delay > 0:
+                    time.sleep(delay)
 
         combined = np.vstack(all_embeddings)
         return EmbeddingResult(
@@ -182,6 +214,34 @@ class GeminiEmbeddingProvider:
             model=self.model,
             texts_count=len(texts),
         )
+
+    def _pace_seconds(self, batch_size: int) -> float:
+        """Seconds to wait so the next batch stays inside the per-minute quota."""
+        if self.requests_per_minute <= 0:
+            return 0.0
+        return 60.0 * batch_size / float(self.requests_per_minute)
+
+    def _embed_with_retry(self, batch: list[str]) -> EmbeddingResult:
+        """Embed one batch, waiting out rate limits rather than failing the run."""
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                return self.embed(batch)
+            except RateLimitError as exc:
+                last_error = exc
+                if attempt == self.max_retries - 1:
+                    break
+                delay = _retry_after_seconds(str(exc))
+                if delay is None:
+                    delay = self._pace_seconds(len(batch)) * (2 ** attempt)
+                logger.warning(
+                    "Embedding rate limited (attempt %d/%d); waiting %.1fs",
+                    attempt + 1,
+                    self.max_retries,
+                    delay,
+                )
+                time.sleep(max(1.0, delay))
+        raise last_error if last_error else EmbeddingError("Embedding failed")
 
     def _normalize(self, embeddings: np.ndarray) -> np.ndarray:
         """L2 normalize embeddings for cosine similarity."""
@@ -237,3 +297,27 @@ class GeminiEmbeddingProvider:
         if embedding_attr is not None:
             return [float(v) for v in embedding_attr]
         raise EmbeddingError("Embedding row is missing vector values")
+
+
+def _retry_after_seconds(message: str) -> float | None:
+    """Pull the server's own retry hint out of a rate-limit message."""
+    match = re.search(r"[Pp]lease retry in ([0-9.]+)s", message)
+    if not match:
+        match = re.search(r"'retryDelay': '(\d+)s'", message)
+    if not match:
+        return None
+    try:
+        return float(match.group(1)) + 1.0
+    except ValueError:
+        return None
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default

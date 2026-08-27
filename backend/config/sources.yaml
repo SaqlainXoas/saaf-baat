@@ -1,54 +1,145 @@
+# Ingest is RSS + Google-News sitemap only. There is no HTML section discovery.
+#
+# tier A — publisher ships the full article body in RSS; no page fetch needed.
+# tier B — headline/summary only; used as the corroboration signal that drives
+#          source breadth. Body is fetched lazily, and only if selected.
+#
+# Every endpoint below is health-gated at runtime: if the newest item in a feed
+# or sitemap is older than `stale_feed_hours`, the whole endpoint is
+# quarantined. Two live endpoints serve HTTP 200 with ~9-month-old news, so a
+# 200 response is never on its own evidence that a source is alive.
 sources:
   dawn:
     url: "https://www.dawn.com"
-    feed_url: "https://www.dawn.com/feeds/latest-news"
-    sections:
-      - "https://www.dawn.com/pakistan"
-      - "https://www.dawn.com/business"
+    tier: A
     enabled: true
+    feed_urls:
+      - "https://www.dawn.com/feeds/home"
+      - "https://www.dawn.com/feeds/latest-news"
+      - "https://www.dawn.com/feeds/pakistan"
+      - "https://www.dawn.com/feeds/business"
+      - "https://www.dawn.com/feeds/newspaper"
+      - "https://www.dawn.com/feeds/world"
+    sitemap_urls:
+      - "https://www.dawn.com/feeds/sitemap"
 
   tribune:
     url: "https://tribune.com.pk"
-    sections:
-      - "https://tribune.com.pk/pakistan"
-      - "https://tribune.com.pk/business"
+    tier: A
     enabled: true
+    # Tribune returns 403 on ~two thirds of direct article fetches while serving
+    # its feed to the same client without complaint. Feed-first is not a
+    # workaround here; it is the only reliable path.
+    feed_urls:
+      - "https://tribune.com.pk/feed/home"
+      - "https://tribune.com.pk/feed/pakistan"
+      - "https://tribune.com.pk/feed/business"
+    # No Tribune sitemap is usable, verified 2026-08-27 — do not re-add one:
+    #   sitemap/sitemap_main.xml  is a SECTION INDEX (76 landing-page URLs, no
+    #                             articles) and carries no news:publication_date,
+    #                             so the health gate quarantined it every run.
+    #   sitemap/news_sitemap.xml  404
+    #   google-news-sitemap.xml   404
+    #   sitemap/latest-1.xml      (advertised in robots.txt) does list 150 article
+    #                             URLs, but dates them with a date-only <lastmod>
+    #                             and no news:publication_date. Every item would
+    #                             land at fake midnight, sort below Tribune's real
+    #                             RSS timestamps, and be dropped by the 40-cap
+    #                             anyway — while poisoning freshness ranking.
+    # Tribune RSS is healthy and carries the source on its own.
+    sitemap_urls: []
+
+  brecorder:
+    url: "https://www.brecorder.com"
+    tier: A
+    enabled: true
+    feed_urls:
+      - "https://www.brecorder.com/feeds/latest-news"
+      - "https://www.brecorder.com/feeds/pakistan"
+      - "https://www.brecorder.com/feeds/markets"
+    sitemap_urls:
+      - "https://www.brecorder.com/feeds/sitemap"
 
   geo:
     url: "https://www.geo.tv"
-    sections:
-      - "https://www.geo.tv/category/pakistan"
-      - "https://www.geo.tv/category/business"
+    tier: B
     enabled: true
+    # rss/1/53 is deliberately NOT listed: on 2026-08-24 it served 20 well-formed
+    # items whose newest was 295 days old.
+    feed_urls:
+      - "https://www.geo.tv/rss/1/1"
+      - "https://www.geo.tv/rss/1/4"
+    sitemap_urls:
+      - "https://www.geo.tv/assets/uploads/google_news_latest.xml"
 
   ary:
     url: "https://arynews.tv"
-    # ARY is not reliable enough for core-source use right now.
-    # Live checks on 2026-04-02 showed:
-    # - section discovery either returned no story links or failed outright
-    # - direct article scraping also failed, including Playwright fallback
-    # Re-enable only after a stable discovery path and extractor are verified.
-    sections:
-      - "latest-news"
-      - "category/pakistan"
-    enabled: false
+    tier: B
+    enabled: true
+    # Re-enabled 2026-08-24. The earlier disable was recorded against HTML
+    # section discovery and article scraping, both of which failed. Its RSS was
+    # never the problem: it returns 121 items with the newest 0.0 hours old.
+    feed_urls:
+      - "https://arynews.tv/feed/"
+      - "https://arynews.tv/category/pakistan/feed/"
+    sitemap_urls:
+      - "https://arynews.tv/sitemap/news_sitemap.xml"
 
-  samaa:
-    url: "https://www.samaa.tv"
-    feed_url: "https://www.samaa.tv/rss/1"
-    sections:
-      - "latest"
-      - "pakistan"
-    # All RSS endpoints blocked — re-enable once a working feed URL is found.
-    enabled: false
+  nation:
+    url: "https://www.nation.com.pk"
+    tier: B
+    enabled: true
+    feed_urls:
+      - "https://www.nation.com.pk/rss/latest"
+    sitemap_urls:
+      - "https://www.nation.com.pk/sitemap_news_google.xml"
+
+  app:
+    url: "https://www.app.com.pk"
+    tier: B
+    enabled: true
+    # Every APP endpoint is a stock WordPress feed capped at 10 items, so one
+    # URL can never fill the 40 cap. `/category/national/feed/` 301-redirects to
+    # `/national/feed/` — the slug moved. Two overlapping 10-item feeds is how
+    # this source delivered 17 of a possible 40 on 2026-08-27. WordPress paging
+    # is chronologically continuous, so ?paged=2,3 extend the same feed rather
+    # than duplicating it. Section feeds exist only for national, business,
+    # sports and kashmir; world/health/sci-tech/regional all 301.
+    feed_urls:
+      - "https://www.app.com.pk/feed/"
+      - "https://www.app.com.pk/feed/?paged=2"
+      - "https://www.app.com.pk/feed/?paged=3"
+      - "https://www.app.com.pk/national/feed/"
+      - "https://www.app.com.pk/business/feed/"
+    sitemap_urls: []
 
   thenews:
     url: "https://www.thenews.com.pk"
-    feed_url: "https://www.thenews.com.pk/rss/1/1"
-    sections:
-      - "pakistan"
-    # Re-enable once section-scoped discovery is verified. The current RSS is too broad.
+    tier: B
+    enabled: true
+    # Sitemap only. Its Pakistan RSS (rss/1/1) is frozen at November 2025 — 50
+    # items, newest ~276 days old, HTTP 200 throughout — and its live feeds
+    # carry only foreign, sport, and entertainment content. The news sitemap is
+    # current, so the source is recoverable through that channel alone.
+    feed_urls: []
+    sitemap_urls:
+      - "https://www.thenews.com.pk/assets/uploads/google_news_latest.xml"
+
+  samaa:
+    url: "https://www.samaa.tv"
+    tier: B
     enabled: false
+    # Disabled 2026-08-24: every probed endpoint returned 404 or reset the
+    # connection. Re-enable only after a live feed or news sitemap is found.
+    feed_urls: []
+    sitemap_urls: []
 
 scraping_config:
-  max_articles_per_source: 20
+  # Applied after a newest-first sort, so the cap keeps the freshest records.
+  max_articles_per_source: 40
+  # Quarantine an endpoint whose newest item is older than this.
+  stale_feed_hours: 48
+  # Ignore individual items older than this.
+  article_max_age_hours: 36
+  # At or above this length, a body counts as the full article.
+  full_text_min_chars: 600

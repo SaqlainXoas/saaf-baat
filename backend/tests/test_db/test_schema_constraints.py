@@ -34,7 +34,7 @@ def test_schema_sql_content_hash_is_unique():
 
 def test_create_schema_has_category_constraint():
     """create_schema.py should enforce category constraints aligned with models."""
-    create_schema_path = Path(__file__).resolve().parent.parent.parent / "scripts" / "create_schema.py"
+    create_schema_path = Path(__file__).resolve().parent.parent.parent / "scripts" / "postgres" / "create_schema.py"
     content = _read_file(create_schema_path)
 
     assert "category" in content
@@ -44,7 +44,7 @@ def test_create_schema_has_category_constraint():
 
 def test_create_schema_content_hash_unique():
     """create_schema.py should set content_hash UNIQUE."""
-    create_schema_path = Path(__file__).resolve().parent.parent.parent / "scripts" / "create_schema.py"
+    create_schema_path = Path(__file__).resolve().parent.parent.parent / "scripts" / "postgres" / "create_schema.py"
     content = _read_file(create_schema_path)
 
     assert "content_hash" in content
