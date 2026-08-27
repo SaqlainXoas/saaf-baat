@@ -88,28 +88,30 @@ class TestConfigFiles:
 
         for source_name, source_data in sources_config["sources"].items():
             assert "url" in source_data, f"Source {source_name} missing URL"
-            assert "sections" in source_data, f"Source {source_name} missing sections"
+            assert "tier" in source_data, f"Source {source_name} missing tier"
+            assert source_data["tier"] in ("A", "B"), f"Source {source_name} has an invalid tier"
             assert "enabled" in source_data, f"Source {source_name} missing enabled"
-            # feed_url is optional — scraper falls back to section-page scraping
+            # Ingest is RSS + sitemap only; there is no HTML section discovery.
+            assert "sections" not in source_data, f"Source {source_name} still declares sections"
+            if source_data["enabled"]:
+                endpoints = list(source_data.get("feed_urls") or []) + list(
+                    source_data.get("sitemap_urls") or []
+                )
+                assert endpoints, f"Enabled source {source_name} declares no endpoints"
 
-        # Optional sources should be present but can be disabled
-        assert "ary" in sources_config["sources"]
-        assert "samaa" in sources_config["sources"]
-        assert "thenews" in sources_config["sources"]
+        # ary was re-enabled once its RSS was checked; thenews runs sitemap-only.
+        assert sources_config["sources"]["ary"]["enabled"] is True
+        assert sources_config["sources"]["thenews"]["feed_urls"] == []
+        assert sources_config["sources"]["thenews"]["sitemap_urls"]
+        assert sources_config["sources"]["samaa"]["enabled"] is False
 
-    def test_classification_yaml_exists(self):
-        """Verify classification_rules.yaml exists."""
-        backend_dir = Path(__file__).parent.parent
-        classification_file = backend_dir / "config" / "classification_rules.yaml"
-        assert classification_file.exists(), "classification_rules.yaml does not exist"
+    def test_triage_module_exists(self):
+        """Triage replaced the keyword classifier as the source of category + impact."""
+        backend_dir = Path(__file__).resolve().parent.parent
+        assert (backend_dir / "src" / "agents" / "triage.py").exists()
+        assert not (backend_dir / "config" / "classification_rules.yaml").exists()
 
-    def test_classification_yaml_valid(self, classification_config):
-        """Verify classification_rules.yaml has valid structure."""
-        assert "categories" in classification_config, "Missing 'categories' key"
-        assert "impact_labels" in classification_config, "Missing 'impact_labels' key"
 
-        assert len(classification_config["categories"]) > 0, "No categories defined"
-        assert len(classification_config["impact_labels"]) > 0, "No impact labels defined"
 
     def test_env_example_exists(self):
         """Verify .env.example exists."""
@@ -161,3 +163,22 @@ class TestVirtualEnvironment:
             hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
         )
         assert in_venv, "Not running in virtual environment"
+
+
+class TestEntrypoints:
+    """Nothing imports the CLI entrypoints, so a syntax break in one is invisible."""
+
+    def test_run_pipeline_module_is_importable(self):
+        import ast
+
+        backend_dir = Path(__file__).resolve().parent.parent
+        for name in ("run_pipeline.py", "main.py"):
+            source = (backend_dir / name).read_text(encoding="utf-8")
+            ast.parse(source, filename=name)
+
+    def test_scripts_parse(self):
+        import ast
+
+        scripts = (Path(__file__).resolve().parent.parent / "scripts").glob("*.py")
+        for path in scripts:
+            ast.parse(path.read_text(encoding="utf-8"), filename=path.name)

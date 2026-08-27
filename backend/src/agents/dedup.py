@@ -17,7 +17,6 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Set, Tuple
 
-
 _WS_RE = re.compile(r"\s+")
 _NON_WORD_RE = re.compile(r"[^a-z0-9]+")
 

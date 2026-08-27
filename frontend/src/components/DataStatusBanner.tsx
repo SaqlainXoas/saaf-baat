@@ -24,7 +24,7 @@ export default function DataStatusBanner({
 
   const body =
     emptyBrief
-      ? "Today's brief is being prepared. Check back after 7am PKT."
+      ? "The morning brief is being prepared. Check back after 7am PKT."
       : partialBrief
         ? "Partial brief — more stories being reviewed"
         : staleFeed

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import yaml
 from fastapi import APIRouter
@@ -18,8 +18,9 @@ _BACKEND_DIR = Path(__file__).resolve().parents[3]
 class Source(BaseModel):
     name: str
     url: str
-    feed_url: Optional[str] = None
-    sections: List[str]
+    tier: str
+    feed_urls: List[str] = []
+    sitemap_urls: List[str] = []
     enabled: bool
 
 
@@ -43,8 +44,9 @@ def list_sources() -> list[Source]:
             Source(
                 name=name,
                 url=str(spec.get("url", "")),
-                feed_url=spec.get("feed_url"),
-                sections=list(spec.get("sections") or []),
+                tier=str(spec.get("tier", "B")).upper(),
+                feed_urls=[str(u) for u in (spec.get("feed_urls") or [])],
+                sitemap_urls=[str(u) for u in (spec.get("sitemap_urls") or [])],
                 enabled=bool(spec.get("enabled", False)),
             )
         )

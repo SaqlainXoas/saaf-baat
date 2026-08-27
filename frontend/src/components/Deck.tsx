@@ -2,84 +2,88 @@
 
 import Link from "next/link";
 import StoryCard from "./StoryCard";
+import BriefProgress from "./BriefProgress";
 import type { StoryCardData } from "@/data/types";
+import { useBriefProgress } from "@/hooks/useBriefProgress";
+import { getBriefEditionIdentity } from "@/utils/edition";
 
-export default function Deck({ stories }: { stories: StoryCardData[] }) {
-  const [leadStory, ...remainingStories] = stories;
-  const supportingStories = remainingStories.slice(0, 2);
-  const lowerStories = remainingStories.slice(2);
+/**
+ * The mobile brief: one numbered deck, not three ranked sections.
+ *
+ * The "Top story" / "Next up" / "Then worth your time" headings are gone. With
+ * every card carrying its own position the rank *is* the order, and the
+ * headings re-introduced the "am I done yet?" question the counter answers.
+ *
+ * Snapping is `proximity`, never `mandatory`: a reader skims a brief and skips
+ * what they already know, and twelve mandatory full-screen stops would make it
+ * slower to get through than a plain list. Native scrolling throughout - no
+ * carousel library, no touch handlers, so keyboard and screen-reader behaviour
+ * is untouched.
+ */
+export default function Deck({
+  stories,
+  generatedAt,
+  isFresh,
+}: {
+  stories: StoryCardData[];
+  generatedAt?: string;
+  isFresh?: boolean;
+}) {
+  const editionIdentity = getBriefEditionIdentity(generatedAt, isFresh);
+  const { position, register } = useBriefProgress(stories.length);
 
-  if (!leadStory) return null;
+  if (!stories.length) return null;
 
   return (
     <section aria-label="Morning brief">
-      <div className="flex items-end justify-between gap-3 mb-4">
-        <div>
-          <p className="sb-kicker">Today&apos;s brief</p>
-          <p className="sb-meta mt-1">Start at the top and move fast through the rest.</p>
-        </div>
-        <span
-          className="text-xs font-medium rounded-full px-2.5 py-1"
-          style={{
-            background: "color-mix(in srgb, var(--surface) 88%, var(--surface-base))",
-            border: "1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent)",
-            color: "var(--ink-muted)",
-          }}
-        >
-          {stories.length} stories
-        </span>
+      {/* The masthead directly above already says what this is and how many
+          cards there are; a second "start at the top and move fast" line under
+          it was the same sentence twice. Only the edition label survives, and
+          only because it changes when the brief is stale. */}
+      <p className="sb-kicker mb-2">{editionIdentity.briefLabel}</p>
+
+      <BriefProgress position={position} total={stories.length} />
+
+      <div className="sb-deck">
+        {stories.map((story, index) => (
+          <article
+            key={story.story_id}
+            className={`sb-deck-item ${index === 0 ? "sb-deck-item-lead" : ""}`}
+            data-brief-index={index}
+            id={index === 0 ? "mobile-lead-story" : undefined}
+            tabIndex={index === 0 ? -1 : undefined}
+            ref={register(index)}
+          >
+            {/* The sticky bar above carries "n / total"; repeating the total
+                on every card said the same thing twice. */}
+            <p className="sb-deck-rank" aria-hidden="true">
+              <span className="sb-deck-rank-number">{index + 1}</span>
+            </p>
+            <Link
+              href={`/stories/${story.story_id}`}
+              className="block sb-focusable"
+              data-skip-target={index === 0 ? "stories" : undefined}
+            >
+              <StoryCard story={story} variant={index === 0 ? "lead" : "supporting"} />
+            </Link>
+          </article>
+        ))}
       </div>
 
-      <div id="mobile-lead-story" tabIndex={-1}>
-        <p className="sb-kicker mb-3" style={{ color: "var(--teal)" }}>
-          Top story
-        </p>
-        <Link href={`/stories/${leadStory.story_id}`} className="block sb-focusable" data-skip-target="stories">
-          <StoryCard story={leadStory} variant="featured" />
-        </Link>
-      </div>
-
-      {supportingStories.length ? (
-        <div className="mt-6">
-          <div className="flex items-end justify-between gap-3 mb-4">
-            <div>
-              <p className="sb-kicker">Next up</p>
-              <p className="sb-meta mt-1">The next strongest stories in rank order.</p>
-            </div>
-            <span className="sb-meta">{supportingStories.length} stories</span>
-          </div>
-          <div className="space-y-4">
-            {supportingStories.map((story) => (
-              <Link key={story.story_id} href={`/stories/${story.story_id}`} className="block sb-focusable">
-                <StoryCard story={story} variant="supporting" />
-              </Link>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {lowerStories.length ? (
-        <div className="mt-6">
-          <div className="flex items-end justify-between gap-3 mb-4">
-            <div>
-              <p className="sb-kicker">Then worth your time</p>
-              <p className="sb-meta mt-1">The rest of the brief, still ordered by importance.</p>
-            </div>
-            <span className="sb-meta">{lowerStories.length} more</span>
-          </div>
-          <div className="space-y-4">
-            {lowerStories.map((story) => (
-              <Link key={story.story_id} href={`/stories/${story.story_id}`} className="block sb-focusable">
-                <StoryCard story={story} variant="compact" />
-              </Link>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <p className="text-center text-sm mt-8 leading-relaxed" style={{ color: "var(--ink-muted)" }}>
-        You&apos;re all caught up.<br />The brief ends here on purpose.
-      </p>
+      <BriefEnd />
     </section>
+  );
+}
+
+/** The brief ends on purpose, and says so. */
+export function BriefEnd() {
+  return (
+    <div className="sb-brief-end">
+      <span className="sb-brief-end-rule" aria-hidden="true" />
+      <p className="sb-brief-end-title">You&apos;re all caught up.</p>
+      <p className="sb-brief-end-note">
+        The brief ends here on purpose. There is no more to scroll — come back tomorrow morning.
+      </p>
+    </div>
   );
 }

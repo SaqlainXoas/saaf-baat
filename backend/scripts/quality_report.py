@@ -16,8 +16,11 @@ if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 load_dotenv(_BACKEND_ROOT / ".env")
 
-from src.agents.clustering import calculate_centroid, calculate_intra_cluster_similarity
-from src.db.client import SupabaseClient
+from src.agents.clustering import (  # noqa: E402  - needs the sys.path insert above
+    calculate_centroid,
+    calculate_intra_cluster_similarity,
+)
+from src.db.factory import create_db_client  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -50,7 +53,7 @@ def _embedding_matrix(rows: Iterable[object]) -> Optional[np.ndarray]:
     return _norm_rows(np.vstack(vecs))
 
 
-def compute_cluster_quality(db: SupabaseClient, cluster_id: UUID) -> ClusterQuality:
+def compute_cluster_quality(db, cluster_id: UUID) -> ClusterQuality:
     cluster = db.get_cluster_by_id(cluster_id)
     articles = db.get_articles_by_ids(cluster.article_ids)
     sources = len({a.source for a in articles})
@@ -87,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fail-on-missing-embeddings", action="store_true")
     args = parser.parse_args(argv)
 
-    db = SupabaseClient()
+    db = create_db_client()
     feeds = db.get_analyzed_feed(limit=max(1, int(args.limit)))
 
     bad = 0

@@ -5,10 +5,10 @@ These tests MUST be written BEFORE implementation.
 Run with: pytest tests/test_scrapers/test_network.py -v
 """
 
-import pytest
 import time
-from unittest.mock import patch, MagicMock, PropertyMock
-from typing import Optional
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestStealthFetcherBasicFunctionality:
@@ -61,7 +61,7 @@ class TestStealthFetcherBasicFunctionality:
 
     def test_fetch_validates_url_scheme(self):
         """fetch() should reject URLs without http/https scheme."""
-        from src.scrapers.network import StealthFetcher, InvalidURLError
+        from src.scrapers.network import InvalidURLError, StealthFetcher
 
         fetcher = StealthFetcher()
 
@@ -205,7 +205,7 @@ class TestStealthFetcherRetryBehavior:
             return mock_response
 
         with patch("src.scrapers.network.requests.get", side_effect=mock_get):
-            result = fetcher.fetch("https://example.com")
+            fetcher.fetch("https://example.com")
 
         assert len(retry_times) == 2
         # Should have waited at least 0.2 seconds (with some tolerance)

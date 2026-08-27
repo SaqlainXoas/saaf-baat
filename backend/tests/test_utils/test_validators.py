@@ -72,10 +72,72 @@ class TestConfigValidation:
         assert result["valid"] is True
         assert len(result["errors"]) == 0
 
-    def test_validate_classification_config(self, classification_config):
-        """Test classification configuration validation."""
-        from utils.validators import validate_classification_config
 
-        result = validate_classification_config(classification_config)
+class TestSourcesConfigSchema:
+    """The RSS/sitemap schema: tier + endpoints, no HTML sections."""
+
+    def _config(self, **overrides):
+        from copy import deepcopy
+
+        base = {
+            "sources": {
+                "dawn": {
+                    "url": "https://www.dawn.com",
+                    "tier": "A",
+                    "feed_urls": ["https://www.dawn.com/feeds/pakistan"],
+                    "sitemap_urls": [],
+                    "enabled": True,
+                },
+                "geo": {
+                    "url": "https://www.geo.tv",
+                    "tier": "B",
+                    "feed_urls": [],
+                    "sitemap_urls": ["https://www.geo.tv/news.xml"],
+                    "enabled": True,
+                },
+            }
+        }
+        config = deepcopy(base)
+        config["sources"]["dawn"].update(overrides)
+        return config
+
+    def test_valid_config_passes(self):
+        from utils.validators import validate_sources_config
+
+        assert validate_sources_config(self._config())["valid"] is True
+
+    def test_missing_tier_is_rejected(self):
+        from utils.validators import validate_sources_config
+
+        config = self._config()
+        del config["sources"]["dawn"]["tier"]
+        result = validate_sources_config(config)
+        assert result["valid"] is False
+        assert any("tier" in error for error in result["errors"])
+
+    def test_unknown_tier_is_rejected(self):
+        from utils.validators import validate_sources_config
+
+        result = validate_sources_config(self._config(tier="C"))
+        assert result["valid"] is False
+
+    def test_enabled_source_without_endpoints_is_rejected(self):
+        from utils.validators import validate_sources_config
+
+        result = validate_sources_config(self._config(feed_urls=[], sitemap_urls=[]))
+        assert result["valid"] is False
+        assert any("no feed_urls or sitemap_urls" in error for error in result["errors"])
+
+    def test_disabled_source_without_endpoints_is_allowed(self):
+        from utils.validators import validate_sources_config
+
+        result = validate_sources_config(
+            self._config(enabled=False, feed_urls=[], sitemap_urls=[])
+        )
         assert result["valid"] is True
-        assert len(result["errors"]) == 0
+
+    def test_endpoint_lists_must_be_lists(self):
+        from utils.validators import validate_sources_config
+
+        result = validate_sources_config(self._config(feed_urls="https://one.example"))
+        assert result["valid"] is False

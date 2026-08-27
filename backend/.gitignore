@@ -4,3 +4,12 @@ __pycache__/
 venv/
 .env
 .coverage
+
+# Local SQLite database (default storage backend)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# research script snapshots
+scripts/research/*.json

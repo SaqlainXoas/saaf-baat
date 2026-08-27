@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { fetchStoryWithMeta } from "@/data/api";
 import Pill from "@/components/primitives/Pill";
-import Card from "@/components/primitives/Card";
-import ConsensusEngine from "@/components/ConsensusEngine";
 import OriginalSourcesList from "@/components/OriginalSourcesList";
 import DataStatusBanner from "@/components/DataStatusBanner";
 import SkipLink from "@/components/SkipLink";
@@ -12,6 +10,10 @@ import {
   formatRelativeTime,
   getMetadataString,
 } from "@/utils/storyMeta";
+import {
+  publishersNamedInAnalysis,
+  toAnalysisParagraphs,
+} from "@/utils/analysisPresentation";
 
 export default async function StoryDetail({
   params,
@@ -54,22 +56,31 @@ export default async function StoryDetail({
   const whyItMatters = getMetadataString(story.metadata, "why_it_matters");
   const whatToWatch = getMetadataString(story.metadata, "what_to_watch");
   const updatedAt = formatRelativeTime(story.created_at);
-  const isSingleSource = story.sources.length <= 1;
-  const sourceSupportLabel = isSingleSource ? "Single-source reporting" : "Multi-source reporting";
-  const sourceSupportText = isSingleSource
-    ? `Current reporting is still anchored to ${sourceNames[0] || "one publisher"} alone.`
-    : `Source support in this brief: ${sourceNames.join(" • ")}.`;
-  const topArticles = (story.articles || []).slice(0, 3);
+  // "Analysis" is a claim about what the reader is looking at. When the
+  // analysis is missing, what remains is one publisher's excerpt, and the
+  // heading has to say so rather than dress it as the multi-source synthesis.
+  const hasAnalysis = Boolean(story.analysis);
+  const analysisBody = story.analysis || story.snippet;
+  const analysisHeading = hasAnalysis ? "Analysis" : "From the reporting";
+  const analysisParagraphs = hasAnalysis
+    ? toAnalysisParagraphs(analysisBody)
+    : [analysisBody];
+  const analysisPublishers = publishersNamedInAnalysis(story.analysis);
+  const analysisSources = story.analysis_sources || [];
 
   return (
     <div className="min-h-screen" style={{ background: "var(--paper)" }}>
       <div className="bg-ambient" />
       <SkipLink label="Skip to story" selector='[data-skip-target="story"]' />
 
-      <main id="story-main" className="relative sb-container px-4 py-8" style={{ maxWidth: 1220 }} role="main">
+      {/* A 920px reading column inside a 1220px shell left the page hugging the
+          left edge with 300px of dead space beside it - the same imbalance the
+          homepage had. The column is the right width for prose; it just needs
+          to sit in the middle of the page. */}
+      <main id="story-main" className="relative sb-container px-4 py-8" style={{ maxWidth: 952 }} role="main">
         <Link
           href="/"
-          className="sb-focusable inline-flex items-center gap-1 text-sm px-2 py-1 rounded-lg"
+          className="sb-focusable inline-flex max-w-full items-center gap-1 text-sm min-h-11 px-3 rounded-lg"
           style={{ color: "var(--ink-muted)" }}
         >
           <span>←</span>
@@ -83,139 +94,101 @@ export default async function StoryDetail({
 
         <section className="mt-4 max-w-[920px]">
           <div data-skip-target="story" tabIndex={-1} className="min-w-0">
-            <div className="sb-hero-shell p-5 md:p-7">
+            <article className="sb-hero-shell p-5 md:p-7">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Pill label={primaryLabel} />
-                  <span className="sb-story-chip">
-                    {formatCategory(story.category)}
-                  </span>
-                  <span className="sb-story-chip">
-                    Quick brief
-                  </span>
+                  <span className="sb-story-chip">{formatCategory(story.category)}</span>
                 </div>
                 {updatedAt ? <span className="sb-meta">{updatedAt}</span> : null}
               </div>
 
-              <h1 className="sb-headline-brief mt-3">
-                <span className="block max-w-[18ch]">{story.headline}</span>
-              </h1>
+              <h1 className="sb-headline-brief mt-4 max-w-[26ch]">{story.headline}</h1>
 
-              <p className="sb-snippet-brief mt-3 max-w-3xl">
-                {story.snippet}
-              </p>
+              {sourceNames.length ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2" aria-label="Event sources">
+                  {sourceNames.map((source) => (
+                    <span key={source} className="sb-story-chip">{source}</span>
+                  ))}
+                </div>
+              ) : null}
+
+              <section className="mt-7" aria-labelledby="analysis-heading">
+                <h2 id="analysis-heading" className="sb-kicker">{analysisHeading}</h2>
+                <div className="sb-analysis-copy mt-3">
+                  {analysisParagraphs.map((paragraph, index) => (
+                    <p key={index} className={index ? "mt-4" : undefined}>
+                      {paragraph}
+                    </p>
+                  ))}
+                </div>
+                {!hasAnalysis ? (
+                  <p className="sb-analysis-note mt-3">
+                    A multi-source analysis is not available for this story. The
+                    text above is an excerpt from one original report.
+                  </p>
+                ) : null}
+              </section>
+
+              {story.question ? (
+                <section className="sb-question-callout mt-6" aria-labelledby="question-heading">
+                  <h2 id="question-heading" className="sb-question-heading">The question</h2>
+                  <p className="mt-3 text-base leading-relaxed" style={{ color: "var(--ink)" }}>
+                    {story.question}
+                  </p>
+                </section>
+              ) : null}
 
               {(whyItMatters || whatToWatch) ? (
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                // Single column when only one note exists. `what_to_watch` is
+                // optional now - it is written only when the reporting names a
+                // real next event - so a fixed two-column grid left the lone
+                // "Why it matters" box at half width beside 425px of nothing.
+                <div
+                  className={`mt-6 grid gap-3 ${
+                    whyItMatters && whatToWatch ? "md:grid-cols-2" : "grid-cols-1"
+                  }`}
+                >
                   {whyItMatters ? (
-                    <div className="sb-editorial-note">
-                      <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
+                    <section className="sb-editorial-note" aria-labelledby="why-heading">
+                      <h2 id="why-heading" className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
                         Why it matters
-                      </p>
-                      <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--ink)" }}>
-                        {whyItMatters}
-                      </p>
-                    </div>
+                      </h2>
+                      <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--ink)" }}>{whyItMatters}</p>
+                    </section>
                   ) : null}
                   {whatToWatch ? (
-                    <div className="sb-editorial-note">
-                      <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
+                    <section className="sb-editorial-note" aria-labelledby="watch-heading">
+                      <h2 id="watch-heading" className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
                         What to watch
-                      </p>
-                      <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--ink)" }}>
-                        {whatToWatch}
-                      </p>
-                    </div>
+                      </h2>
+                      <p className="text-sm mt-2 leading-relaxed" style={{ color: "var(--ink)" }}>{whatToWatch}</p>
+                    </section>
                   ) : null}
                 </div>
               ) : null}
-            </div>
-
-            <div className="mt-4 flex flex-col gap-4">
-              <Card variant="inset" className="p-4 md:p-5">
-                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
-                  Source support
-                </p>
-                <div className="flex gap-2 mt-3 flex-wrap">
-                  <span
-                    className="text-xs px-2.5 py-1 rounded-full"
-                    style={{
-                      background: "color-mix(in srgb, var(--surface) 84%, var(--surface-base))",
-                      border: "1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent)",
-                      color: "var(--ink)",
-                    }}
-                  >
-                    {sourceSupportLabel}
-                  </span>
-                  {story.sources.map((s, i) => (
-                    <span
-                      key={i}
-                      className="text-xs px-2.5 py-1 rounded-full"
-                      style={{
-                        background: "color-mix(in srgb, var(--surface-2) 84%, var(--surface-base))",
-                        border: "1px solid color-mix(in srgb, var(--outline-ghost) 72%, transparent)",
-                        color: "var(--ink)",
-                      }}
-                    >
-                      {capitalise(s.source)}
-                    </span>
-                  ))}
-                </div>
-
-                <p className="sb-meta mt-3">
-                  {sourceSupportText}
-                </p>
-              </Card>
-
-              <Card variant="inset" className="p-4 md:p-5">
-                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--ink-muted)" }}>
-                  Top reporting
-                </p>
-                {topArticles.length ? (
-                  <div className="mt-3 space-y-2">
-                    {topArticles.map((article) => (
-                      <a
-                        key={article.id}
-                        href={article.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="sb-focusable flex items-start justify-between gap-3 rounded-[16px] border px-3 py-2 transition-colors"
-                        style={{
-                          borderColor: "color-mix(in srgb, var(--outline-ghost) 72%, transparent)",
-                          background: "color-mix(in srgb, var(--surface) 94%, var(--surface-base))",
-                        }}
-                      >
-                        <span className="min-w-0">
-                          <span className="block text-xs font-bold uppercase tracking-[0.16em]" style={{ color: "var(--teal)" }}>
-                            {capitalise(article.source)}
-                          </span>
-                          <span className="mt-1 block text-sm leading-relaxed" style={{ color: "var(--ink)" }}>
-                            {article.headline}
-                          </span>
-                        </span>
-                        <span className="flex-shrink-0 text-xs font-bold" style={{ color: "var(--teal)" }}>
-                          Read →
-                        </span>
-                      </a>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
-                    Original links are not available for this story yet.
-                  </p>
-                )}
-              </Card>
-            </div>
+            </article>
           </div>
         </section>
 
         <div className="mt-8 max-w-[920px]">
-          <ConsensusEngine story={story} />
+          <OriginalSourcesList
+            articles={story.articles || []}
+            prioritiseSources={analysisPublishers}
+          />
         </div>
 
-        <div className="mt-8 max-w-[920px]">
-          <OriginalSourcesList articles={story.articles || []} />
-        </div>
+        {analysisSources.length ? (
+          <div className="mt-8 max-w-[920px]">
+            <OriginalSourcesList
+              articles={analysisSources}
+              title="Related reporting used for analysis"
+              description="Current reporting used for context. These reports are not counted as event corroboration."
+              listId="analysis-sources-list"
+              linkRole="context report"
+            />
+          </div>
+        ) : null}
       </main>
     </div>
   );

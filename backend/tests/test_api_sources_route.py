@@ -12,13 +12,14 @@ def test_sources_route_reads_config(tmp_path, monkeypatch):
 sources:
   dawn:
     url: "https://www.dawn.com"
-    feed_url: "https://www.dawn.com/feeds/latest-news"
-    sections: ["latest-news"]
+    tier: A
+    feed_urls: ["https://www.dawn.com/feeds/latest-news"]
+    sitemap_urls: ["https://www.dawn.com/feeds/sitemap"]
     enabled: true
   tribune:
     url: "https://tribune.com.pk"
-    feed_url: "https://tribune.com.pk/rss.xml"
-    sections: ["latest"]
+    tier: A
+    feed_urls: ["https://tribune.com.pk/feed/home"]
     enabled: false
 scraping_config:
   max_articles_per_source: 50
@@ -35,3 +36,7 @@ scraping_config:
     payload = res.json()
     assert [s["name"] for s in payload] == ["dawn", "tribune"]
     assert payload[0]["enabled"] is True
+    assert payload[0]["tier"] == "A"
+    assert payload[0]["feed_urls"] == ["https://www.dawn.com/feeds/latest-news"]
+    assert payload[0]["sitemap_urls"] == ["https://www.dawn.com/feeds/sitemap"]
+    assert payload[1]["sitemap_urls"] == []

@@ -150,7 +150,7 @@ class TestBatchProcessing:
 
     def test_batch_embed_processes_all(self, mock_genai):
         """Test that all texts are embedded."""
-        provider = GeminiEmbeddingProvider(api_key="test_key")
+        provider = GeminiEmbeddingProvider(api_key="test_key", requests_per_minute=0)
         texts = [f"Text {i}" for i in range(100)]
         result = provider.embed_batch(texts, batch_size=25)
 
@@ -158,7 +158,9 @@ class TestBatchProcessing:
 
     def test_batch_embed_with_rate_limiting(self, mock_genai):
         """Test rate limiting between batches."""
-        provider = GeminiEmbeddingProvider(api_key="test_key", rate_limit_delay=0.1)
+        provider = GeminiEmbeddingProvider(
+            api_key="test_key", rate_limit_delay=0.1, requests_per_minute=0
+        )
         texts = [f"Text {i}" for i in range(20)]
 
         start = time.time()
@@ -168,6 +170,89 @@ class TestBatchProcessing:
         # Should have at least one delay between batches
         assert duration >= 0.1
         assert result.embeddings.shape == (20, 768)
+
+
+class TestQuotaPacing:
+    """
+    The free tier bills one request per text and caps it at 100/minute, so a
+    300-article day trips a 429 unless batches are paced and retried.
+    """
+
+    @pytest.fixture
+    def sleeps(self, monkeypatch):
+        recorded: list[float] = []
+        monkeypatch.setattr("src.agents.embeddings.time.sleep", recorded.append)
+        return recorded
+
+    def _client(self, side_effect):
+        patcher = patch("src.agents.embeddings.genai.Client")
+        mock_client_cls = patcher.start()
+        mock_client = MagicMock()
+        mock_client.models.embed_content.side_effect = side_effect
+        mock_client_cls.return_value = mock_client
+        return patcher, mock_client
+
+    def test_pace_seconds_matches_the_quota(self):
+        provider = GeminiEmbeddingProvider(api_key="test_key", requests_per_minute=100)
+        assert provider._pace_seconds(50) == 30.0
+        assert provider._pace_seconds(100) == 60.0
+
+    def test_pacing_is_disabled_when_quota_is_unset(self):
+        provider = GeminiEmbeddingProvider(api_key="test_key", requests_per_minute=0)
+        assert provider._pace_seconds(100) == 0.0
+
+    def test_batches_are_spaced_to_respect_the_quota(self, sleeps):
+        def ok(*, contents, **_kwargs):
+            return _mock_embed_response([0.1] * 768, count=len(contents))
+
+        patcher, _client = self._client(ok)
+        try:
+            provider = GeminiEmbeddingProvider(api_key="test_key", requests_per_minute=100)
+            provider.embed_batch([f"Text {i}" for i in range(100)], batch_size=50)
+        finally:
+            patcher.stop()
+
+        # One gap between the two batches, sized to the per-minute quota.
+        assert sleeps == [30.0]
+
+    def test_a_rate_limited_batch_is_retried_not_abandoned(self, sleeps):
+        calls = {"n": 0}
+
+        def flaky(*, contents, **_kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError(
+                    "429 RESOURCE_EXHAUSTED ... Please retry in 27.2s. "
+                )
+            return _mock_embed_response([0.1] * 768, count=len(contents))
+
+        patcher, _client = self._client(flaky)
+        try:
+            provider = GeminiEmbeddingProvider(api_key="test_key", requests_per_minute=100)
+            result = provider.embed_batch(["one", "two"], batch_size=2)
+        finally:
+            patcher.stop()
+
+        assert result.embeddings.shape == (2, 768)
+        assert calls["n"] == 2
+        # It waited out the server's own hint rather than failing the run.
+        assert sleeps == [pytest.approx(28.2, rel=0.01)]
+
+    def test_persistent_rate_limiting_eventually_raises(self, sleeps):
+        def always_limited(*, contents, **_kwargs):
+            raise RuntimeError("429 RESOURCE_EXHAUSTED: rate limit")
+
+        patcher, _client = self._client(always_limited)
+        try:
+            provider = GeminiEmbeddingProvider(
+                api_key="test_key", requests_per_minute=100, max_retries=2
+            )
+            with pytest.raises(RateLimitError):
+                provider.embed_batch(["one"], batch_size=1)
+        finally:
+            patcher.stop()
+
+        assert len(sleeps) == 1  # one wait, then give up
 
 
 class TestErrorHandling:
@@ -305,7 +390,7 @@ class TestEmbeddingPayloadValidation:
         assert result.dimension == 768, f"Expected 768 dims, got {result.dimension}"
         assert result.texts_count == 1
 
-        print(f"\n✓ EmbeddingResult payload valid:")
+        print("\n✓ EmbeddingResult payload valid:")
         print(f"  - embeddings: {result.embeddings.shape}")
         print(f"  - model: {result.model}")
         print(f"  - texts_count: {result.texts_count}")
@@ -340,11 +425,11 @@ class TestEmbeddingPayloadValidation:
 
         # Simulate article text as it would be processed
         headline = "Pakistan Stock Market Reaches Record High"
-        main_text = """The Pakistan Stock Exchange (PSX) reached a historic milestone 
-        today as the benchmark KSE-100 index crossed 100,000 points for the first time. 
-        Analysts attribute this surge to improved economic indicators and increased 
-        foreign investment. The State Bank of Pakistan's recent policy decisions have 
-        boosted investor confidence. Trading volumes have increased significantly over 
+        main_text = """The Pakistan Stock Exchange (PSX) reached a historic milestone
+        today as the benchmark KSE-100 index crossed 100,000 points for the first time.
+        Analysts attribute this surge to improved economic indicators and increased
+        foreign investment. The State Bank of Pakistan's recent policy decisions have
+        boosted investor confidence. Trading volumes have increased significantly over
         the past month."""
 
         combined_text = f"{headline}. {main_text[:500]}"
@@ -354,7 +439,7 @@ class TestEmbeddingPayloadValidation:
         assert result.embeddings.shape == (1, 768)
         assert result.texts_count == 1
 
-        print(f"✓ Article-format text embedded successfully")
+        print("✓ Article-format text embedded successfully")
         print(f"  - Input length: {len(combined_text)} chars")
         print(f"  - Output shape: {result.embeddings.shape}")
 
@@ -381,7 +466,7 @@ class TestEmbeddingPayloadValidation:
         sim_1_3 = np.dot(result.embeddings[0], result.embeddings[2])
         sim_2_3 = np.dot(result.embeddings[1], result.embeddings[2])
 
-        print(f"\n✓ Semantic similarity test:")
+        print("\n✓ Semantic similarity test:")
         print(f"  - Similar (rupee articles): {sim_1_2:.3f}")
         print(f"  - Dissimilar (rupee vs cricket): {sim_1_3:.3f}")
         print(f"  - Dissimilar (rupee vs cricket): {sim_2_3:.3f}")
@@ -395,3 +480,37 @@ class TestEmbeddingPayloadValidation:
         assert (
             sim_1_2 - sim_1_3
         ) > 0.1, f"Similarity margin too small: similar={sim_1_2}, dissimilar={sim_1_3}"
+
+
+class TestRateLimitClassification:
+    """Regression: the API's own wording must be recognised as a rate limit."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "429 RESOURCE_EXHAUSTED. {'error': {'code': 429}}",
+            "Resource exhausted, try later",
+            "You exceeded your current quota",
+            "rate limit exceeded",
+        ],
+    )
+    def test_quota_errors_raise_rate_limit_error(self, message):
+        with patch("src.agents.embeddings.genai.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.models.embed_content.side_effect = RuntimeError(message)
+            mock_client_cls.return_value = mock_client
+
+            provider = GeminiEmbeddingProvider(api_key="test_key")
+            with pytest.raises(RateLimitError):
+                provider.embed(["text"])
+
+    def test_other_errors_stay_generic(self):
+        with patch("src.agents.embeddings.genai.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.models.embed_content.side_effect = RuntimeError("bad request: 400")
+            mock_client_cls.return_value = mock_client
+
+            provider = GeminiEmbeddingProvider(api_key="test_key")
+            with pytest.raises(EmbeddingError) as excinfo:
+                provider.embed(["text"])
+            assert not isinstance(excinfo.value, RateLimitError)

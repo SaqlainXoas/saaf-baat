@@ -6,20 +6,31 @@ so the test is deterministic and offline.
 """
 from __future__ import annotations
 
-from pathlib import Path
 from uuid import uuid4
 
 import spacy
 
-from src.db.models import ExtractedEntity
-from src.db.models import RawArticle
+from src.db.models import ExtractedEntity, RawArticle
+
+
+def _with_triage(article, category="economy", impact_labels=("💳 WALLET",), story_type="hard_news"):
+    """Stamp the triage verdict the pipeline would have persisted before analysis."""
+    metadata = dict(article.metadata or {})
+    metadata["triage"] = {
+        "category": category,
+        "impact_labels": list(impact_labels),
+        "story_type": story_type,
+        "pk_relevance": "national",
+        "confidence": 0.9,
+    }
+    article.metadata = metadata
+    return article
+
 
 
 def test_analysis_service_produces_analyzed_feed():
-    from src.agents.analysis import EntityExtractor, ConsensusDetector, RuleBasedClassifier, AnalysisService
+    from src.agents.analysis import AnalysisService, ConsensusDetector, EntityExtractor
 
-    rules_path = Path(__file__).resolve().parent.parent.parent / "config" / "classification_rules.yaml"
-    clf = RuleBasedClassifier.from_yaml(rules_path)
 
     nlp = spacy.blank("en")
     ruler = nlp.add_pipe("entity_ruler")
@@ -32,7 +43,7 @@ def test_analysis_service_produces_analyzed_feed():
     )
     extractor = EntityExtractor(nlp=nlp)
     consensus = ConsensusDetector(min_agreement_ratio=1.0)
-    service = AnalysisService(entity_extractor=extractor, consensus_detector=consensus, classifier=clf)
+    service = AnalysisService(entity_extractor=extractor, consensus_detector=consensus)
 
     cluster_id = uuid4()
     articles = [
@@ -56,6 +67,7 @@ def test_analysis_service_produces_analyzed_feed():
         ),
     ]
 
+    articles = [_with_triage(a) for a in articles]
     feed = service.analyze_cluster(cluster_id=cluster_id, articles=articles)
 
     assert str(feed.cluster_id) == str(cluster_id)
@@ -72,7 +84,7 @@ def test_analysis_service_produces_analyzed_feed():
 
 
 def test_analysis_service_caps_confirmed_and_debated_entities():
-    from src.agents.analysis import AnalysisService, ConsensusDetector, RuleBasedClassifier
+    from src.agents.analysis import AnalysisService, ConsensusDetector
 
     class FakeExtractor:
         def extract(self, text: str):
@@ -81,12 +93,9 @@ def test_analysis_service_caps_confirmed_and_debated_entities():
             unique = [ExtractedEntity(text=f"Unique {suffix}-{i}", type="GPE", sources=1) for i in range(10)]
             return shared + unique
 
-    rules_path = Path(__file__).resolve().parent.parent.parent / "config" / "classification_rules.yaml"
-    clf = RuleBasedClassifier.from_yaml(rules_path)
     service = AnalysisService(
         entity_extractor=FakeExtractor(),
         consensus_detector=ConsensusDetector(min_agreement_ratio=1.0),
-        classifier=clf,
         max_confirmed_facts=5,
         max_debated_claims=6,
     )
@@ -98,6 +107,7 @@ def test_analysis_service_caps_confirmed_and_debated_entities():
         RawArticle(source="geo", url="https://geo.tv/c3", headline="H3", main_text=("Pakistan IMF c" * 30)),
     ]
 
+    articles = [_with_triage(a) for a in articles]
     feed = service.analyze_cluster(cluster_id=cluster_id, articles=articles)
 
     assert len(feed.confirmed_facts) == 5
@@ -106,18 +116,15 @@ def test_analysis_service_caps_confirmed_and_debated_entities():
 
 
 def test_analysis_service_prefers_centroid_representative_for_story_text():
-    from src.agents.analysis import AnalysisService, ConsensusDetector, RuleBasedClassifier
+    from src.agents.analysis import AnalysisService, ConsensusDetector
 
     class FakeExtractor:
         def extract(self, text: str):
             return []
 
-    rules_path = Path(__file__).resolve().parent.parent.parent / "config" / "classification_rules.yaml"
-    clf = RuleBasedClassifier.from_yaml(rules_path)
     service = AnalysisService(
         entity_extractor=FakeExtractor(),
         consensus_detector=ConsensusDetector(min_agreement_ratio=1.0),
-        classifier=clf,
     )
 
     cluster_id = uuid4()
@@ -143,7 +150,15 @@ def test_analysis_service_prefers_centroid_representative_for_story_text():
         embedding=[0.98, 0.02, 0.0],
     )
 
-    feed = service.analyze_cluster(cluster_id=cluster_id, articles=[representative, outlier, near_representative])
+    feed = service.analyze_cluster(
+        cluster_id=cluster_id,
+        articles=[
+            _with_triage(representative),
+            # The outlier is triaged as sport, and is outvoted rather than ignored.
+            _with_triage(outlier, category="sports", impact_labels=(), story_type="sport"),
+            _with_triage(near_representative),
+        ],
+    )
 
     assert feed.headline != "Sports outlier headline with much longer wording than representative"
     assert feed.headline in {

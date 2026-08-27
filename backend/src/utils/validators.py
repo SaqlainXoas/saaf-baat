@@ -40,6 +40,9 @@ def validate_sources_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Validate sources configuration structure.
 
+    Sources are RSS/sitemap-based: each one declares a tier and at least one
+    endpoint. There is no HTML `sections` discovery path any more.
+
     Args:
         config: Dictionary containing sources configuration
 
@@ -62,56 +65,36 @@ def validate_sources_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if len(sources) < 2:
         errors.append("At least 2 sources must be configured")
 
-    # Validate each source
     for source_name, source_data in sources.items():
-        required_fields = ["url", "sections", "enabled"]
+        if not isinstance(source_data, dict):
+            errors.append(f"Source '{source_name}' must be a mapping")
+            continue
 
-        for field in required_fields:
-            if field not in source_data:
-                errors.append(f"Source '{source_name}' missing required field: {field}")
+        for required in ("url", "tier", "enabled"):
+            if required not in source_data:
+                errors.append(f"Source '{source_name}' missing required field: {required}")
 
-        # Validate URL if present
         if "url" in source_data:
-            parsed_url = urlparse(source_data["url"])
+            parsed_url = urlparse(str(source_data["url"]))
             if not parsed_url.scheme or not parsed_url.netloc:
                 errors.append(f"Source '{source_name}' has invalid URL")
 
-        # Validate sections is a list
-        if "sections" in source_data and not isinstance(source_data["sections"], list):
-            errors.append(f"Source '{source_name}' sections must be a list")
+        if "tier" in source_data and str(source_data["tier"]).upper() not in {"A", "B"}:
+            errors.append(f"Source '{source_name}' tier must be A or B")
+
+        endpoint_counts = []
+        for key in ("feed_urls", "sitemap_urls"):
+            value = source_data.get(key, [])
+            if not isinstance(value, list):
+                errors.append(f"Source '{source_name}' {key} must be a list")
+                continue
+            endpoint_counts.append(len(value))
+
+        if source_data.get("enabled") and not any(endpoint_counts):
+            errors.append(
+                f"Source '{source_name}' is enabled but declares no feed_urls or sitemap_urls"
+            )
 
     return {"valid": len(errors) == 0, "errors": errors}
 
 
-def validate_classification_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Validate classification rules configuration structure.
-
-    Args:
-        config: Dictionary containing classification configuration
-
-    Returns:
-        Dict with keys:
-            - valid (bool): Whether config is valid
-            - errors (List[str]): List of validation errors
-    """
-    errors: List[str] = []
-
-    required_keys = ["categories", "impact_labels"]
-    for key in required_keys:
-        if key not in config:
-            errors.append(f"Missing required key: {key}")
-
-    if "categories" in config:
-        if not isinstance(config["categories"], dict):
-            errors.append("'categories' must be a dictionary")
-        elif len(config["categories"]) == 0:
-            errors.append("At least one category must be defined")
-
-    if "impact_labels" in config:
-        if not isinstance(config["impact_labels"], dict):
-            errors.append("'impact_labels' must be a dictionary")
-        elif len(config["impact_labels"]) == 0:
-            errors.append("At least one impact label must be defined")
-
-    return {"valid": len(errors) == 0, "errors": errors}
