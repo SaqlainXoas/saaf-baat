@@ -1,0 +1,140 @@
+{
+  "captured_at": "2026-08-24T09:33:16Z",
+  "max_articles_per_source": 15,
+  "article_count": 120,
+  "quarantined": [
+    "tribune:sitemap:no-dates"
+  ],
+  "endpoints": {
+    "https://www.dawn.com/feeds/home": {
+      "file": "https-www-dawn-com-feeds-home.xml.gz",
+      "status": 200,
+      "bytes": 352073
+    },
+    "https://www.dawn.com/feeds/latest-news": {
+      "file": "https-www-dawn-com-feeds-latest-news.xml.gz",
+      "status": 200,
+      "bytes": 194819
+    },
+    "https://www.dawn.com/feeds/pakistan": {
+      "file": "https-www-dawn-com-feeds-pakistan.xml.gz",
+      "status": 200,
+      "bytes": 197579
+    },
+    "https://www.dawn.com/feeds/business": {
+      "file": "https-www-dawn-com-feeds-business.xml.gz",
+      "status": 200,
+      "bytes": 289707
+    },
+    "https://www.dawn.com/feeds/newspaper": {
+      "file": "https-www-dawn-com-feeds-newspaper.xml.gz",
+      "status": 200,
+      "bytes": 219851
+    },
+    "https://www.dawn.com/feeds/world": {
+      "file": "https-www-dawn-com-feeds-world.xml.gz",
+      "status": 200,
+      "bytes": 227129
+    },
+    "https://www.dawn.com/feeds/sitemap": {
+      "file": "https-www-dawn-com-feeds-sitemap.xml.gz",
+      "status": 200,
+      "bytes": 52871
+    },
+    "https://tribune.com.pk/feed/home": {
+      "file": "https-tribune-com-pk-feed-home.xml.gz",
+      "status": 200,
+      "bytes": 328382
+    },
+    "https://tribune.com.pk/feed/pakistan": {
+      "file": "https-tribune-com-pk-feed-pakistan.xml.gz",
+      "status": 200,
+      "bytes": 161166
+    },
+    "https://tribune.com.pk/feed/business": {
+      "file": "https-tribune-com-pk-feed-business.xml.gz",
+      "status": 200,
+      "bytes": 89331
+    },
+    "https://tribune.com.pk/sitemap/sitemap_main.xml": {
+      "file": "https-tribune-com-pk-sitemap-sitemap-main-xml.xml.gz",
+      "status": 200,
+      "bytes": 13025
+    },
+    "https://www.brecorder.com/feeds/latest-news": {
+      "file": "https-www-brecorder-com-feeds-latest-news.xml.gz",
+      "status": 200,
+      "bytes": 164971
+    },
+    "https://www.brecorder.com/feeds/pakistan": {
+      "file": "https-www-brecorder-com-feeds-pakistan.xml.gz",
+      "status": 200,
+      "bytes": 190061
+    },
+    "https://www.brecorder.com/feeds/markets": {
+      "file": "https-www-brecorder-com-feeds-markets.xml.gz",
+      "status": 200,
+      "bytes": 171431
+    },
+    "https://www.brecorder.com/feeds/sitemap": {
+      "file": "https-www-brecorder-com-feeds-sitemap.xml.gz",
+      "status": 200,
+      "bytes": 51442
+    },
+    "https://www.geo.tv/rss/1/1": {
+      "file": "https-www-geo-tv-rss-1-1.xml.gz",
+      "status": 200,
+      "bytes": 20244
+    },
+    "https://www.geo.tv/rss/1/4": {
+      "file": "https-www-geo-tv-rss-1-4.xml.gz",
+      "status": 200,
+      "bytes": 20005
+    },
+    "https://www.geo.tv/assets/uploads/google_news_latest.xml": {
+      "file": "https-www-geo-tv-assets-uploads-google-news-latest-xml.xml.gz",
+      "status": 200,
+      "bytes": 54923
+    },
+    "https://arynews.tv/feed/": {
+      "file": "https-arynews-tv-feed.xml.gz",
+      "status": 200,
+      "bytes": 94180
+    },
+    "https://arynews.tv/category/pakistan/feed/": {
+      "file": "https-arynews-tv-category-pakistan-feed.xml.gz",
+      "status": 200,
+      "bytes": 16798
+    },
+    "https://arynews.tv/sitemap/news_sitemap.xml": {
+      "file": "https-arynews-tv-sitemap-news-sitemap-xml.xml.gz",
+      "status": 200,
+      "bytes": 80114
+    },
+    "https://www.nation.com.pk/rss/latest": {
+      "file": "https-www-nation-com-pk-rss-latest.xml.gz",
+      "status": 200,
+      "bytes": 151501
+    },
+    "https://www.nation.com.pk/sitemap_news_google.xml": {
+      "file": "https-www-nation-com-pk-sitemap-news-google-xml.xml.gz",
+      "status": 200,
+      "bytes": 165799
+    },
+    "https://www.app.com.pk/feed/": {
+      "file": "https-www-app-com-pk-feed.xml.gz",
+      "status": 200,
+      "bytes": 17196
+    },
+    "https://www.app.com.pk/category/national/feed/": {
+      "file": "https-www-app-com-pk-category-national-feed.xml.gz",
+      "status": 200,
+      "bytes": 18956
+    },
+    "https://www.thenews.com.pk/assets/uploads/google_news_latest.xml": {
+      "file": "https-www-thenews-com-pk-assets-uploads-google-news-latest-xml.xml.gz",
+      "status": 200,
+      "bytes": 57590
+    }
+  }
+}

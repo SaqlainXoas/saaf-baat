@@ -6,32 +6,25 @@ Contains:
 - clustering: Event grouping + legacy clustering utilities
 - analysis: Entity extraction, consensus detection, and classification (spaCy + rules)
 """
-from src.agents.embeddings import (
-    GeminiEmbeddingProvider,
-    EmbeddingResult,
-    EmbeddingError,
+from src.agents.analysis import (
+    AnalysisService,
+    ConsensusDetector,
+    EntityExtractor,
 )
-
 from src.agents.clustering import (
+    ClusteringError,
+    ClusteringResult,
     EventGroup,
     EventGroupingResult,
     EventGroupingService,
-    HDBSCANClusterer,
-    DBSCANClusterer,
-    ClusteringService,
-    ClusteringResult,
-    ClusteringError,
     calculate_centroid,
-    find_representative_article,
     calculate_intra_cluster_similarity,
-    create_cluster_mapping,
+    find_representative_article,
 )
-
-from src.agents.analysis import (
-    EntityExtractor,
-    ConsensusDetector,
-    RuleBasedClassifier,
-    AnalysisService,
+from src.agents.embeddings import (
+    EmbeddingError,
+    EmbeddingResult,
+    GeminiEmbeddingProvider,
 )
 
 __all__ = [
@@ -43,18 +36,13 @@ __all__ = [
     "EventGroup",
     "EventGroupingResult",
     "EventGroupingService",
-    "HDBSCANClusterer",
-    "DBSCANClusterer",
-    "ClusteringService",
     "ClusteringResult",
     "ClusteringError",
     "calculate_centroid",
     "find_representative_article",
     "calculate_intra_cluster_similarity",
-    "create_cluster_mapping",
     # Analysis
     "EntityExtractor",
     "ConsensusDetector",
-    "RuleBasedClassifier",
     "AnalysisService",
 ]

@@ -13,7 +13,6 @@ export interface StoryMetadata {
   why_it_matters?: string;
   what_to_watch?: string;
   editorial_priority?: number;
-  deterministic_publish_score?: number;
   [key: string]: unknown;
 }
 
@@ -45,10 +44,15 @@ export interface StoryArticleData {
   headline: string;
   url: string;
   publish_date?: string | null;
+  published_on?: string | null;
+  publish_date_status?: "precise" | "date_only" | "missing";
 }
 
 export interface StoryDetailData extends StoryCardData {
+  analysis: string | null;
+  question: string | null;
   articles: StoryArticleData[];
+  analysis_sources: StoryArticleData[];
 }
 
 export interface FeedResponseData {

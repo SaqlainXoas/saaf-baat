@@ -1,4 +1,20 @@
-export function formatEditionDate(date = new Date()) {
+function resolveEditionDate(dateInput?: string | Date | null, fallback = new Date()) {
+  if (dateInput instanceof Date) {
+    return Number.isNaN(dateInput.getTime()) ? fallback : dateInput;
+  }
+
+  if (typeof dateInput === "string") {
+    const parsed = new Date(dateInput);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+}
+
+export function formatEditionDate(dateInput?: string | Date | null) {
+  const date = resolveEditionDate(dateInput);
   return new Intl.DateTimeFormat("en-PK", {
     weekday: "short",
     month: "short",
@@ -7,7 +23,8 @@ export function formatEditionDate(date = new Date()) {
   }).format(date);
 }
 
-export function formatEditionStamp(date = new Date()) {
+export function formatEditionStamp(dateInput?: string | Date | null) {
+  const date = resolveEditionDate(dateInput);
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
@@ -28,10 +45,38 @@ function toPakistanDateParts(date: Date) {
   return `${lookup.year}-${lookup.month}-${lookup.day}`;
 }
 
-export function formatBriefEditionTitle(generatedAt?: string | null, now = new Date()) {
+export function isCurrentEdition(generatedAt?: string | null, isFresh?: boolean, now = new Date()) {
+  if (isFresh === false) {
+    return false;
+  }
+
   const parsedGeneratedAt = generatedAt ? new Date(generatedAt) : null;
-  const hasGeneratedAt = parsedGeneratedAt && !Number.isNaN(parsedGeneratedAt.getTime());
-  const editionDate = hasGeneratedAt ? parsedGeneratedAt : now;
+  if (!parsedGeneratedAt || Number.isNaN(parsedGeneratedAt.getTime())) {
+    return true;
+  }
+
+  return toPakistanDateParts(parsedGeneratedAt) === toPakistanDateParts(now);
+}
+
+export function getBriefEditionIdentity(generatedAt?: string | null, isFresh?: boolean, now = new Date()) {
+  const editionDate = resolveEditionDate(generatedAt, now);
+  const currentEdition = isCurrentEdition(generatedAt, isFresh, now);
+  return {
+    isCurrentEdition: currentEdition,
+    title: formatBriefEditionTitle(generatedAt, isFresh, now),
+    dateLabel: formatEditionDate(editionDate),
+    stampLabel: formatEditionStamp(editionDate),
+    editionLabel: currentEdition ? "Today's edition" : "Latest edition",
+    briefLabel: currentEdition ? "Today's brief" : "Latest brief",
+    backLinkLabel: currentEdition ? "Today's Brief" : "Latest Brief",
+    rankingNote: currentEdition
+      ? "Ranked for public impact first."
+      : "Last available brief, ranked for public impact first.",
+  };
+}
+
+export function formatBriefEditionTitle(generatedAt?: string | null, isFresh?: boolean, now = new Date()) {
+  const editionDate = resolveEditionDate(generatedAt, now);
 
   const todayLabel = new Intl.DateTimeFormat("en-US", {
     weekday: "long",
@@ -40,12 +85,7 @@ export function formatBriefEditionTitle(generatedAt?: string | null, now = new D
     timeZone: "Asia/Karachi",
   }).format(editionDate);
 
-  if (!hasGeneratedAt) {
-    return `Today's Brief · ${todayLabel}`;
-  }
-
-  const isTodayInPakistan = toPakistanDateParts(parsedGeneratedAt) === toPakistanDateParts(now);
-  if (isTodayInPakistan) {
+  if (isCurrentEdition(generatedAt, isFresh, now)) {
     return `Today's Brief · ${todayLabel}`;
   }
 
@@ -53,8 +93,24 @@ export function formatBriefEditionTitle(generatedAt?: string | null, now = new D
     month: "long",
     day: "numeric",
     timeZone: "Asia/Karachi",
-  }).format(parsedGeneratedAt);
+  }).format(editionDate);
   return `Morning Brief · ${archiveLabel}`;
+}
+
+/**
+ * The greeting the brief opens with.
+ *
+ * Always "Subah bakhair". This is a *morning* brief - it is produced once, early,
+ * and that is what it is. An earlier version varied the greeting by the hour in
+ * Karachi, which meant a reader opening the same morning's brief after midday
+ * was greeted "Assalam-o-alaikum" as though it were an afternoon product. The
+ * greeting names the edition, not the moment the page was loaded.
+ *
+ * Being a constant also removes a whole class of bug: nothing here can differ
+ * between the server render and hydration.
+ */
+export function getGreeting() {
+  return { greeting: "Subah bakhair", translation: "Good morning" };
 }
 
 export function formatEssentialStoryCount(storyCount: number) {

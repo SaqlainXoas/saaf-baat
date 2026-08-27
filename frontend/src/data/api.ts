@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import { FEED, getMockDetail } from "./mock-data";
 import { sortStoriesForBrief } from "@/utils/storyPresentation";
+import { FEED_REQUEST_LIMIT } from "./briefSize";
 
 export type DataStatus =
   | "live"
@@ -36,6 +37,9 @@ type ApiStoryDetailRow = AnalyzedFeedRow & {
   snippet?: string;
   sources?: StoryCardData["sources"];
   articles?: StoryArticleData[];
+  analysis?: string | null;
+  question?: string | null;
+  analysis_sources?: StoryArticleData[];
 };
 
 class ApiRequestError extends Error {
@@ -128,7 +132,10 @@ function toStoryCard(row: ApiStoryDetailRow): StoryCardData {
 function toStoryDetail(row: ApiStoryDetailRow): StoryDetailData {
   return {
     ...toStoryCard(row),
+    analysis: typeof row.analysis === "string" && row.analysis.trim() ? row.analysis.trim() : null,
+    question: typeof row.question === "string" && row.question.trim() ? row.question.trim() : null,
     articles: Array.isArray(row.articles) ? row.articles : [],
+    analysis_sources: Array.isArray(row.analysis_sources) ? row.analysis_sources : [],
   };
 }
 
@@ -173,7 +180,7 @@ export async function fetchFeedWithMeta(): Promise<FeedResult> {
   }
 
   try {
-    const payload = await fetchBackendFeed(backendApiBase, 9);
+    const payload = await fetchBackendFeed(backendApiBase, FEED_REQUEST_LIMIT);
     const stories = sortStoriesForBrief((payload.stories || []).map(toStoryCard));
     return {
       stories,

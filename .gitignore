@@ -77,3 +77,6 @@ backend/.claude/
 design-mockups/
 design/
 frontend/mockups/
+
+# Next.js/TypeScript incremental build artifact
+frontend/tsconfig.tsbuildinfo

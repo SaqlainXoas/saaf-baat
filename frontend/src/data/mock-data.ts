@@ -154,6 +154,9 @@ export function getMockDetail(storyId: string): StoryDetailData | null {
   if (!card) return null;
   return {
     ...card,
+    analysis: null,
+    question: null,
     articles: DETAIL_ARTICLES[storyId] || [],
+    analysis_sources: [],
   };
 }

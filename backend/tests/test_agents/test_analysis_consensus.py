@@ -3,6 +3,7 @@ TDD tests for ConsensusDetector.
 """
 from __future__ import annotations
 
+
 def test_consensus_detector_strict_intersection_and_counts():
     from src.agents.analysis import ConsensusDetector
     from src.db.models import ExtractedEntity

@@ -1,4 +1,5 @@
 import { fetchFeedWithMeta } from "@/data/api";
+import { MAX_STORIES } from "@/data/briefSize";
 import MorningGreeting from "@/components/MorningGreeting";
 import DesktopBrief from "@/components/DesktopBrief";
 import Deck from "@/components/Deck";
@@ -7,12 +8,6 @@ import { applyFilters, deriveAvailableSources, parseFilters } from "@/utils/focu
 import DataStatusBanner from "@/components/DataStatusBanner";
 import SkipLink from "@/components/SkipLink";
 
-const MAX_STORIES = 9;
-
-function hasRenderableImpactLine(story: { metadata?: { why_it_matters?: unknown } }) {
-  const value = story.metadata?.why_it_matters;
-  return typeof value === "string" && value.trim().length > 0;
-}
 
 function toURLSearchParams(searchParams?: Record<string, string | string[] | undefined>) {
   const params = new URLSearchParams();
@@ -31,7 +26,10 @@ export default async function Home({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const feedResult = await fetchFeedWithMeta();
-  const allStories = feedResult.stories.filter(hasRenderableImpactLine);
+  // No render-time filter: the API guarantees why_it_matters on every card
+  // (see backend test_api_feed_route). A client-side filter over a backend
+  // contract gap silently shrinks the brief instead of failing loudly (I-7).
+  const allStories = feedResult.stories;
   const availableSources = deriveAvailableSources(allStories);
   const urlParams = toURLSearchParams(resolvedSearchParams);
   const filters = parseFilters(urlParams);
@@ -47,8 +45,14 @@ export default async function Home({
       <SkipLink label="Skip to stories" selector='[data-skip-target="stories"]' />
 
       <main id="main-content" className="relative" role="main">
-        {/* ── Desktop: single-flow brief (feed) ── */}
-        <div className="hidden lg:block">
+        {/* ── Tablet and desktop: the brief column, with the progress rail
+             appearing at 1024 where there is room for it.
+
+             This was `lg:` (1024px), which left 768-1023 rendering the phone
+             deck inside a 416px `max-w-md` column in a 768px viewport - most
+             of a tablet screen empty either side. The desktop layout minus its
+             rail is exactly the right shape for that width. ── */}
+        <div className="hidden md:block">
           {hasLiveDataError ? (
             <div className="sb-container px-4 py-2" style={{ maxWidth: 900 }}>
               <LiveDataErrorState message={feedResult.message} />
@@ -69,9 +73,14 @@ export default async function Home({
           )}
         </div>
 
-        {/* ── Mobile: greeting + card deck ── */}
-        <div className="lg:hidden max-w-md mx-auto px-4">
-          <MorningGreeting storyCount={stories.length} availableSources={availableSources} generatedAt={generatedAt} />
+        {/* ── Phone: greeting + card deck ── */}
+        <div className="md:hidden max-w-md mx-auto px-4">
+          <MorningGreeting
+            storyCount={stories.length}
+            availableSources={availableSources}
+            generatedAt={generatedAt}
+            isFresh={feedResult.isFresh}
+          />
           <DataStatusBanner
             status={feedResult.status}
             message={feedResult.message}
@@ -84,7 +93,7 @@ export default async function Home({
             <LiveDataErrorState compact message={feedResult.message} />
           ) : stories.length > 0 ? (
             <div className="mt-3">
-              <Deck stories={stories} />
+              <Deck stories={stories} generatedAt={generatedAt} isFresh={feedResult.isFresh} />
             </div>
           ) : (
             <EmptyState hasFilters={hasFilters} />
@@ -119,7 +128,7 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
   return (
     <div className="text-center py-20 px-6">
       <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
-        {hasFilters ? "No stories match this focus" : "Today's brief is being prepared"}
+        {hasFilters ? "No stories match this focus" : "The morning brief is being prepared"}
       </p>
       <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
         {hasFilters

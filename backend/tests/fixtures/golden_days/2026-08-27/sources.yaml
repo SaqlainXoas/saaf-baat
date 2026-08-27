@@ -1,0 +1,88 @@
+sources:
+  dawn:
+    url: https://www.dawn.com
+    tier: A
+    enabled: true
+    feed_urls:
+    - https://www.dawn.com/feeds/home
+    - https://www.dawn.com/feeds/latest-news
+    - https://www.dawn.com/feeds/pakistan
+    - https://www.dawn.com/feeds/business
+    - https://www.dawn.com/feeds/newspaper
+    - https://www.dawn.com/feeds/world
+    sitemap_urls:
+    - https://www.dawn.com/feeds/sitemap
+  tribune:
+    url: https://tribune.com.pk
+    tier: A
+    enabled: true
+    feed_urls:
+    - https://tribune.com.pk/feed/home
+    - https://tribune.com.pk/feed/pakistan
+    - https://tribune.com.pk/feed/business
+    sitemap_urls: []
+  brecorder:
+    url: https://www.brecorder.com
+    tier: A
+    enabled: true
+    feed_urls:
+    - https://www.brecorder.com/feeds/latest-news
+    - https://www.brecorder.com/feeds/pakistan
+    - https://www.brecorder.com/feeds/markets
+    sitemap_urls:
+    - https://www.brecorder.com/feeds/sitemap
+  geo:
+    url: https://www.geo.tv
+    tier: B
+    enabled: true
+    feed_urls:
+    - https://www.geo.tv/rss/1/1
+    - https://www.geo.tv/rss/1/4
+    sitemap_urls:
+    - https://www.geo.tv/assets/uploads/google_news_latest.xml
+  ary:
+    url: https://arynews.tv
+    tier: B
+    enabled: true
+    feed_urls:
+    - https://arynews.tv/feed/
+    - https://arynews.tv/category/pakistan/feed/
+    sitemap_urls:
+    - https://arynews.tv/sitemap/news_sitemap.xml
+  nation:
+    url: https://www.nation.com.pk
+    tier: B
+    enabled: true
+    feed_urls:
+    - https://www.nation.com.pk/rss/latest
+    sitemap_urls:
+    - https://www.nation.com.pk/sitemap_news_google.xml
+  app:
+    url: https://www.app.com.pk
+    tier: B
+    enabled: true
+    feed_urls:
+    - https://www.app.com.pk/feed/
+    - https://www.app.com.pk/feed/?paged=2
+    - https://www.app.com.pk/feed/?paged=3
+    - https://www.app.com.pk/national/feed/
+    - https://www.app.com.pk/business/feed/
+    sitemap_urls: []
+  thenews:
+    url: https://www.thenews.com.pk
+    tier: B
+    enabled: true
+    feed_urls: []
+    sitemap_urls:
+    - https://www.thenews.com.pk/assets/uploads/google_news_latest.xml
+  samaa:
+    url: https://www.samaa.tv
+    tier: B
+    enabled: false
+    feed_urls: []
+    sitemap_urls: []
+scraping_config:
+  max_articles_per_source: 40
+  stale_feed_hours: 48
+  article_max_age_hours: 36
+  full_text_min_chars: 600

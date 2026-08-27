@@ -69,3 +69,20 @@ export function formatSourceTimestamp(timestamp?: string) {
 
   return `${dateLabel}, ${timeLabel} PKT`;
 }
+
+export function formatSourceDate(dateInput?: string) {
+  if (!dateInput) return null;
+  const value = Date.parse(dateInput);
+  if (Number.isNaN(value)) return null;
+
+  const date = new Date(value);
+  const now = new Date();
+  const includeYear = date.getUTCFullYear() !== now.getUTCFullYear();
+
+  return new Intl.DateTimeFormat("en-PK", {
+    month: "short",
+    day: "numeric",
+    ...(includeYear ? { year: "numeric" as const } : {}),
+    timeZone: "Asia/Karachi",
+  }).format(date);
+}

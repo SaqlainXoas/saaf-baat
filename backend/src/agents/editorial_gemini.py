@@ -7,12 +7,15 @@ from typing import Any, Dict, Optional, Sequence
 from uuid import UUID
 
 from src.agents.editorial import (
+    COMPACT_PROMPT_CANDIDATE_THRESHOLD,
+    DEFAULT_MAX_STORIES,
+    EDITORIAL_SYSTEM_PROMPT,
     ClusterEditorialCandidate,
     EditorialError,
     EditorialResponse,
     EditorialStory,
-    EDITORIAL_SYSTEM_PROMPT,
     build_editorial_user_prompt,
+    review_with_short_pass_retries,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,7 +58,7 @@ class GeminiMorningBriefService:
     - response_schema = Pydantic model / JSON schema
     """
 
-    DEFAULT_MODEL = "gemini-3.1-flash-lite-preview"
+    DEFAULT_MODEL = "gemini-3.1-flash-lite"
 
     def __init__(
         self,
@@ -88,13 +91,26 @@ class GeminiMorningBriefService:
         self,
         candidates: Sequence[ClusterEditorialCandidate],
         *,
-        max_stories: int = 9,
+        max_stories: int = DEFAULT_MAX_STORIES,
     ) -> Dict[UUID, EditorialStory]:
-        if not candidates:
-            return {}
+        """The editorial pass, with a collapsed brief retried against a deeper slice."""
+        return review_with_short_pass_retries(
+            lambda window: self._review_once(window, max_stories=max_stories),
+            candidates,
+            max_stories=max_stories,
+        )
 
+    def _review_once(
+        self,
+        candidates: Sequence[ClusterEditorialCandidate],
+        *,
+        max_stories: int,
+    ) -> EditorialResponse:
         candidate_lookup = {str(candidate.cluster_id): candidate for candidate in candidates}
-        candidate_rows = [candidate.to_prompt_dict() for candidate in candidates]
+        # At thirty candidates the full excerpts are tokens spent on detail the
+        # editor does not decide on.
+        compact = len(candidates) > COMPACT_PROMPT_CANDIDATE_THRESHOLD
+        candidate_rows = [candidate.to_prompt_dict(compact=compact) for candidate in candidates]
 
         system_prompt = EDITORIAL_SYSTEM_PROMPT
         user_prompt = build_editorial_user_prompt(candidate_rows, max_stories=max_stories)
@@ -120,11 +136,10 @@ class GeminiMorningBriefService:
 
         parsed = getattr(response, "parsed", None)
         if isinstance(parsed, EditorialResponse):
-            return _stories_by_cluster(parsed, candidates)
+            return parsed
         if isinstance(parsed, dict):
             normalized = _normalize_editorial_payload(parsed, candidate_lookup)
-            parsed_response = EditorialResponse.model_validate(normalized)
-            return _stories_by_cluster(parsed_response, candidates)
+            return EditorialResponse.model_validate(normalized)
 
         text = getattr(response, "text", None)
         if not text or not str(text).strip():
@@ -142,7 +157,7 @@ class GeminiMorningBriefService:
             normalized = _normalize_editorial_payload(payload, candidate_lookup)
             parsed_response = EditorialResponse.model_validate(normalized)
 
-        return _stories_by_cluster(parsed_response, candidates)
+        return parsed_response
 
 
 def _normalize_editorial_payload(payload: Dict[str, Any], candidate_lookup: Dict[str, ClusterEditorialCandidate]) -> Dict[str, Any]:
@@ -151,27 +166,6 @@ def _normalize_editorial_payload(payload: Dict[str, Any], candidate_lookup: Dict
     from src.agents.editorial import _normalize_editorial_payload as _normalize  # type: ignore
 
     return _normalize(payload, candidate_lookup)
-
-
-def _stories_by_cluster(
-    parsed: EditorialResponse,
-    candidates: Sequence[ClusterEditorialCandidate],
-) -> Dict[UUID, EditorialStory]:
-    by_cluster: Dict[UUID, EditorialStory] = {}
-    allowed_ids = {candidate.cluster_id for candidate in candidates}
-    for story in parsed.stories:
-        try:
-            cluster_id = UUID(story.cluster_id)
-        except ValueError:
-            logger.warning("Ignoring editorial story with invalid cluster_id=%s", story.cluster_id)
-            continue
-        if cluster_id not in allowed_ids:
-            logger.warning("Ignoring editorial story for unknown cluster_id=%s", cluster_id)
-            continue
-        if cluster_id in by_cluster:
-            continue
-        by_cluster[cluster_id] = story
-    return by_cluster
 
 
 def _gemini_response_schema(model: type[EditorialResponse]) -> Dict[str, Any]:

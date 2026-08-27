@@ -1,11 +1,11 @@
 """
-NLP analysis for Saaf Baat: entities, consensus, and rule-based classification.
+NLP analysis for Saaf Baat: entities, consensus, and triage aggregation.
 
-This module intentionally avoids any LLM-generated summaries. It focuses on
-transparent signals:
+This module writes no prose. It focuses on transparent signals:
 - Named entities mentioned across sources
 - Agreement vs partial agreement across sources
-- Keyword-based category + impact labels from YAML rules
+- Category + impact labels aggregated from the per-article triage verdicts
+  (`agents/triage.py`), which replaced a 390-line keyword file
 """
 
 from __future__ import annotations
@@ -13,38 +13,22 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from uuid import UUID
 
 import numpy as np
-import yaml
 
 from src.agents.clustering import calculate_centroid, find_representative_article
 from src.db.models import AnalyzedFeed, ExtractedEntity, RawArticle
-
+from src.utils.text import split_sentences
 
 # Labels we keep for MVP (English-only).
 DEFAULT_ALLOWED_ENTITY_LABELS = {"PERSON", "ORG", "GPE", "DATE", "MONEY", "EVENT"}
 
-# When keyword matching produces zero impact hits, derive a default badge from
-# the story category.  Ensures every categorised card shows at least one signal.
-_CATEGORY_IMPACT_FALLBACK: Dict[str, str] = {
-    "economy": "💳 WALLET",
-    "politics": "🏛️ GOVERNANCE",
-    "security": "🛡️ SAFETY",
-    "city": "🚦 COMMUTE",
-    "education": "🏛️ GOVERNANCE",
-    "health": "🛡️ SAFETY",
-    "international": "🏛️ GOVERNANCE",
-}
 
 
 def _collapse_ws(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip())
-
-
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 
 def build_snippet(text: str, max_chars: int = 240) -> str:
@@ -58,7 +42,7 @@ def build_snippet(text: str, max_chars: int = 240) -> str:
         return ""
 
     # Prefer the first 1–2 sentences if punctuation exists.
-    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(clean) if s.strip()]
+    sentences = split_sentences(clean)
     if len(sentences) >= 2:
         snippet = f"{sentences[0]} {sentences[1]}"
     else:
@@ -67,8 +51,25 @@ def build_snippet(text: str, max_chars: int = 240) -> str:
     if len(snippet) <= max_chars:
         return snippet
 
-    # Truncate at a word boundary and add ellipsis.
+    # Take the most whole sentences that fit. This snippet is what a detail
+    # page shows when the analysis is unavailable, and a wire lede cut
+    # mid-clause reads as a truncation bug rather than as an excerpt.
+    whole = ""
+    for sentence in sentences:
+        candidate = f"{whole} {sentence}".strip()
+        if len(candidate) > max_chars:
+            break
+        whole = candidate
+    if whole:
+        return whole
+
+    # Even the first sentence is too long. Fall back to the last clause break
+    # rather than stopping mid-clause: "...cooking oil producers…" reads as an
+    # excerpt, "...engaged in…" reads as a bug.
     truncated = snippet[: max_chars + 1]
+    clause = max(truncated.rfind(mark) for mark in (",", ";", ":", "—", "–"))
+    if clause >= max_chars // 2:
+        return f"{truncated[:clause].rstrip()}…"
     if " " in truncated:
         truncated = truncated.rsplit(" ", 1)[0]
     truncated = truncated.rstrip(" .,:;")
@@ -107,12 +108,6 @@ class ConsensusResult:
     confirmed_facts: List[ExtractedEntity]
     debated_claims: List[ExtractedEntity]
 
-
-@dataclass(frozen=True)
-class ClassificationResult:
-    category: str
-    impact_labels: List[str]
-    confidence: float
 
 
 class EntityExtractor:
@@ -230,104 +225,136 @@ class ConsensusDetector:
         return ConsensusResult(confirmed_facts=confirmed, debated_claims=debated)
 
 
-class RuleBasedClassifier:
-    """Transparent keyword-based classifier (YAML-driven)."""
+# ---------------------------------------------------------------------------
+# Triage aggregation
+# ---------------------------------------------------------------------------
 
-    _CATEGORY_HEADLINE_WEIGHT = 2.0
-    _IMPACT_HEADLINE_WEIGHT = 1.5
+# Most-relevant wins when a cluster's members disagree: a story one outlet
+# frames locally and another nationally is a national story.
+_PK_RELEVANCE_RANK = {
+    "national": 3,
+    "local": 2,
+    "foreign_with_pk_effect": 1,
+    "foreign": 0,
+}
 
-    def __init__(self, rules: dict):
-        self.rules = rules or {}
-        self.categories = (self.rules.get("categories") or {}).copy()
-        self.impact_labels = (self.rules.get("impact_labels") or {}).copy()
-        self.config = (self.rules.get("classification_config") or {}).copy()
 
-        self.max_impact = int(self.config.get("max_impact_labels_per_article", 3))
+@dataclass(frozen=True)
+class ClusterTriage:
+    """What the per-article triage verdicts say about a cluster as a whole."""
 
-        # Pre-compile word-boundary patterns so substring false-positives are
-        # avoided (e.g. "signal" inside "signals", "power" inside "powers").
-        self._cat_patterns: Dict[str, Tuple[List[re.Pattern], float]] = {}
-        for cat, spec in self.categories.items():
-            kws = spec.get("keywords") or []
-            w = float(spec.get("weight", 1.0))
-            self._cat_patterns[cat] = (
-                [re.compile(r"\b" + re.escape(str(k).lower()) + r"\b") for k in kws if k],
-                w,
-            )
+    category: str
+    impact_labels: List[str]
+    confidence: float
+    story_type: Optional[str]
+    pk_relevance: Optional[str]
+    verdict_count: int
 
-        self._impact_patterns: Dict[str, Tuple[List[re.Pattern], float]] = {}
-        for label, spec in self.impact_labels.items():
-            kws = spec.get("keywords") or []
-            w = float(spec.get("weight", 1.0))
-            self._impact_patterns[label] = (
-                [re.compile(r"\b" + re.escape(str(k).lower()) + r"\b") for k in kws if k],
-                w,
-            )
+    @property
+    def has_verdicts(self) -> bool:
+        return self.verdict_count > 0
 
-    @classmethod
-    def from_yaml(cls, path: Path) -> "RuleBasedClassifier":
-        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-        return cls(rules=data)
+    def as_metadata(self) -> Dict[str, object]:
+        return {
+            "category": self.category,
+            "impact_labels": list(self.impact_labels),
+            "story_type": self.story_type,
+            "pk_relevance": self.pk_relevance,
+            "confidence": round(float(self.confidence), 3),
+            "verdict_count": int(self.verdict_count),
+        }
 
-    @staticmethod
-    def _match_count(patterns: Sequence[re.Pattern], text: str) -> int:
-        if not text:
-            return 0
-        return sum(1 for pattern in patterns if pattern.search(text))
 
-    def classify_parts(self, headline: str, text: str) -> ClassificationResult:
-        headline_l = (headline or "").lower()
-        text_l = (text or "").lower()
+def article_triage(article: RawArticle) -> Optional[Dict[str, object]]:
+    """Read the triage verdict persisted on an article, if it has one."""
+    verdict = (article.metadata or {}).get("triage")
+    return verdict if isinstance(verdict, dict) else None
 
-        cat_scores: Dict[str, float] = {}
-        for cat, (patterns, weight) in self._cat_patterns.items():
-            headline_hits = self._match_count(patterns, headline_l)
-            body_hits = self._match_count(patterns, text_l)
-            score = (
-                headline_hits * self._CATEGORY_HEADLINE_WEIGHT
-                + body_hits
-            ) * weight
-            if score > 0:
-                cat_scores[cat] = score
 
-        if not cat_scores:
-            top_cat = "other"
-            top_score = 0.0
-        else:
-            # Deterministic tie-break: higher score then name.
-            top_cat, top_score = sorted(cat_scores.items(), key=lambda x: (-x[1], x[0]))[0]
+def aggregate_triage(
+    articles: Sequence[RawArticle],
+    representative: Optional[RawArticle] = None,
+) -> ClusterTriage:
+    """
+    Combine per-article verdicts into one verdict for the cluster.
 
-        # Confidence is a simple bounded function of the score.
-        confidence = 0.0 if top_score <= 0 else min(1.0, float(top_score) / 5.0)
+    A cluster with no verdicts at all is a real state, not an error: it means
+    triage was unavailable or skipped these articles. It returns `other` with
+    zero confidence and no story_type, and the hard gates drop it rather than
+    guessing.
+    """
+    verdicts = [(a, article_triage(a)) for a in articles]
+    verdicts = [(a, v) for a, v in verdicts if v]
+    if not verdicts:
+        return ClusterTriage(
+            category="other",
+            impact_labels=[],
+            confidence=0.0,
+            story_type=None,
+            pk_relevance=None,
+            verdict_count=0,
+        )
 
-        min_conf = float(self.config.get("min_confidence", 0.0))
-        if confidence < min_conf:
-            top_cat = "other"
-            confidence = 0.0
+    representative_verdict = article_triage(representative) if representative is not None else None
 
-        impact_scores: List[Tuple[str, float]] = []
-        for label, (patterns, weight) in self._impact_patterns.items():
-            headline_hits = self._match_count(patterns, headline_l)
-            body_hits = self._match_count(patterns, text_l)
-            score = (
-                headline_hits * self._IMPACT_HEADLINE_WEIGHT
-                + body_hits
-            ) * weight
-            if score > 0:
-                impact_scores.append((label, score))
+    category_weight: Dict[str, float] = {}
+    label_weight: Dict[str, float] = {}
+    confidences: List[float] = []
+    story_types: set[str] = set()
+    best_relevance: Optional[str] = None
 
-        impact_scores.sort(key=lambda x: (-x[1], x[0]))
-        impacts = [lbl for (lbl, _s) in impact_scores[: self.max_impact]]
+    for _article, verdict in verdicts:
+        confidence = float(verdict.get("confidence") or 0.0)
+        confidences.append(confidence)
 
-        # Fallback: derive one impact badge from the category so every
-        # categorised card shows at least one life-impact signal.
-        if not impacts and top_cat in _CATEGORY_IMPACT_FALLBACK:
-            impacts = [_CATEGORY_IMPACT_FALLBACK[top_cat]]
+        category = str(verdict.get("category") or "other")
+        # A floor of 0.1 keeps a unanimous set of low-confidence verdicts from
+        # collapsing to a zero-weight tie.
+        category_weight[category] = category_weight.get(category, 0.0) + max(confidence, 0.1)
 
-        return ClassificationResult(category=top_cat, impact_labels=impacts, confidence=confidence)
+        for label in verdict.get("impact_labels") or []:
+            label_weight[str(label)] = label_weight.get(str(label), 0.0) + max(confidence, 0.1)
 
-    def classify_text(self, text: str) -> ClassificationResult:
-        return self.classify_parts("", text)
+        story_type = verdict.get("story_type")
+        if story_type:
+            story_types.add(str(story_type))
+
+        relevance = verdict.get("pk_relevance")
+        if relevance and (
+            best_relevance is None
+            or _PK_RELEVANCE_RANK.get(str(relevance), -1) > _PK_RELEVANCE_RANK.get(best_relevance, -1)
+        ):
+            best_relevance = str(relevance)
+
+    top_weight = max(category_weight.values())
+    tied = sorted(cat for cat, weight in category_weight.items() if weight >= top_weight - 1e-9)
+    if len(tied) > 1 and representative_verdict:
+        # The representative is the article the card will be written from, so
+        # its reading breaks the tie.
+        rep_category = str(representative_verdict.get("category") or "")
+        category = rep_category if rep_category in tied else tied[0]
+    else:
+        category = tied[0]
+
+    impact_labels = [
+        label
+        for label, _weight in sorted(label_weight.items(), key=lambda row: (-row[1], row[0]))
+    ][:3]
+
+    # Covered as hard news anywhere means hard news: one outlet running colour
+    # alongside does not make the development a feature.
+    story_type = "hard_news" if "hard_news" in story_types else (
+        sorted(story_types)[0] if story_types else None
+    )
+
+    return ClusterTriage(
+        category=category,
+        impact_labels=impact_labels,
+        confidence=float(sum(confidences) / len(confidences)),
+        story_type=story_type,
+        pk_relevance=best_relevance,
+        verdict_count=len(verdicts),
+    )
 
 
 class AnalysisService:
@@ -337,14 +364,12 @@ class AnalysisService:
         self,
         entity_extractor: EntityExtractor,
         consensus_detector: ConsensusDetector,
-        classifier: RuleBasedClassifier,
         headline_source_priority: Optional[List[str]] = None,
         max_confirmed_facts: int = 8,
         max_debated_claims: int = 12,
     ):
         self.entity_extractor = entity_extractor
         self.consensus_detector = consensus_detector
-        self.classifier = classifier
         if max_confirmed_facts <= 0:
             raise ValueError("max_confirmed_facts must be positive")
         if max_debated_claims <= 0:
@@ -438,11 +463,7 @@ class AnalysisService:
         headline = representative.headline or self._choose_headline(articles)
         summary = build_snippet(representative.main_text or self._choose_snippet_text(articles))
 
-        other_headlines = " ".join(
-            [a.headline for a in articles if a.id != representative.id and a.headline]
-        )
-        classification_text = f"{representative.main_text} {other_headlines}"
-        cls = self.classifier.classify_parts(representative.headline, classification_text)
+        triage = aggregate_triage(articles, representative)
 
         # Entity extraction + consensus uses per-article entities.
         entities_by_article = [self.entity_extractor.extract(a.main_text or "") for a in articles]
@@ -462,21 +483,23 @@ class AnalysisService:
             cluster_id=cluster_id,
             headline=headline,
             summary=summary or None,
-            category=cls.category,
+            category=triage.category,
             confirmed_facts=confirmed_facts,
             debated_claims=debated_claims,
-            impact_labels=cls.impact_labels,
+            impact_labels=triage.impact_labels,
             source_attribution=source_attribution,
             entity_counts=entity_counts,
-            classification_confidence=cls.confidence,
+            classification_confidence=triage.confidence,
+            metadata={"triage": triage.as_metadata()},
         )
 
 
 __all__ = [
-    "ConsensusResult",
-    "ClassificationResult",
-    "EntityExtractor",
-    "ConsensusDetector",
-    "RuleBasedClassifier",
     "AnalysisService",
+    "ClusterTriage",
+    "ConsensusDetector",
+    "ConsensusResult",
+    "EntityExtractor",
+    "aggregate_triage",
+    "article_triage",
 ]
