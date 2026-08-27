@@ -21,7 +21,7 @@ describe("DataStatusBanner", () => {
 
   it("shows the empty-state preparation message for a zero-story live feed", () => {
     render(<DataStatusBanner status="live" isFresh={false} storyCount={0} />);
-    expect(screen.getByRole("status").textContent).toContain("Today's brief is being prepared");
+    expect(screen.getByRole("status").textContent).toContain("The morning brief is being prepared");
   });
 
   it("announces status changes politely to assistive tech", () => {

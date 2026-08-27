@@ -26,7 +26,7 @@ export default function SkipLink({ label, selector }: SkipLinkProps) {
     <a
       href="#"
       onClick={onClick}
-      className="sb-focusable absolute left-3 top-3 z-40 rounded-lg px-3 py-2 text-xs font-bold"
+      className="sb-focusable fixed left-3 top-3 z-50 -translate-y-[calc(100%+0.75rem)] rounded-lg px-3 py-2 text-xs font-bold opacity-0 transition-all duration-150 focus:translate-y-0 focus:opacity-100"
       style={{ background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--hairline)" }}
     >
       {label}

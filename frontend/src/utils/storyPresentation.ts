@@ -91,11 +91,22 @@ function buildDebatedItems(story: StoryLike) {
   return items.filter(Boolean).slice(0, 3);
 }
 
-export function getStoryPriority(story: Pick<StoryCardData, "created_at" | "metadata" | "story_id">) {
+/**
+ * The tiebreak chain the brief is ordered by, matching `/api/feed`'s own.
+ *
+ * The second term used to be `deterministic_publish_score`, which Phase 4
+ * deleted because it saturated at 100 for every published card. The backend
+ * stopped writing it, so the term silently evaluated to 0 for every story and
+ * ordered nothing. Source breadth replaces it - a count, not a score, and the
+ * same fact the API sorts on.
+ */
+export function getStoryPriority(
+  story: Pick<StoryCardData, "created_at" | "metadata" | "story_id" | "sources">,
+) {
   const editorialPriority = Number(story.metadata?.editorial_priority ?? 0) || 0;
-  const deterministicScore = Number(story.metadata?.deterministic_publish_score ?? 0) || 0;
+  const sourceBreadth = (story.sources || []).length;
   const createdAt = Date.parse(story.created_at || "") || 0;
-  return { editorialPriority, deterministicScore, createdAt, storyId: story.story_id };
+  return { editorialPriority, sourceBreadth, createdAt, storyId: story.story_id };
 }
 
 export function sortStoriesForBrief(stories: StoryCardData[]) {
@@ -104,8 +115,10 @@ export function sortStoriesForBrief(stories: StoryCardData[]) {
     const b = getStoryPriority(right);
     return (
       b.editorialPriority - a.editorialPriority ||
-      b.deterministicScore - a.deterministicScore ||
+      b.sourceBreadth - a.sourceBreadth ||
       b.createdAt - a.createdAt ||
+      // Last resort so the order is stable across renders rather than
+      // depending on the order the API happened to return.
       a.storyId.localeCompare(b.storyId)
     );
   });

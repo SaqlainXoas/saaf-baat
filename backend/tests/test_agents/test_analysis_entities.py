@@ -8,8 +8,9 @@ from __future__ import annotations
 
 
 def test_entity_extractor_extracts_allowed_labels_only():
-    from src.agents.analysis import EntityExtractor
     import spacy
+
+    from src.agents.analysis import EntityExtractor
 
     nlp = spacy.blank("en")
     ruler = nlp.add_pipe("entity_ruler")
@@ -34,8 +35,9 @@ def test_entity_extractor_extracts_allowed_labels_only():
 
 
 def test_entity_extractor_normalizes_entity_text():
-    from src.agents.analysis import EntityExtractor
     import spacy
+
+    from src.agents.analysis import EntityExtractor
 
     nlp = spacy.blank("en")
     ruler = nlp.add_pipe("entity_ruler")

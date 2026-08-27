@@ -5,8 +5,8 @@ import json
 import logging
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,7 +57,9 @@ def _write_pipeline_heartbeat(backend_dir: Path, stats: object) -> None:
         "last_run_at": now_utc.isoformat().replace("+00:00", "Z"),
         "last_successful_run_at": last_successful,
         "source_article_counts": dict(getattr(stats, "source_article_counts", {}) or {}),
+        "source_discovered_counts": dict(getattr(stats, "source_discovered_counts", {}) or {}),
         "degraded_sources": list(getattr(stats, "degraded_sources", []) or []),
+        "endpoint_health": [dict(row) for row in getattr(stats, "endpoint_health", []) or []],
         "stats": stats.as_dict() if hasattr(stats, "as_dict") else str(stats),
     }
     try:
@@ -105,9 +107,6 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="Saaf Baat daily pipeline runner")
     parser.add_argument("--sources", default=str(backend_dir / "config" / "sources.yaml"))
-    parser.add_argument(
-        "--rules", default=str(backend_dir / "config" / "classification_rules.yaml")
-    )
     parser.add_argument("--log-level", default="INFO")
     parser.add_argument(
         "--max-articles-per-source",
@@ -129,21 +128,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--disable-playwright",
         action="store_true",
-        help="Disable Playwright fallback in scraping (faster installs for CI).",
+        help="Deprecated no-op. Playwright was retired with the HTML scraper.",
     )
     args = parser.parse_args(argv)
 
     _configure_logging(args.log_level)
 
     if args.disable_playwright:
-        os.environ["SAAF_ENABLE_PLAYWRIGHT_FALLBACK"] = "0"
+        logging.getLogger("pipeline").warning(
+            "--disable-playwright is a no-op: ingest is RSS + sitemap only and "
+            "no browser fallback exists. The flag is accepted so existing cron "
+            "entries keep working; drop it when convenient."
+        )
     if args.low_cost_mode:
         os.environ["SAAF_LOW_COST_MODE"] = "1"
 
-    from src.db.client import SupabaseClient
+    from src.db.factory import create_db_client
     from src.pipeline.orchestrator import PipelineOrchestrator, default_config
 
-    config = default_config(sources_yaml=Path(args.sources), classification_yaml=Path(args.rules))
+    config = default_config(sources_yaml=Path(args.sources))
     overrides = {}
     if args.max_articles_per_source is not None and args.max_articles_per_source > 0:
         overrides["max_articles_per_source"] = args.max_articles_per_source
@@ -152,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     if overrides:
         config = replace(config, **overrides)
 
-    db = SupabaseClient()
+    db = create_db_client()
     runner = PipelineOrchestrator(config=config, db=db)
     stats = runner.run()
 

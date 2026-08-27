@@ -30,6 +30,10 @@ select = [
 ]
 ignore = [
     "E501", # line too long (handled by black)
+    # FastAPI's whole dependency-injection design is `Depends(...)` in an
+    # argument default. Bugbear flags it as a mutable-default hazard; here it is
+    # the framework's documented API, and "fixing" it would break the routes.
+    "B008",
 ]
 exclude = [
     ".git",
@@ -38,6 +42,11 @@ exclude = [
     ".venv",
     "venv",
     "__pycache__",
+    # One-off research probes, kept because they answer source-health questions
+    # in seconds (see claude-thinking-notes/ingestion-research.md). They are
+    # written to be read and re-run, not maintained, and reformatting them would
+    # cost more than it returns.
+    "scripts/research",
 ]
 
 [tool.mypy]

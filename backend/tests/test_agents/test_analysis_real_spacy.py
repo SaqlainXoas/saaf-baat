@@ -16,7 +16,6 @@ import pytest
 
 from src.agents.analysis import ConsensusDetector, EntityExtractor
 
-
 # ---------------------------------------------------------------------------
 # Shared fixture: load the real model once per session so the 300 MB download
 # only happens once and the ~1 s load cost is paid once.

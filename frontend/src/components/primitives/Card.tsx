@@ -7,11 +7,15 @@ export default function Card({
   className = "",
   variant = "elevated",
   interactive = false,
+  padded = true,
 }: {
   children: ReactNode;
   className?: string;
   variant?: CardVariant;
   interactive?: boolean;
+  /** Set false when the caller's own class owns the padding (story cards do,
+   *  because lead and supporting are padded differently). */
+  padded?: boolean;
 }) {
   const base =
     variant === "flat"
@@ -22,7 +26,7 @@ export default function Card({
 
   return (
     <div
-      className={`w-full p-4 ${base} ${interactive ? "sb-card-interactive" : ""} ${className}`}
+      className={`w-full ${padded ? "p-4" : ""} ${base} ${interactive ? "sb-card-interactive" : ""} ${className}`}
     >
       {children}
     </div>

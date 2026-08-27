@@ -1,0 +1,88 @@
+name: CI
+
+# Nothing ran the test suites before this file existed. The only workflow in the
+# repo ran the pipeline; pytest, jest, the golden day and verify_phases.py were
+# run by hand or not at all.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SAAF_DB_BACKEND: sqlite
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Lint
+        run: ruff check src/ scripts/ tests/ main.py run_pipeline.py
+
+      # run_pipeline.py and main.py are executed, never imported, so a syntax
+      # error in either passes the entire test suite. This has happened.
+      - name: Parse the entrypoints
+        run: python -m compileall -q run_pipeline.py main.py
+
+      - name: Tests
+        run: python -m pytest -q
+
+      # The golden day replays a recorded news day offline in ~6s and scores
+      # the brief against what that day should have contained. It needs no keys
+      # and no network.
+      - name: Golden day
+        run: python scripts/eval_golden_day.py
+
+      - name: Phase verification
+        run: python scripts/verify_phases.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

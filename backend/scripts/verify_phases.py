@@ -65,12 +65,8 @@ def phase_0() -> None:
             AnalysisService,
             ConsensusDetector,
             EntityExtractor,
-            RuleBasedClassifier,
         )
-        from src.agents.clustering import (  # noqa: F401
-            ClusteringService,
-            create_cluster_mapping,
-        )
+        from src.agents.clustering import EventGroupingService  # noqa: F401
         from src.db.models import AnalyzedFeed, Cluster, RawArticle  # noqa: F401
         print("  Imports … ok")
     except Exception as exc:
@@ -81,12 +77,15 @@ def phase_0() -> None:
     try:
         import yaml
 
+        # classification_rules.yaml was deleted with the keyword classifier;
+        # category and impact come from agents/triage.py. A half-finished patch
+        # left this asserting "categories" in a stub dict, so Phase 0 could
+        # never pass.
         sources = yaml.safe_load((_CONFIG_DIR / "sources.yaml").read_text())
-        rules = yaml.safe_load((_CONFIG_DIR / "classification_rules.yaml").read_text())
         assert "sources" in sources
-        assert "categories" in rules
-        print(f"  Config … ok  (sources: {list(sources['sources'].keys())}, "
-              f"categories: {list(rules['categories'].keys())})")
+        prompt = (_CONFIG_DIR / "editorial_prompt.md").read_text(encoding="utf-8")
+        assert "## Prompt" in prompt, "editorial_prompt.md lost its ## Prompt marker"
+        print(f"  Config … ok  (sources: {list(sources['sources'].keys())})")
     except Exception as exc:
         _fail("Phase 0", f"config error: {exc}")
         return
@@ -115,8 +114,9 @@ def phase_1() -> None:
     _header("PHASE 1 – Pydantic models")
 
     try:
-        from src.db.models import AnalyzedFeed, Cluster, RawArticle
         from uuid import uuid4
+
+        from src.db.models import AnalyzedFeed, Cluster, RawArticle
 
         # RawArticle – hash auto-generation
         art = RawArticle(
@@ -159,21 +159,30 @@ def phase_1() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 – HybridOrchestrator + synthetic RawArticle validation
+# Phase 2 – ingest wiring + synthetic RawArticle validation
 # ---------------------------------------------------------------------------
 
 
 def phase_2() -> None:
-    _header("PHASE 2 – Orchestrator + article validation")
+    _header("PHASE 2 – Ingest wiring + article validation")
 
     try:
-        from src.scrapers.hybrid_orchestrator import HybridOrchestrator
-        from src.db.models import RawArticle
+        import yaml
 
-        # Just instantiate – don't actually scrape
-        orch = HybridOrchestrator()
-        print("  HybridOrchestrator instantiated … ok")
-        orch.close()
+        from src.db.models import RawArticle
+        from src.scrapers.feeds import FeedIngestor, SourceSpec
+
+        # Build from the shipped config without touching the network.
+        config = yaml.safe_load(
+            (_CONFIG_DIR / "sources.yaml").read_text(encoding="utf-8")
+        )
+        specs = SourceSpec.from_config(config)
+        ingestor = FeedIngestor(specs)
+        endpoints = sum(len(s.feed_urls) + len(s.sitemap_urls) for s in specs)
+        print(
+            f"  FeedIngestor built … ok  ({len(specs)} enabled sources, "
+            f"{endpoints} endpoints, cap={ingestor.max_articles_per_source})"
+        )
 
         # Synthetic article with realistic text
         art = RawArticle(
@@ -248,54 +257,71 @@ def phase_3() -> None:
 
 
 def phase_4() -> None:
-    _header("PHASE 4 – Clustering")
+    _header("PHASE 4 - Event grouping")
 
+    # HDBSCAN/DBSCAN clustering was removed on 2026-08-25: it had been
+    # referenced nowhere in the pipeline since EventGroupingService took over,
+    # and this check was asserting algorithm_used == "hdbscan" for a run that
+    # produces "event_graph". It now exercises the path production uses.
     try:
-        from src.agents.clustering import (
-            ClusteringService,
-            calculate_intra_cluster_similarity,
-            create_cluster_mapping,
-        )
+        from datetime import datetime, timedelta, timezone
+        from uuid import uuid4
 
-        # 3 groups: 4 + 3 + 3 = 10 points
+        from src.agents.clustering import EventGroupingService
+        from src.db.models import RawArticle
+
         dim = 768
         rng = np.random.default_rng(42)
         centres = rng.standard_normal((3, dim)).astype(np.float32)
         centres /= np.linalg.norm(centres, axis=1, keepdims=True)
 
-        sizes = [4, 3, 3]
-        rows: list[np.ndarray] = []
-        for centre, size in zip(centres, sizes):
-            noise = rng.normal(0, 0.01, (size, dim)).astype(np.float32)
-            vecs = centre[np.newaxis, :] + noise
-            vecs /= np.linalg.norm(vecs, axis=1, keepdims=True)
-            rows.append(vecs)
-        embeddings = np.vstack(rows).astype(np.float32)
+        now = datetime.now(timezone.utc)
+        headlines = [
+            ["Rupee gains against dollar as IMF tranche lands",
+             "IMF tranche lands, rupee gains ground",
+             "Rupee gains after IMF tranche release",
+             "IMF tranche release lifts the rupee"],
+            ["Security forces repel attack on Bannu checkpost",
+             "Attack on Bannu checkpost repelled by security forces",
+             "Bannu checkpost attack repelled"],
+            ["Karachi traffic plan reroutes Shahrah-e-Faisal",
+             "Shahrah-e-Faisal traffic plan reroutes Karachi commuters",
+             "Karachi commuters face Shahrah-e-Faisal reroute"],
+        ]
 
-        svc = ClusteringService(min_clusters=2, min_cluster_size=2)
-        result = svc.cluster(embeddings)
+        articles: list[RawArticle] = []
+        for group_index, (centre, group) in enumerate(zip(centres, headlines)):
+            for offset, headline in enumerate(group):
+                noise = rng.normal(0, 0.01, dim).astype(np.float32)
+                vec = centre + noise
+                vec /= np.linalg.norm(vec)
+                articles.append(
+                    RawArticle(
+                        id=uuid4(),
+                        source=f"source-{offset}",
+                        url=f"https://example.com/{group_index}/{offset}",
+                        headline=headline,
+                        main_text=headline,
+                        publish_date=now - timedelta(hours=offset),
+                        scraped_at=now,
+                        embedding=vec.tolist(),
+                    )
+                )
 
-        print(f"  Clusters={result.num_clusters}  noise={result.noise_ratio:.2f}  "
-              f"algo={result.algorithm_used}")
-        assert result.num_clusters == 3
-        assert result.noise_ratio == 0.0
-        assert result.algorithm_used == "hdbscan"
+        result = EventGroupingService(min_cluster_size=1).group_articles(articles)
+        group_sizes = sorted(len(group.indices) for group in result.groups)
+        print(f"  Groups={len(result.groups)}  sizes={group_sizes}  algo={result.algorithm_used}")
 
-        # Mapping + similarity
-        article_ids = [f"art-{i}" for i in range(10)]
-        mapping = create_cluster_mapping(article_ids, result.labels, embeddings)
-
-        for cid, info in mapping.items():
-            sim = info["similarity"]
-            print(f"    {cid}: articles={info['article_ids']}  similarity={sim:.4f}")
-            assert sim > 0.7, f"{cid} similarity {sim} < 0.7"
+        assert result.algorithm_used == "event_graph", result.algorithm_used
+        assert len(result.groups) == 3, f"expected 3 groups, got {len(result.groups)}"
+        assert group_sizes == [3, 3, 4], group_sizes
 
     except Exception as exc:
         _fail("Phase 4", str(exc))
         traceback.print_exc()
         return
 
-    _pass("Phase 4", "3 clusters, 0 noise, all similarities > 0.7")
+    _pass("Phase 4", "3 event groups from 10 articles via the production grouping path")
 
 
 # ---------------------------------------------------------------------------
@@ -307,14 +333,28 @@ def phase_5() -> None:
     _header("PHASE 5 – Analysis (entity extraction + consensus + classification)")
 
     try:
+        from uuid import uuid4
+
         from src.agents.analysis import (
             AnalysisService,
             ConsensusDetector,
             EntityExtractor,
-            RuleBasedClassifier,
         )
         from src.db.models import RawArticle
-        from uuid import uuid4
+
+        # Category and impact come from triage (agents/triage.py) since the
+        # keyword rules were deleted, so the synthetic articles carry the
+        # verdicts production attaches before analysis. Without them this
+        # check asserted a classification path that no longer exists.
+        triage = {
+            "triage": {
+                "category": "economy",
+                "impact_labels": ["\U0001f4b3 WALLET"],
+                "story_type": "hard_news",
+                "pk_relevance": "national",
+                "confidence": 0.9,
+            }
+        }
 
         # Three IMF articles from different sources
         articles = [
@@ -329,6 +369,7 @@ def phase_5() -> None:
                     "rupee and curb inflation.  The State Bank of Pakistan welcomed "
                     "the decision."
                 ),
+                metadata=dict(triage),
             ),
             RawArticle(
                 source="tribune",
@@ -340,6 +381,7 @@ def phase_5() -> None:
                     "The agreement includes conditions around tax revenue and budget "
                     "deficit targets.  The rupee has already shown signs of recovery."
                 ),
+                metadata=dict(triage),
             ),
             RawArticle(
                 source="geo",
@@ -351,16 +393,15 @@ def phase_5() -> None:
                     "assessment.  Inflation and rupee depreciation remain key "
                     "concerns, but the IMF noted progress on tax collection targets."
                 ),
+                metadata=dict(triage),
             ),
         ]
 
         extractor = EntityExtractor()  # real en_core_web_sm
         detector = ConsensusDetector(min_agreement_ratio=1.0)
-        classifier = RuleBasedClassifier.from_yaml(_CONFIG_DIR / "classification_rules.yaml")
         svc = AnalysisService(
             entity_extractor=extractor,
             consensus_detector=detector,
-            classifier=classifier,
         )
 
         feed = svc.analyze_cluster(uuid4(), articles)
@@ -370,10 +411,10 @@ def phase_5() -> None:
         print(f"  Confidence      : {feed.classification_confidence}")
         print(f"  Impact labels   : {feed.impact_labels}")
         print(f"  Source attrib   : {feed.source_attribution}")
-        print(f"  Confirmed facts :")
+        print("  Confirmed facts :")
         for e in feed.confirmed_facts:
             print(f"      {e.text:40s} [{e.type}]  sources={e.sources}")
-        print(f"  Debated claims  :")
+        print("  Debated claims  :")
         for e in feed.debated_claims:
             print(f"      {e.text:40s} [{e.type}]  sources={e.sources}")
 

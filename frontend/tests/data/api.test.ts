@@ -1,10 +1,15 @@
 import { FEED } from "@/data/mock-data";
 import { fetchFeedWithMeta, fetchStoryWithMeta } from "@/data/api";
+import { FEED_REQUEST_LIMIT } from "@/data/briefSize";
 
 const ORIGINAL_BACKEND_API_BASE_URL = process.env.BACKEND_API_BASE_URL;
 const ORIGINAL_PUBLIC_BACKEND_API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_BASE_URL;
 const ORIGINAL_STRICT = process.env.NEXT_PUBLIC_STRICT_LIVE_DATA;
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+
+// NODE_ENV is declared readonly by @types/node; these tests exist to exercise
+// the production/test branch in data/api.ts, so they must set it.
+const mutableEnv = process.env as Record<string, string | undefined>;
 
 describe("api data mode", () => {
   beforeEach(() => {
@@ -12,7 +17,7 @@ describe("api data mode", () => {
     delete process.env.BACKEND_API_BASE_URL;
     delete process.env.NEXT_PUBLIC_BACKEND_API_BASE_URL;
     delete process.env.NEXT_PUBLIC_STRICT_LIVE_DATA;
-    process.env.NODE_ENV = "test";
+    mutableEnv.NODE_ENV = "test";
   });
 
   afterAll(() => {
@@ -25,7 +30,7 @@ describe("api data mode", () => {
     }
     if (ORIGINAL_STRICT) process.env.NEXT_PUBLIC_STRICT_LIVE_DATA = ORIGINAL_STRICT;
     else delete process.env.NEXT_PUBLIC_STRICT_LIVE_DATA;
-    if (ORIGINAL_NODE_ENV) process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    if (ORIGINAL_NODE_ENV) mutableEnv.NODE_ENV = ORIGINAL_NODE_ENV;
   });
 
   it("uses mock data when backend API base is not configured", async () => {
@@ -36,7 +41,7 @@ describe("api data mode", () => {
 
   it("returns live status when backend feed call succeeds", async () => {
     process.env.BACKEND_API_BASE_URL = "http://127.0.0.1:8000";
-    (global as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({
@@ -66,8 +71,10 @@ describe("api data mode", () => {
     ]);
     expect(result.generatedAt).toBe(FEED[0].created_at);
     expect(result.isFresh).toBe(true);
-    expect((global as { fetch: jest.Mock }).fetch.mock.calls[0][0]).toBe("http://127.0.0.1:8000/api/feed?limit=9");
-    expect((global as { fetch: jest.Mock }).fetch.mock.calls[0][1]).toMatchObject({
+    expect((global as unknown as { fetch: jest.Mock }).fetch.mock.calls[0][0]).toBe(
+      `http://127.0.0.1:8000/api/feed?limit=${FEED_REQUEST_LIMIT}`,
+    );
+    expect((global as unknown as { fetch: jest.Mock }).fetch.mock.calls[0][1]).toMatchObject({
       cache: "no-store",
       headers: { Accept: "application/json" },
     });
@@ -75,7 +82,7 @@ describe("api data mode", () => {
 
   it("uses the feed envelope freshness metadata instead of recomputing from ranked order", async () => {
     process.env.BACKEND_API_BASE_URL = "http://127.0.0.1:8000";
-    (global as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({
@@ -90,7 +97,7 @@ describe("api data mode", () => {
             category: "economy",
             impact_labels: ["💳 WALLET"],
             sources: [{ source: "dawn", count: 1 }],
-            metadata: { editorial_priority: 100, deterministic_publish_score: 9 },
+            metadata: { editorial_priority: 100 },
           },
           {
             story_id: "newer-ranked-lower",
@@ -100,7 +107,7 @@ describe("api data mode", () => {
             category: "governance",
             impact_labels: ["🏛️ GOVERNANCE"],
             sources: [{ source: "geo", count: 1 }],
-            metadata: { editorial_priority: 50, deterministic_publish_score: 7 },
+            metadata: { editorial_priority: 50 },
           },
         ],
       }),
@@ -115,7 +122,7 @@ describe("api data mode", () => {
 
   it("returns fallback status when backend feed call fails", async () => {
     process.env.BACKEND_API_BASE_URL = "http://127.0.0.1:8000";
-    (global as { fetch: jest.Mock }).fetch = jest.fn().mockRejectedValue(new Error("offline"));
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockRejectedValue(new Error("offline"));
 
     const result = await fetchFeedWithMeta();
     expect(result.status).toBe("mock-fallback");
@@ -124,7 +131,7 @@ describe("api data mode", () => {
 
   it("hydrates story detail articles from backend story route", async () => {
     process.env.BACKEND_API_BASE_URL = "http://127.0.0.1:8000";
-    (global as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({
@@ -139,6 +146,8 @@ describe("api data mode", () => {
           why_it_matters: "Fuel changes hit households quickly.",
           what_to_watch: "Watch for an official statement.",
         },
+        analysis: "Dawn reports that fuel changes will affect household bills.",
+        question: "Which consumers will be protected from the increase?",
         articles: [
           {
             id: "article-1",
@@ -148,6 +157,14 @@ describe("api data mode", () => {
             publish_date: "2026-02-04T04:30:00Z",
           },
         ],
+        analysis_sources: [
+          {
+            id: "article-2",
+            source: "geo",
+            headline: "Related consumer tariff reporting",
+            url: "https://www.geo.tv/latest/456",
+          },
+        ],
       }),
     } as Response);
 
@@ -155,16 +172,19 @@ describe("api data mode", () => {
     expect(result.status).toBe("live");
     expect(result.story?.story_id).toBe(FEED[0].story_id);
     expect(result.story?.articles).toHaveLength(1);
+    expect(result.story?.analysis).toContain("Dawn reports");
+    expect(result.story?.question).toContain("Which consumers");
+    expect(result.story?.analysis_sources).toHaveLength(1);
     expect(result.story?.metadata?.what_to_watch).toBe("Watch for an official statement.");
     expect(result.generatedAt).toBe(FEED[0].created_at);
-    expect((global as { fetch: jest.Mock }).fetch.mock.calls[0][0]).toBe(
+    expect((global as unknown as { fetch: jest.Mock }).fetch.mock.calls[0][0]).toBe(
       `http://127.0.0.1:8000/api/stories/${FEED[0].story_id}`,
     );
   });
 
   it("returns not-found when backend story route returns 404", async () => {
     process.env.BACKEND_API_BASE_URL = "http://127.0.0.1:8000";
-    (global as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
       ok: false,
       status: 404,
       json: async () => ({ detail: "Story not found" }),
@@ -177,7 +197,7 @@ describe("api data mode", () => {
 
   it("returns story fallback metadata when backend story query fails", async () => {
     process.env.BACKEND_API_BASE_URL = "http://127.0.0.1:8000";
-    (global as { fetch: jest.Mock }).fetch = jest.fn().mockRejectedValue(new Error("offline"));
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockRejectedValue(new Error("offline"));
 
     const result = await fetchStoryWithMeta(FEED[0].story_id);
     expect(result.status).toBe("mock-fallback");
@@ -195,7 +215,7 @@ describe("api data mode", () => {
   it("blocks story mock fallback in strict live mode when live request fails", async () => {
     process.env.NEXT_PUBLIC_STRICT_LIVE_DATA = "1";
     process.env.BACKEND_API_BASE_URL = "http://127.0.0.1:8000";
-    (global as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn().mockResolvedValueOnce({
       ok: false,
       status: 503,
       json: async () => ({ detail: "Database unavailable" }),

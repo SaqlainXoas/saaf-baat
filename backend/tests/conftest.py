@@ -67,12 +67,6 @@ def sources_config(config_dir):
         return yaml.safe_load(f)
 
 
-@pytest.fixture
-def classification_config(config_dir):
-    """Load classification_rules.yaml configuration."""
-    with open(config_dir / "classification_rules.yaml", "r") as f:
-        return yaml.safe_load(f)
-
 
 @pytest.fixture
 def sample_article():

@@ -2,35 +2,42 @@
 Database module for Saaf Baat.
 
 Exports:
-- SupabaseClient: Main client for database operations
+- create_db_client: Build the configured client (SQLite by default)
+- SqliteClient: Local-file client (default backend)
+- SupabaseClient: Hosted Postgres client (opt-in via SAAF_DB_BACKEND=supabase)
 - Models: RawArticle, Cluster, AnalyzedFeed
 - Enums: Category, ImpactLabel, EntityType
 - Exceptions: DatabaseError, DuplicateArticleError, NotFoundError, DBConnectionError
 """
 
-from .client import (
-    SupabaseClient,
+from .client import SupabaseClient
+from .errors import (
     DatabaseError,
+    DBConnectionError,
     DuplicateArticleError,
     NotFoundError,
-    DBConnectionError,
 )
+from .factory import configured_backend, create_db_client
 from .models import (
-    RawArticle,
-    Cluster,
     AnalyzedFeed,
+    ArticleList,
     Category,
-    ImpactLabel,
+    Cluster,
+    ClusterList,
     EntityType,
     ExtractedEntity,
-    SourceAttribution,
-    ArticleList,
-    ClusterList,
     FeedList,
+    ImpactLabel,
+    RawArticle,
+    SourceAttribution,
 )
+from .sqlite_client import SqliteClient
 
 __all__ = [
     # Client
+    "create_db_client",
+    "configured_backend",
+    "SqliteClient",
     "SupabaseClient",
     # Models
     "RawArticle",
