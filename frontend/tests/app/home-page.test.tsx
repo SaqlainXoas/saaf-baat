@@ -1,3 +1,4 @@
+jest.mock("@/components/BrandHeader", () => ({ __esModule: true, default: () => <header>Saaf Baat</header> }));
 import { render, screen } from "@testing-library/react";
 import Home from "@/app/page";
 import { fetchFeedWithMeta } from "@/data/api";
@@ -23,7 +24,7 @@ jest.mock("@/components/DataStatusBanner", () => function DataStatusBannerMock()
 });
 
 describe("Home page", () => {
-  it("uses the product's focus language in the filtered empty state", async () => {
+  it("shows a simple empty edition without filter recovery controls", async () => {
     (fetchFeedWithMeta as jest.Mock).mockResolvedValue({
       stories: [],
       status: "live",
@@ -32,10 +33,10 @@ describe("Home page", () => {
       isFresh: true,
     });
 
-    render(await Home({ searchParams: Promise.resolve({ impact: "GOVERNANCE" }) }));
+    render(await Home());
 
-    expect(screen.getAllByText("No stories match this focus")).toHaveLength(2);
-    expect(screen.getAllByRole("link", { name: "Clear focus" })).toHaveLength(2);
+    expect(screen.getAllByText("The morning brief is being prepared")).toHaveLength(2);
+    expect(screen.queryByRole("link", { name: "Clear focus" })).toBeNull();
     expect(screen.queryByText("Clear filters")).toBeNull();
   });
 
@@ -59,7 +60,7 @@ describe("Home page", () => {
       isFresh: true,
     });
 
-    render(await Home({ searchParams: Promise.resolve({}) }));
+    render(await Home());
 
     // I-7: a client-side filter over a backend contract gap silently shrank
     // the brief. The guarantee lives in the API now, so what the backend
@@ -78,7 +79,7 @@ describe("Home page", () => {
       isFresh: false,
     });
 
-    render(await Home({ searchParams: Promise.resolve({}) }));
+    render(await Home());
 
     expect(screen.getAllByText("Unable to load brief")).toHaveLength(2);
     expect(screen.getAllByText("Unable to load brief. Please try again shortly.")).toHaveLength(2);
@@ -112,7 +113,7 @@ describe("breakpoint layout contract", () => {
     // max-w-md column in a 768px viewport - most of a tablet screen empty
     // either side. The two classes must stay complementary: any gap or
     // overlap means a width that shows both layouts or neither.
-    const { container } = render(await Home({}));
+    const { container } = render(await Home());
     const desktop = container.querySelector('[class*="md:block"]');
     const phone = container.querySelector('[class*="md:hidden"]');
 
@@ -124,7 +125,7 @@ describe("breakpoint layout contract", () => {
   });
 
   it("renders both layouts so neither depends on client-side width detection", async () => {
-    const { container } = render(await Home({}));
+    const { container } = render(await Home());
     expect(container.querySelector('[class*="md:block"]')).not.toBeNull();
     expect(container.querySelector('[class*="md:hidden"]')).not.toBeNull();
   });

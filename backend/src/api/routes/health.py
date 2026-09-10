@@ -66,6 +66,12 @@ def health(db=Depends(get_db)) -> dict[str, object]:
     db_connected = False
     latest_feed_created_at: Optional[datetime] = None
     heartbeat = _load_heartbeat_payload()
+    if os.getenv("SAAF_DB_BACKEND") == "supabase" and db is not None:
+        try:
+            result = db.client.table("pipeline_state").select("payload").eq("id", "daily").limit(1).execute()
+            heartbeat = result.data[0]["payload"] if result.data else {}
+        except Exception:
+            heartbeat = {}
     last_run_at = _heartbeat_timestamp(heartbeat, "last_run_at")
     last_successful_run_at = _heartbeat_timestamp(
         heartbeat,
@@ -86,6 +92,7 @@ def health(db=Depends(get_db)) -> dict[str, object]:
     # unavailability used to be invisible: the brief silently filled with
     # template copy and looked merely flat (I-5). It is reported here instead.
     stats = dict(heartbeat.get("stats") or {})
+    publication_status = str(stats.get("publication_status") or "unknown")
     editorial_status = str(stats.get("editorial_status") or "unknown")
     story_analysis_status = str(stats.get("story_analysis_status") or "unknown")
     triage_status = str(stats.get("triage_status") or "unknown")
@@ -123,7 +130,7 @@ def health(db=Depends(get_db)) -> dict[str, object]:
 
     if db_connected:
         try:
-            latest = db.get_analyzed_feed(limit=1, published_only=False)
+            latest = db.get_analyzed_feed(limit=1, published_only=True)
             if latest:
                 latest_feed_created_at = latest[0].created_at
         except Exception:
@@ -162,6 +169,8 @@ def health(db=Depends(get_db)) -> dict[str, object]:
             "The factual cards remain available, but one or more detail pages "
             "fell back to their short snippets."
         )
+    elif publication_status == "failed":
+        pipeline_status_reason = "The last hosted edition could not be published; the previous edition remains available."
     elif embedding_status == "unavailable":
         pipeline_status_reason = (
             "No embedding provider was reachable on the last run; nothing new "
@@ -197,6 +206,8 @@ def health(db=Depends(get_db)) -> dict[str, object]:
     # it could describe honestly - still answered "ok".
     degraded = (
         not db_connected
+        or pipeline_is_stale
+        or publication_status == "failed"
         or editorial_status in {"unavailable", "degraded"}
         or story_analysis_status in {"partial", "unavailable"}
         or triage_status in {"unavailable", "degraded"}
@@ -217,6 +228,7 @@ def health(db=Depends(get_db)) -> dict[str, object]:
         "pipeline_stale_after_hours": 28,
         "pipeline_is_stale": pipeline_is_stale,
         "pipeline_status_reason": pipeline_status_reason,
+        "publication_status": publication_status,
         "editorial_status": editorial_status,
         "story_analysis_status": story_analysis_status,
         "story_analysis": story_analysis_counts,

@@ -18,12 +18,14 @@ from src.scrapers.feeds import (
     CHANNEL_RSS,
     CHANNEL_SITEMAP,
     STATUS_EMPTY,
+    STATUS_FUTURE_CLOCK,
     STATUS_NO_DATES,
     STATUS_OK,
     STATUS_STALE,
     STATUS_UNREACHABLE,
     FeedIngestor,
     SourceSpec,
+    clean_article_body,
 )
 
 NOW = datetime(2026, 8, 24, 9, 0, tzinfo=timezone.utc)
@@ -150,6 +152,59 @@ class TestHealthGate:
         assert result.reports[0].status == STATUS_OK
         assert len(result.articles) == 1
 
+    def test_feed_with_a_future_dated_newest_item_is_quarantined(self):
+        """The trap in the other direction: a publisher clock running fast.
+
+        Nation's endpoints report their newest item around -11h (future-dated)
+        on every live run and were being read as simply current.
+        """
+        payload = rss(
+            [
+                {
+                    "title": "Future headline",
+                    "link": "https://www.dawn.com/news/1",
+                    "published": NOW + timedelta(hours=11),
+                    "body": LONG_BODY,
+                }
+            ]
+        )
+        result = make_ingestor([DAWN], {DAWN.feed_urls[0]: payload}).run()
+
+        report = result.reports[0]
+        assert report.status == STATUS_FUTURE_CLOCK
+        assert report.newest_age_hours == pytest.approx(-11, rel=0.01)
+        assert result.articles == []
+        assert result.degraded_labels == ["dawn:rss:future-clock"]
+
+    def test_a_small_future_skew_within_tolerance_is_still_accepted(self):
+        payload = rss(
+            [
+                {
+                    "title": "Slightly ahead of us",
+                    "link": "https://www.dawn.com/news/1",
+                    "published": NOW + timedelta(minutes=10),
+                    "body": LONG_BODY,
+                }
+            ]
+        )
+        result = make_ingestor([DAWN], {DAWN.feed_urls[0]: payload}).run()
+
+        assert result.reports[0].status == STATUS_OK
+        assert len(result.articles) == 1
+
+    def test_sitemap_with_a_future_dated_newest_item_is_quarantined(self):
+        payload = sitemap(
+            [{"title": "Future headline", "link": "https://www.geo.tv/latest/1", "published": NOW + timedelta(hours=11)}]
+        )
+        result = make_ingestor(
+            [GEO],
+            {GEO.feed_urls[0]: (404, b""), GEO.sitemap_urls[0]: payload},
+        ).run()
+
+        sitemap_report = next(r for r in result.reports if r.channel == CHANNEL_SITEMAP)
+        assert sitemap_report.status == STATUS_FUTURE_CLOCK
+        assert result.articles == []
+
     def test_feed_without_dates_is_quarantined(self):
         payload = b"""<?xml version="1.0"?><rss version="2.0"><channel>
           <item><title>Undated</title><link>https://www.dawn.com/news/1</link></item>
@@ -206,6 +261,77 @@ class TestHealthGate:
 
 
 class TestArticleConversion:
+    def test_ary_feed_furniture_is_removed_before_snippet_storage(self):
+        body = (
+            "Transport strike announced for September 3 "
+            "By Asim Mallick - - Aug 27, 2026 - "
+            "LAHORE, August 27, 2026: Transporters announced a nationwide strike."
+        )
+
+        assert clean_article_body(body, "Transport strike announced for September 3") == (
+            "Transporters announced a nationwide strike."
+        )
+
+    def test_ary_breaking_news_ticker_is_not_the_start_of_the_story(self):
+        """A live card opened with an unrelated exam result under its headline."""
+        body = (
+            "BISE Lahore 9th class result 2026 announced 02-Sep-2026 - "
+            "Punjab Small Industries Corporation (PSIC) Board, in its 137th meeting "
+            "here on Tuesday, approved an interest-free loan scheme worth Rs 500 million."
+        )
+
+        cleaned = clean_article_body(body, "Punjab approves Rs 500m interest-free loan scheme")
+
+        assert cleaned.startswith("Punjab Small Industries Corporation")
+        assert "BISE" not in cleaned
+
+    def test_a_dated_lede_is_not_mistaken_for_a_ticker(self):
+        """The strip is guarded: it must not eat a story that is mostly its date."""
+        body = "Filing deadline moved to 30-Sep-2026 - taxpayers were told on Tuesday."
+
+        assert clean_article_body(body, "FBR moves filing deadline") == body
+
+    def test_app_wrapper_is_removed_from_both_ends(self):
+        """All 198 APP articles in a live corpus carried both halves."""
+        body = (
+            "Associated Press Of Pakistan PSIC approves Rs 500m loan scheme "
+            "Punjab Small Industries Corporation approved the scheme on Tuesday. "
+            "This post PSIC approves Rs 500m loan scheme first appeared on "
+            "Associated Press Of Pakistan and owns the property."
+        )
+
+        cleaned = clean_article_body(body, "PSIC approves Rs 500m loan scheme")
+
+        assert cleaned == "Punjab Small Industries Corporation approved the scheme on Tuesday."
+
+    def test_a_body_that_is_only_wrapper_and_caption_is_left_empty(self):
+        """APP photo captions carry no article at all.
+
+        `_to_article` reclassifies an empty body as headline_only, which is
+        honest; counting the wrapper as a summary was not.
+        """
+        body = "Associated Press Of Pakistan Youngsters participate in a rally"
+
+        assert clean_article_body(body, "Youngsters participate in a rally") == ""
+
+    def test_cleaning_is_idempotent(self):
+        body = (
+            "Associated Press Of Pakistan Rupee steadies "
+            "The rupee closed flat on Tuesday. "
+            "This post Rupee steadies first appeared on "
+            "Associated Press Of Pakistan and owns the property."
+        )
+
+        once = clean_article_body(body, "Rupee steadies")
+        assert clean_article_body(once, "Rupee steadies") == once
+
+    def test_invisible_characters_never_reach_the_body(self):
+        body = "The US and Iran exchanged ​strikes overnight on Tuesday."
+
+        cleaned = clean_article_body(body, "Markets fall")
+
+        assert cleaned == "The US and Iran exchanged strikes overnight on Tuesday."
+
     def test_full_rss_body_becomes_a_full_article(self):
         payload = rss(
             [

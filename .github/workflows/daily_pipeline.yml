@@ -1,75 +1,76 @@
-name: Pipeline refresh
-
-# NOTE ON WHAT THIS DOES AND DOES NOT DO
-#
-# This job runs the real pipeline against live feeds every morning and then
-# throws the result away. Storage defaults to local SQLite
-# (`SAAF_DB_BACKEND=sqlite`, file at `backend/data/saafbaat.db`) and a GitHub
-# runner is ephemeral, so nothing this job publishes is served to anyone.
-#
-# It is therefore a **scheduled smoke test**, not a publishing step: it proves
-# the ingest endpoints are alive, the LLM stages answer, and a brief can be
-# produced today. Until hosting exists, treat a green run as "the pipeline still
-# works" and nothing more. The brief and heartbeat are uploaded as artifacts so
-# the run leaves evidence behind.
-#
-# The workflow used to set SUPABASE_URL/SUPABASE_KEY without setting
-# SAAF_DB_BACKEND=supabase, which read as if it published to Supabase while in
-# fact writing to the runner's throwaway SQLite file. The secrets are gone
-# rather than left dangling; add them back together with
-# `SAAF_DB_BACKEND: supabase` on the day there is a database to write to.
-
+name: Publish morning brief
 on:
   workflow_dispatch: {}
-
+  schedule:
+    # 06:17 PKT start, allowing generation time before the morning edition.
+    # GitHub schedules are best-effort, not an exact publication-time guarantee.
+    - cron: '17 1 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: morning-brief-publisher
+  cancel-in-progress: false
 jobs:
-  run:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_DAILY_PIPELINE == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: backend
     env:
-      SAAF_DB_BACKEND: sqlite
+      SAAF_DB_BACKEND: supabase
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      SAAF_LOW_COST_MODE: "1"
-      SAAF_MAX_ARTICLES_PER_SOURCE: "20"
-      SAAF_EMBEDDING_BACKFILL_LIMIT: "50"
-      SAAF_PIPELINE_HEARTBEAT_FILE: "backend/.pipeline_heartbeat.json"
+      # Optional. Set both to swap the cached edition on Vercel the moment
+      # this run publishes; without them the page refreshes on its own window.
+      SAAF_REVALIDATE_URL: ${{ secrets.SAAF_REVALIDATE_URL }}
+      SAAF_REVALIDATE_SECRET: ${{ secrets.SAAF_REVALIDATE_SECRET }}
+      SAAF_STAGE_PUBLICATION: '1'
+      SAAF_PUBLICATION_TOKEN: ${{ github.run_id }}-${{ github.run_attempt }}
+      SAAF_LOW_COST_MODE: '1'
+      SAAF_MAX_ARTICLES_PER_SOURCE: '40'
+      SAAF_EMBEDDING_BACKFILL_LIMIT: '50'
+      SAAF_PIPELINE_HEARTBEAT_FILE: backend/.pipeline_heartbeat.json
     steps:
       - uses: actions/checkout@v4
-
+      - name: Check configuration
+        run: |
+          python - <<'PY'
+          import os
+          required = ('SUPABASE_URL', 'SUPABASE_KEY', 'GEMINI_API_KEY')
+          missing = [key for key in required if not os.getenv(key)]
+          if missing:
+              raise SystemExit('Add GitHub Actions secrets: ' + ', '.join(missing))
+          PY
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
           cache: pip
-          cache-dependency-path: backend/requirements.txt
-
-      - name: Install backend deps
+          cache-dependency-path: backend/requirements-pipeline.lock
+      - name: Install pipeline
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r backend/requirements.txt
-
-      - name: Run pipeline
-        working-directory: backend
+          python -m pip install -r requirements-pipeline.lock
+          python -m spacy download en_core_web_sm
+      - name: Generate draft edition
         run: python run_pipeline.py --low-cost-mode --log-level INFO
-
-      # A run that finishes without crashing is not a run that published a
-      # brief. Without this the job stayed green when every LLM stage was
-      # unavailable and zero cards were written, which is the opposite of
-      # degrading loudly.
-      - name: Assert the run was not degraded
-        working-directory: backend
-        run: python scripts/check_run_health.py --min-cards 6
-
-      - name: Publish the brief as an artifact
-        if: always()
-        working-directory: backend
+      - name: Validate this run
+        # Quiet days can publish fewer than six after editorial retries; no filler.
+        run: python scripts/check_run_health.py --min-cards 1
+      - name: Publish complete edition
+        run: python scripts/publish_hosted.py
+      - name: Record failed run
+        if: failure()
         run: |
-          mkdir -p ../run-output
-          cp .pipeline_heartbeat.json ../run-output/ 2>/dev/null || true
-          python scripts/export_brief.py --out ../run-output/brief.json || true
-
+          if test -f .pipeline_heartbeat.json; then
+            python scripts/publish_hosted.py --failure
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: brief-${{ github.run_id }}
-          path: run-output/
-          retention-days: 14
+          name: pipeline-health-${{ github.run_id }}
+          path: backend/.pipeline_heartbeat.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

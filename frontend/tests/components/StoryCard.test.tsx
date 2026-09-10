@@ -33,13 +33,13 @@ describe("StoryCard", () => {
     expect(screen.getByText(/Dawn.*Geo.*Tribune/)).toBeDefined();
   });
 
-  it("shows Open → only when it is a real link target", () => {
+  it("shows Read brief → only when it is a real link target", () => {
     const { unmount } = render(<StoryCard story={mockStory} />);
-    expect(screen.getByText("Open →")).toBeDefined();
+    expect(screen.getByText("Read brief →")).toBeDefined();
     unmount();
 
     render(<StoryCard story={mockStory} isBackground />);
-    expect(screen.queryByText("Open →")).toBeNull();
+    expect(screen.queryByText("Read brief →")).toBeNull();
   });
 
   it("renders the impact line on both variants", () => {
@@ -103,4 +103,15 @@ describe("StoryCard", () => {
     render(<StoryCard story={many} />);
     expect(screen.getByText("4 sources")).toBeDefined();
   });
+});
+
+it("keeps the story and its impact while omitting a photo caption", () => {
+  render(<StoryCard story={{ ...mockStory, snippet: "This collage shows two officials." }} />);
+  expect(screen.getByRole("heading")).toHaveTextContent(mockStory.headline);
+  expect(screen.getByText(mockStory.metadata!.why_it_matters as string)).toBeDefined();
+  expect(screen.queryByText(/This collage/)).toBeNull();
+});
+it("does not repeat an identical headline as a summary", () => {
+  render(<StoryCard story={{ ...mockStory, snippet: mockStory.headline }} />);
+  expect(screen.getAllByText(mockStory.headline)).toHaveLength(1);
 });

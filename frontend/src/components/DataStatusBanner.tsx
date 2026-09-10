@@ -1,4 +1,5 @@
 import type { DataStatus } from "@/data/api";
+import { MIN_STORIES } from "@/data/briefSize";
 
 export default function DataStatusBanner({
   status,
@@ -16,19 +17,24 @@ export default function DataStatusBanner({
   if (status === "not-found") return null;
 
   const latestUpdate = parseLatestUpdate(generatedAt);
-  const staleFeed = status === "live" && storyCount !== 0 && isFresh === false;
-  const partialBrief = status === "live" && typeof storyCount === "number" && storyCount > 0 && storyCount < 5;
-  const emptyBrief = status === "live" && storyCount === 0;
+  const briefSize = storyCount;
+  const staleFeed = status === "live" && briefSize !== 0 && isFresh === false;
+  const partialBrief =
+    status === "live" &&
+    typeof briefSize === "number" &&
+    briefSize > 0 &&
+    briefSize < MIN_STORIES;
+  const emptyBrief = status === "live" && briefSize === 0;
   if (!staleFeed && !partialBrief && !emptyBrief && status === "live") return null;
   const tone = status === "error-live-required" ? "error" : "warn";
 
   const body =
     emptyBrief
       ? "The morning brief is being prepared. Check back after 7am PKT."
-      : partialBrief
-        ? "Partial brief — more stories being reviewed"
-        : staleFeed
-      ? "Brief not updated yet today. Showing last available brief."
+      : staleFeed
+        ? "Brief not updated yet today. You’re reading an older edition; details may have changed."
+        : partialBrief
+          ? "Partial brief — fewer than six stories in this edition. We haven’t added filler."
       : message ||
         (status === "mock-no-api"
           ? "Showing the local preview brief because a live backend is not configured."

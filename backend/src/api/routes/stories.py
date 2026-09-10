@@ -6,10 +6,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.agents.clustering import trusted_article_timestamp
 from src.api.deps import get_db  # re-exported: tests override by this object
 from src.api.dtos import SourceCountDTO, StoryArticleDTO, StoryDetailDTO
 from src.db.errors import DatabaseError, NotFoundError
+from src.utils.text import extract_acronyms
+from src.utils.timestamps import trusted_article_timestamp
 
 router = APIRouter()
 _TOKEN_RE = re.compile(r"[A-Za-z0-9']+")
@@ -171,6 +172,7 @@ def _to_story_detail(feed, articles, analysis_sources=()) -> StoryDetailDTO:
 def _keywords(*parts: str) -> set[str]:
     tokens: set[str] = set()
     for part in parts:
+        tokens |= extract_acronyms(part)
         for match in _TOKEN_RE.findall(part or ""):
             token = match.lower().strip("'")
             if len(token) < 4 or token in _STOPWORDS or token.isdigit():
@@ -208,19 +210,22 @@ def get_story(
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Story not found") from None
     except DatabaseError as exc:
-        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+
+    if not feed.is_published:
+        raise HTTPException(status_code=404, detail="Story not found")
 
     try:
         cluster = db.get_cluster_by_id(cluster_id)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Cluster not found") from None
     except DatabaseError as exc:
-        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
 
     try:
         articles = db.get_articles_by_ids(cluster.article_ids)
     except DatabaseError as exc:
-        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
     # Most useful ordering: newest trusted timestamp first, then by source.
     articles = sorted(
         articles,
@@ -244,7 +249,7 @@ def get_story(
         try:
             analysis_sources = db.get_articles_by_ids(related_ids)
         except DatabaseError as exc:
-            raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
+            raise HTTPException(status_code=503, detail="Database unavailable") from exc
         analysis_sources = sorted(
             analysis_sources,
             key=lambda a: (-_trusted_sort_timestamp(a), a.source, a.url),

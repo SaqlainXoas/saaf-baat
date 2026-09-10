@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS clusters (
     representative_article_id UUID,
     cluster_size INTEGER DEFAULT 0,
     avg_similarity FLOAT,
-    algorithm_used VARCHAR(50) DEFAULT 'hdbscan',
+    algorithm_used VARCHAR(50) DEFAULT 'event_graph',
     metadata JSONB DEFAULT '{}',
     
     -- Constraints
@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_clusters_cluster_size ON clusters(cluster_size DE
 -- ============================================
 CREATE TABLE IF NOT EXISTS analyzed_feed (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    cluster_id UUID NOT NULL REFERENCES clusters(id) ON DELETE CASCADE,
+    cluster_id UUID NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     headline TEXT NOT NULL,
     summary TEXT,
@@ -99,6 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_analyzed_feed_impact_labels ON analyzed_feed USIN
 -- ============================================
 -- Foreign Key: Link raw_articles to clusters
 -- ============================================
+ALTER TABLE raw_articles DROP CONSTRAINT IF EXISTS fk_raw_articles_cluster;
 ALTER TABLE raw_articles
 ADD CONSTRAINT fk_raw_articles_cluster
 FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE SET NULL;
@@ -140,13 +141,87 @@ CREATE TRIGGER trigger_update_cluster_size
     EXECUTE FUNCTION update_cluster_size();
 
 -- ============================================
--- Row Level Security (RLS) Policies
--- For Supabase - enable if using anon key from frontend
--- ============================================
--- ALTER TABLE raw_articles ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE clusters ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE analyzed_feed ENABLE ROW LEVEL SECURITY;
+-- Hosted access is server-only. No anonymous or authenticated table access.
+-- Re-running this file upgrades the old schema without deleting content.
+ALTER TABLE analyzed_feed DROP CONSTRAINT IF EXISTS analyzed_feed_cluster_id_fkey;
+ALTER TABLE raw_articles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clusters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analyzed_feed ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON raw_articles, clusters, analyzed_feed FROM anon, authenticated;
+GRANT ALL ON raw_articles, clusters, analyzed_feed TO service_role;
 
--- Read-only access for analyzed_feed (frontend)
--- CREATE POLICY "Public read access" ON analyzed_feed
---     FOR SELECT USING (is_published = TRUE);
+CREATE TABLE IF NOT EXISTS pipeline_state (
+    id TEXT PRIMARY KEY CHECK (id = 'daily'),
+    payload JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE pipeline_state ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON pipeline_state FROM anon, authenticated;
+GRANT ALL ON pipeline_state TO service_role;
+
+-- All draft cards become visible in one transaction. Prior editions remain
+-- readable; the API selects only the latest published brief_run_at stamp.
+CREATE OR REPLACE FUNCTION publish_brief(publication_token TEXT, expected_cards INTEGER, heartbeat JSONB)
+RETURNS INTEGER LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+DECLARE
+    actual_cards INTEGER;
+    distinct_clusters INTEGER;
+    distinct_runs INTEGER;
+BEGIN
+    PERFORM pg_advisory_xact_lock(704218);
+    IF publication_token IS NULL OR length(publication_token) = 0 OR expected_cards NOT BETWEEN 1 AND 12 THEN
+        RAISE EXCEPTION 'Invalid publication request';
+    END IF;
+    SELECT count(*), count(DISTINCT cluster_id), count(DISTINCT metadata->>'brief_run_at')
+    INTO actual_cards, distinct_clusters, distinct_runs FROM analyzed_feed
+    WHERE metadata->>'publication_token' = publish_brief.publication_token;
+    IF actual_cards <> expected_cards OR distinct_clusters <> actual_cards OR distinct_runs <> 1 THEN
+        RAISE EXCEPTION 'Edition is incomplete or contains duplicate stories';
+    END IF;
+    IF EXISTS (SELECT 1 FROM analyzed_feed
+        WHERE metadata->>'publication_token' = publish_brief.publication_token
+        AND (length(trim(coalesce(metadata->>'why_it_matters', ''))) = 0
+             OR created_at < now() - interval '3 hours'
+             OR created_at > now() + interval '5 minutes')) THEN
+        RAISE EXCEPTION 'Edition has missing impact copy or invalid dates';
+    END IF;
+    UPDATE analyzed_feed SET is_published = TRUE
+    WHERE metadata->>'publication_token' = publish_brief.publication_token;
+    INSERT INTO pipeline_state(id, payload) VALUES ('daily', heartbeat)
+    ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW();
+    RETURN actual_cards;
+END;
+$$;
+REVOKE ALL ON FUNCTION publish_brief(TEXT, INTEGER, JSONB) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION publish_brief(TEXT, INTEGER, JSONB) TO service_role;
+
+-- Retention and regrouping must not remove the last readable edition or its
+-- source context, including during a multi-day generation outage.
+CREATE OR REPLACE FUNCTION preserve_published_context()
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'analyzed_feed' THEN
+        IF OLD.is_published AND OLD.metadata->>'brief_run_at' = (
+            SELECT metadata->>'brief_run_at' FROM analyzed_feed
+            WHERE is_published ORDER BY created_at DESC LIMIT 1
+        ) THEN RETURN NULL; END IF;
+    ELSIF TG_TABLE_NAME = 'clusters' THEN
+        IF EXISTS (SELECT 1 FROM analyzed_feed WHERE cluster_id = OLD.id AND is_published)
+        THEN RETURN NULL; END IF;
+    ELSIF TG_TABLE_NAME = 'raw_articles' THEN
+        IF EXISTS (SELECT 1 FROM clusters c JOIN analyzed_feed f ON f.cluster_id = c.id
+                   WHERE f.is_published AND OLD.id = ANY(c.article_ids))
+        THEN RETURN NULL; END IF;
+    END IF;
+    RETURN OLD;
+END;
+$$;
+DROP TRIGGER IF EXISTS preserve_published_feed ON analyzed_feed;
+CREATE TRIGGER preserve_published_feed BEFORE DELETE ON analyzed_feed
+FOR EACH ROW EXECUTE FUNCTION preserve_published_context();
+DROP TRIGGER IF EXISTS preserve_published_cluster ON clusters;
+CREATE TRIGGER preserve_published_cluster BEFORE DELETE ON clusters
+FOR EACH ROW EXECUTE FUNCTION preserve_published_context();
+DROP TRIGGER IF EXISTS preserve_published_article ON raw_articles;
+CREATE TRIGGER preserve_published_article BEFORE DELETE ON raw_articles
+FOR EACH ROW EXECUTE FUNCTION preserve_published_context();

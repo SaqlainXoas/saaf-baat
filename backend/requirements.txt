@@ -1,49 +1,8 @@
-# Core Dependencies
-setuptools<81
-pytest==7.4.3
-pytest-cov==4.1.0
-pytest-asyncio==0.21.1
-fastapi==0.110.0
-uvicorn==0.27.1
-
-# Code Quality
-black==23.12.1
-ruff==0.1.9
-mypy==1.7.1
-
-# Ingest — RSS + news sitemaps. No browser, no parser ensemble: the
-# publishers already serve structured, dated, full-text content.
-feedparser>=6.0
-requests>=2.31
-lxml==4.9.4
-beautifulsoup4==4.12.2
-
-# Lazy body fetch (selected stories only)
-curl_cffi>=0.5.10
-trafilatura>=1.6.0
-
-# NLP & ML
-spacy==3.8.11
-en-core-web-sm==3.8.0
-sentence-transformers==2.2.2
-scikit-learn==1.3.2
-hdbscan==0.8.33
-setfit==1.0.3
-numpy>=1.26.0
-pandas==2.1.4
-
-# Database & APIs
-# Default storage is local SQLite (stdlib) — see src/db/sqlite_client.py.
-# supabase is only needed when SAAF_DB_BACKEND=supabase.
-supabase==2.27.3
-python-dotenv==1.0.0
-pydantic==2.12.0
-httpx==0.27.0
-
-# Embeddings
-google-genai==1.0.0
-
-# Utilities
-pyyaml==6.0.1
-python-dateutil==2.8.2
-tenacity==8.2.3
+# Local development. Hosted runtimes use their smaller, fully pinned locks.
+-r requirements-pipeline.lock
+pytest>=8,<10
+pytest-cov>=6,<8
+pytest-asyncio>=0.25,<2
+black>=26,<27
+ruff>=0.15,<1
+mypy>=1.19,<2

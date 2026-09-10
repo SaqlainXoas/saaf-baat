@@ -25,7 +25,9 @@ import pytest
 
 from src.eval.golden_day import (
     GoldenDay,
+    RecordedEmbedder,
     available_days,
+    embedding_key,
     measure_cluster_quality,
     run_golden_day,
 )
@@ -131,6 +133,39 @@ class TestScoring:
         assert report.recall == 0.0
 
 
+class TestRecordedEmbedderReportsDrift:
+    """A fabricated vector must leave a trace the harness can gate on.
+
+    `_vector` has always recorded misses; nothing read them, so a fixture whose
+    recorded text had drifted replayed entirely on random vectors and still
+    reported a green run.
+    """
+
+    HEADLINE = "SBP holds policy rate at 11pc"
+    BODY = "KARACHI: The State Bank kept its policy rate unchanged on Monday."
+
+    def _embedder(self) -> RecordedEmbedder:
+        key = embedding_key(self.HEADLINE, self.BODY)
+        return RecordedEmbedder(vectors={key: np.ones(768, dtype=np.float32)})
+
+    def test_recorded_text_is_not_a_miss(self):
+        embedder = self._embedder()
+        embedder.embed_batch([embedding_key(self.HEADLINE, self.BODY)])
+        assert embedder.misses == []
+
+    def test_cleaned_body_no_longer_matches_and_is_recorded(self):
+        """Exactly what stripping publisher furniture does to the key."""
+        embedder = self._embedder()
+        embedder.embed_batch([embedding_key(self.HEADLINE, f"Associated Press Of Pakistan {self.BODY}")])
+        assert len(embedder.misses) == 1
+
+    def test_a_miss_still_returns_a_deterministic_vector(self):
+        drifted = embedding_key(self.HEADLINE, "totally different body")
+        first = self._embedder().embed_batch([drifted])
+        second = self._embedder().embed_batch([drifted])
+        assert np.allclose(first.embeddings[0], second.embeddings[0])
+
+
 _CAPTURED_DAYS = available_days()
 
 
@@ -182,6 +217,22 @@ class TestRecordedDay:
         if report.baseline_recall is None:
             pytest.skip("no baseline recorded yet for this day")
         assert report.recall >= report.baseline_recall, report.format()
+
+    def test_every_article_still_matches_its_recorded_vector(self, outcome):
+        """No article may fall back to a fabricated vector.
+
+        `embeddings.npz` is keyed on the exact text the pipeline embeds, so a
+        change to headline or body cleaning invalidates it silently: the miss is
+        answered with a seeded random vector, nothing groups at 0.92, and both
+        the merge ratchet and keyword recall still pass. Every other assertion
+        in this class is worthless if this one fails.
+        """
+        (report, _stats), _day = outcome
+        assert report.embedding_misses == [], (
+            f"{len(report.embedding_misses)} articles had no recorded vector; "
+            "re-record embeddings.npz with scripts/capture_golden_day.py. "
+            f"First: {report.embedding_misses[:3]}"
+        )
 
     def test_grouping_does_not_bury_stories_in_blobs(self, outcome):
         """A merged article is a story the editor never sees as a candidate.

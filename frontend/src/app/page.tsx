@@ -1,42 +1,20 @@
 import { fetchFeedWithMeta } from "@/data/api";
 import { MAX_STORIES } from "@/data/briefSize";
+import BrandHeader from "@/components/BrandHeader";
 import MorningGreeting from "@/components/MorningGreeting";
 import DesktopBrief from "@/components/DesktopBrief";
 import Deck from "@/components/Deck";
-import Link from "next/link";
-import { applyFilters, deriveAvailableSources, parseFilters } from "@/utils/focusFilters";
 import DataStatusBanner from "@/components/DataStatusBanner";
 import SkipLink from "@/components/SkipLink";
 
 
-function toURLSearchParams(searchParams?: Record<string, string | string[] | undefined>) {
-  const params = new URLSearchParams();
-  if (!searchParams) return params;
-  for (const [key, value] of Object.entries(searchParams)) {
-    if (Array.isArray(value)) value.forEach((v) => params.append(key, v));
-    else if (typeof value === "string") params.set(key, value);
-  }
-  return params;
-}
-
-export default async function Home({
-  searchParams,
-}: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+export default async function Home() {
   const feedResult = await fetchFeedWithMeta();
   // No render-time filter: the API guarantees why_it_matters on every card
   // (see backend test_api_feed_route). A client-side filter over a backend
   // contract gap silently shrinks the brief instead of failing loudly (I-7).
-  const allStories = feedResult.stories;
-  const availableSources = deriveAvailableSources(allStories);
-  const urlParams = toURLSearchParams(resolvedSearchParams);
-  const filters = parseFilters(urlParams);
-  const filtered = applyFilters(allStories, filters);
-  const stories = filtered.slice(0, MAX_STORIES);
+  const stories = feedResult.stories.slice(0, MAX_STORIES);
   const generatedAt = feedResult.generatedAt;
-  const hasFilters = urlParams.has("impact") || urlParams.has("sources");
   const hasLiveDataError = feedResult.status === "error-live-required";
 
   return (
@@ -60,7 +38,6 @@ export default async function Home({
           ) : stories.length > 0 ? (
             <DesktopBrief
               stories={stories}
-              availableSources={availableSources}
               status={feedResult.status}
               statusMessage={feedResult.message}
               generatedAt={generatedAt}
@@ -68,7 +45,8 @@ export default async function Home({
             />
           ) : (
             <div className="sb-container px-4 py-2" style={{ maxWidth: 900 }}>
-              <EmptyState hasFilters={hasFilters} />
+              <BrandHeader storyCount={0} generatedAt={generatedAt} isFresh={feedResult.isFresh} />
+              <EmptyState />
             </div>
           )}
         </div>
@@ -77,17 +55,16 @@ export default async function Home({
         <div className="md:hidden max-w-md mx-auto px-4">
           <MorningGreeting
             storyCount={stories.length}
-            availableSources={availableSources}
             generatedAt={generatedAt}
             isFresh={feedResult.isFresh}
           />
-          <DataStatusBanner
+          {!hasLiveDataError && <DataStatusBanner
             status={feedResult.status}
             message={feedResult.message}
             generatedAt={generatedAt}
             isFresh={feedResult.isFresh}
             storyCount={stories.length}
-          />
+          />}
 
           {hasLiveDataError ? (
             <LiveDataErrorState compact message={feedResult.message} />
@@ -96,7 +73,7 @@ export default async function Home({
               <Deck stories={stories} generatedAt={generatedAt} isFresh={feedResult.isFresh} />
             </div>
           ) : (
-            <EmptyState hasFilters={hasFilters} />
+            <EmptyState />
           )}
         </div>
       </main>
@@ -113,37 +90,24 @@ function LiveDataErrorState({ message, compact = false }: { message?: string; co
       <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
         {message || "Please try again shortly."}
       </p>
-      <Link
+      {/* A full navigation retries the server request instead of cached client state. */}
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+      <a
         href="/"
         className="inline-block mt-4 text-sm font-bold sb-focusable px-4 py-2 rounded-xl"
         style={{ background: "var(--surface)", border: "1px solid var(--hairline)", color: "var(--ink)" }}
       >
         Retry
-      </Link>
+      </a>
     </div>
   );
 }
 
-function EmptyState({ hasFilters }: { hasFilters: boolean }) {
+function EmptyState() {
   return (
     <div className="text-center py-20 px-6">
-      <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
-        {hasFilters ? "No stories match this focus" : "The morning brief is being prepared"}
-      </p>
-      <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
-        {hasFilters
-          ? "Try a broader focus to see the full brief."
-          : "Check back after 7am PKT."}
-      </p>
-      {hasFilters ? (
-        <Link
-          href="/"
-          className="inline-block mt-4 text-sm font-bold sb-focusable px-4 py-2 rounded-xl"
-          style={{ background: "var(--surface)", border: "1px solid var(--hairline)", color: "var(--ink)" }}
-        >
-          Clear focus
-        </Link>
-      ) : null}
+      <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>The morning brief is being prepared</p>
+      <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>Check back after 7am PKT.</p>
     </div>
   );
 }

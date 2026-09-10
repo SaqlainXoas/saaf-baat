@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from src.agents.clustering import trusted_article_timestamp
 from src.db.models import RawArticle
-from src.utils.text import split_sentences
+from src.utils.text import normalize_text, split_sentences
 
 logger = logging.getLogger(__name__)
 
@@ -798,7 +798,9 @@ def _content_tokens(text: str) -> set[str]:
 
 
 def _normalize_ws(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").strip())
+    # Shared with ingest so a zero-width character cannot make an output token
+    # and its source token compare unequal.
+    return normalize_text(text)
 
 
 def _normalize_evidence(text: str) -> str:

@@ -8,7 +8,7 @@ describe("MorningGreeting", () => {
 
   it("opens with the morning greeting", () => {
     // The greeting is the thing this product opens with, and it was missing
-    // from the code entirely - the header led with "Today's Brief · <date>".
+    // from the code entirely - the header led with "Back to brief · <date>".
     render(<MorningGreeting storyCount={5} />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Subah bakhair");
   });
@@ -23,7 +23,7 @@ describe("MorningGreeting", () => {
 
   it("says where and when, once", () => {
     render(<MorningGreeting storyCount={5} />);
-    expect(screen.getAllByText(/Islamabad/).length).toBe(1);
+    expect(screen.getAllByText(/Pakistan/).length).toBe(1);
   });
 
   it("states the story count", () => {

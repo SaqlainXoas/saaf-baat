@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.agents.clustering import trusted_article_timestamp
 from src.db.models import AnalyzedFeed, RawArticle
+from src.utils.text import split_sentences
 
 logger = logging.getLogger(__name__)
 # Prompt lives in config/editorial_prompt.md — update there first
@@ -37,13 +41,11 @@ DEFAULT_MAX_STORIES = 12
 # What the prompt describes as a typical full news day. It is not a quota: the
 # editor is told to return fewer when fewer candidates deserve a slot.
 TARGET_STORY_FLOOR = 6
-# The only count worth spending another call on. Retrying up to the target
-# floor was structurally a padding mechanism - it pushed the editor down into
-# the weak tail until the number was hit, which is how licence tallies and
-# inspection drives reached the brief. This is a collapse guard instead, and it
-# sits *below* TARGET_STORY_FLOOR for that reason: if the two were equal, the
-# retry would once again be a mechanism for reaching the target.
-COLLAPSE_RETRY_FLOOR = 4
+# A pass below the honest six-card floor sees deeper candidates before the
+# product accepts a short edition. This is replacement opportunity, not
+# padding: the editor may still reject every deeper candidate, and the caller
+# ships the best grounded set it actually returned.
+COLLAPSE_RETRY_FLOOR = TARGET_STORY_FLOOR
 # Retry a short pass this many times, each attempt seeing deeper into the
 # ranked candidates, before shipping what the editor produced.
 MAX_SHORT_PASS_ATTEMPTS = 3
@@ -201,7 +203,11 @@ class EditorialStory(BaseModel):
             "Do not space values evenly across the brief."
         ),
     )
-    headline: str = Field(min_length=8, max_length=180, description="10-12 words, active voice.")
+    headline: str = Field(
+        min_length=8,
+        max_length=180,
+        description="Concise active voice. Never omit a quantity's unit to shorten it.",
+    )
     impact_line: str = Field(
         min_length=16,
         max_length=220,
@@ -222,8 +228,8 @@ class EditorialStory(BaseModel):
             "ties, commitments, efforts or significance. Never 'may', "
             "'could', 'might', 'potential', 'helps', 'highlights', "
             "'underscores'. Never restate the headline. Vary the sentence - do "
-            "not build every card as 'X face Y'. GOOD: 'Property buyers in "
-            "Punjab lose six months of land record processing from today.' "
+            "not build every card as 'X face Y'. GOOD: 'Property buyers must "
+            "wait for the government to state when certificate processing resumes.' "
             "BAD: 'Military ties between the two nations strengthen after "
             "high-level meetings.' - no reader appears in it and nothing "
             "changed for anyone."
@@ -341,7 +347,7 @@ def review_with_short_pass_retries(
     max_stories: int,
 ) -> Dict[UUID, EditorialStory]:
     """
-    Ask the editor for the brief, retrying only a collapsed pass.
+    Ask the editor for the brief, retrying a pass below the honest six-card floor.
 
     A pass that comes back near-empty is retried against a deeper slice of the
     ranked candidates: the editor rejecting the top of the list is exactly when
@@ -349,7 +355,7 @@ def review_with_short_pass_retries(
     the ten-to-twelve target - retrying up to the target was structurally a
     padding mechanism, pushing the editor into the weak tail until the number
     was hit. After the attempts are spent the caller ships what the editor
-    produced; padding the count with template cards is what this replaces.
+    produced; deeper review never inserts template cards or bypasses grounding.
     """
     if not candidates:
         return {}
@@ -357,11 +363,20 @@ def review_with_short_pass_retries(
     floor = min(COLLAPSE_RETRY_FLOOR, int(max_stories), len(candidates))
     best: Dict[UUID, EditorialStory] = {}
     last_error: Optional[EditorialError] = None
+    # A cluster that already failed the grounding check does not get more
+    # credible by being shown again - re-offering it just spends a retry
+    # attempt on the same rejection instead of a candidate the editor hasn't
+    # judged yet.
+    blocked_cluster_ids: Set[UUID] = set()
 
     for attempt, window in enumerate(
         candidate_windows(len(candidates), max_stories=max_stories), start=1
     ):
-        prompt_candidates = list(candidates[:window])
+        prompt_candidates = [
+            candidate
+            for candidate in candidates[:window]
+            if candidate.cluster_id not in blocked_cluster_ids
+        ]
         try:
             parsed = review_once(prompt_candidates)
         except EditorialError as exc:
@@ -369,9 +384,14 @@ def review_with_short_pass_retries(
             logger.warning("Editorial attempt %d failed: %s", attempt, exc)
             break
 
-        by_cluster = _stories_by_cluster_id(parsed, prompt_candidates)
+        by_cluster, grounding_rejected = _stories_by_cluster_id(parsed, prompt_candidates)
+        blocked_cluster_ids |= grounding_rejected
         _log_corroborated_omissions(parsed, prompt_candidates, by_cluster)
         _log_thin_admissions(prompt_candidates, by_cluster)
+        # Keep one coherent editorial judgement. Combining selections from
+        # separate passes admitted stories a different pass had explicitly
+        # rejected as routine, and made priorities from independent responses
+        # look comparable when they are not.
         if len(by_cluster) > len(best):
             best = by_cluster
         if len(best) >= floor:
@@ -501,10 +521,19 @@ def _log_corroborated_omissions(
 def _stories_by_cluster_id(
     parsed: EditorialResponse,
     candidates: Sequence[ClusterEditorialCandidate],
-) -> Dict[UUID, EditorialStory]:
-    """Map a parsed response onto the clusters it was actually allowed to pick."""
+) -> Tuple[Dict[UUID, EditorialStory], Set[UUID]]:
+    """Map a parsed response onto the clusters it was actually allowed to pick.
+
+    Returns the accepted stories and, separately, the cluster_ids rejected
+    specifically for failing the grounding check - not for an invalid or
+    unknown cluster_id, or a duplicate. A retry loop needs that second set to
+    stop re-offering a cluster the editor already tried and failed to
+    substantiate.
+    """
     by_cluster: Dict[UUID, EditorialStory] = {}
-    allowed_ids = {candidate.cluster_id for candidate in candidates}
+    grounding_rejected: Set[UUID] = set()
+    candidate_by_id = {candidate.cluster_id: candidate for candidate in candidates}
+    allowed_ids = set(candidate_by_id)
     for story in parsed.stories:
         try:
             cluster_id = UUID(story.cluster_id)
@@ -516,8 +545,338 @@ def _stories_by_cluster_id(
             continue
         if cluster_id in by_cluster:
             continue
+        failure = _editorial_grounding_failure(story, candidate_by_id[cluster_id])
+        if failure is not None:
+            cause, token = failure
+            # This used to log one message - "unsupported consequence" - for
+            # all four checks, naming neither the check that fired nor the word
+            # that tripped it. A live run shipped four cards because the guard
+            # vetoed two of the six the editor proposed, and the log could not
+            # say why. A rejection the brief pays for has to be legible.
+            logger.warning(
+                "Rejecting editorial story for cluster_id=%s: %s (%r) -- %s",
+                cluster_id,
+                cause,
+                token,
+                story.headline[:80],
+            )
+            grounding_rejected.add(cluster_id)
+            continue
         by_cluster[cluster_id] = story
-    return by_cluster
+    return by_cluster, grounding_rejected
+
+
+_CLAIM_NUMBER_RE = re.compile(r"(?<!\w)\d[\d,.]*(?!\w)")
+_CONSEQUENCE_RE = re.compile(
+    r"(?i)\b(?:halt\w*|clos(?:e|ed|ure|ures)|disrupt\w*|shut\w*|"
+    r"unable|cannot|won't|will not|lose|loses|lost)\b"
+)
+_IMPLEMENTATION_RE = re.compile(
+    r"(?i)\b(?:approved|began|begun|implemented|launched|notified|ordered|started)\b"
+)
+_PROPOSAL_RE = re.compile(
+    r"(?i)\b(?:call(?:ed|s)? for|hint(?:ed|s)?|mull(?:ed|s|ing)?|"
+    r"propos(?:al|e|ed|es)|recommend(?:ed|s)?|suggest(?:ed|s)?)\b"
+)
+_ACTIVE_GOVERNMENT_MOVE_RE = re.compile(
+    r"(?i)\b(?:government|centre|officials?|minister)\s+"
+    r"(?:begin\w*|move\w*|replace\w*|start\w*)\b"
+)
+# "may" is both the hedge and the month, and this pattern is case-insensitive,
+# so "from May 2026" read as hedging and cost the card. `story_analysis` solved
+# the same collision once (`_MAY_DATE_RE`); mirror it rather than invent a
+# second rule. Everything except "may" stays case-insensitive; "may" is matched
+# only in lower case and only when a date does not follow or precede it.
+_HEDGE_OR_MOOD_RE = re.compile(
+    r"(?i)\b(?:could|might|potential(?:ly)?|heightened\s+"
+    r"(?:concern|risk|scrutiny|security|tension)\w*|growing\s+concerns?)\b"
+)
+_MAY_HEDGE_RE = re.compile(r"(?<![A-Za-z])may(?![A-Za-z])(?!\s+\d{1,4}\b)")
+_MAY_DATE_RE = re.compile(r"(?i)\b\d{1,2}(?:st|nd|rd|th)?\s+may\b")
+_CONSEQUENCE_FAMILIES = {
+    "halt": ("halt",),
+    "clos": ("close", "closed", "closure"),
+    "disrupt": ("disrupt", "disruption"),
+    "shut": ("shut",),
+    "unable": ("unable",),
+    "cannot": ("cannot",),
+    "won't": ("won't", "will not"),
+    "will not": ("will not", "won't"),
+    "los": ("lose", "loses", "lost", "loss"),
+}
+
+
+def _candidate_reporting(candidate: ClusterEditorialCandidate) -> str:
+    parts: List[str] = [candidate.base_feed.headline, candidate.base_feed.summary or ""]
+    parts.extend(fact.text for fact in candidate.base_feed.confirmed_facts or [])
+    for article in candidate.articles:
+        parts.extend((article.headline, article.main_text))
+    return " ".join(" ".join(parts).split())
+
+
+def _editorial_grounding_failure(
+    story: EditorialStory, candidate: ClusterEditorialCandidate
+) -> Optional[Tuple[str, str]]:
+    """Why the supplied reporting does not support this card, or None.
+
+    Returns the named check that failed and the word or figure that tripped it.
+    It used to return a bare bool for four different checks, so a brief that
+    came in under the six-card floor could not be diagnosed at all: the log
+    said "unsupported consequence" whether the real problem was a hedge, an
+    invented number, or a proposal written up as a decision.
+    """
+    evidence = _candidate_reporting(candidate)
+    copy = " ".join(
+        part for part in (story.headline, story.impact_line, story.what_to_watch or "") if part
+    )
+    evidence_folded = evidence.casefold()
+
+    impact_without_may_dates = _MAY_DATE_RE.sub("", story.impact_line)
+    hedge = _HEDGE_OR_MOOD_RE.search(story.impact_line) or _MAY_HEDGE_RE.search(
+        impact_without_may_dates
+    )
+    if hedge:
+        return "hedge_or_mood", hedge.group(0)
+
+    evidence_numbers = {
+        match.group(0).replace(",", "") for match in _CLAIM_NUMBER_RE.finditer(evidence)
+    }
+    copy_numbers = {
+        match.group(0).replace(",", "") for match in _CLAIM_NUMBER_RE.finditer(copy)
+    }
+    unsupported = copy_numbers - evidence_numbers
+    if unsupported:
+        return "unsupported_number", ", ".join(sorted(unsupported))
+
+    for consequence in _CONSEQUENCE_RE.finditer(copy):
+        term = consequence.group(0).casefold()
+        family = next(
+            (forms for root, forms in _CONSEQUENCE_FAMILIES.items() if term.startswith(root)),
+            (term,),
+        )
+        if not any(form in evidence_folded for form in family):
+            return "unsupported_consequence", consequence.group(0)
+
+    active = _ACTIVE_GOVERNMENT_MOVE_RE.search(copy)
+    if (
+        active
+        and _PROPOSAL_RE.search(evidence)
+        and not _IMPLEMENTATION_RE.search(evidence)
+    ):
+        return "proposal_reported_as_action", active.group(0)
+    return None
+
+
+def _editorial_story_is_grounded(
+    story: EditorialStory, candidate: ClusterEditorialCandidate
+) -> bool:
+    """Reject card-level consequences that the supplied reporting never states."""
+    return _editorial_grounding_failure(story, candidate) is None
+
+
+_TERMINAL_NUMBER_RE = re.compile(r"(?P<number>\d[\d,.]*)\s*$")
+_MEASUREMENT_UNITS = (
+    r"paisa|paise|paisas|rupee|rupees|percent|per cent|percentage points?|"
+    r"litres?|liters?|days?|hours?|months?|years?"
+)
+
+
+def _repair_headline_measurement(
+    headline: str, candidate: ClusterEditorialCandidate
+) -> str:
+    clean = headline.strip()
+    terminal = _TERMINAL_NUMBER_RE.search(clean)
+    if not terminal:
+        return clean
+    number = re.escape(terminal.group("number"))
+    supported = re.search(
+        rf"(?i)(?<!\d){number}\s+(?P<unit>{_MEASUREMENT_UNITS})\b",
+        _candidate_reporting(candidate),
+    )
+    if not supported:
+        return clean
+    return f"{clean} {supported.group('unit')}"
+
+
+_WATCH_DATE_RE = re.compile(
+    r"(?i)\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|"
+    r"Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|"
+    r"Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2}(?:,\s*\d{4})?\b"
+)
+_WATCH_EVENTS = (
+    "strike",
+    "hearing",
+    "vote",
+    "election",
+    "deadline",
+    "rally",
+    "meeting",
+)
+_WATCH_MONTHS = {
+    "jan": 1,
+    "january": 1,
+    "feb": 2,
+    "february": 2,
+    "mar": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "jun": 6,
+    "june": 6,
+    "jul": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+}
+
+
+_WATCH_NON_SUBJECT_WORDS = {"the", "this", "that", "it", "a", "an"} | set(_WATCH_MONTHS)
+_WATCH_SUBJECT_TOKEN_RE = re.compile(r"[A-Z][A-Za-z'\-]+")
+
+
+def _sentence_names_a_subject(sentence: str, *, exclude: str = "") -> bool:
+    """A bare event+date is not useful to a reader without who/what it is.
+
+    "The meeting is scheduled for September 16." names no one - it only
+    reached a live card because a source sentence matched an event keyword
+    and a future date with nothing tying either to a subject. This looks for
+    any capitalised word in the sentence that is not a generic sentence
+    opener ("The", "This"...) or the month name inside the date itself. It is
+    a plain word check against the literal source text, so it can only find
+    a subject that is really there - it cannot invent one.
+    """
+    excluded = exclude.casefold()
+    for word in sentence.strip().split():
+        token = word.strip(".,:;()\"'")
+        if not _WATCH_SUBJECT_TOKEN_RE.fullmatch(token):
+            continue
+        folded = token.casefold()
+        if folded in _WATCH_NON_SUBJECT_WORDS or folded == excluded:
+            continue
+        return True
+    return False
+
+
+_WATCH_RELEVANCE_TOKEN_RE = re.compile(r"[A-Za-z0-9']+")
+
+
+def _story_relevance_tokens(text: str) -> Set[str]:
+    return {
+        token.lower()
+        for token in _WATCH_RELEVANCE_TOKEN_RE.findall(text or "")
+        if len(token) >= 4 and token.lower() not in _WATCH_MONTHS and not token.isdigit()
+    }
+
+
+def _sentence_relates_to_story(sentence: str, candidate: ClusterEditorialCandidate) -> bool:
+    """A date+event match must be about this story, not passing boilerplate.
+
+    A PSX card once surfaced "The meeting is scheduled for September 16."
+    lifted from a sentence about a U.S. Federal Reserve rate decision, cited
+    only as market-context boilerplate inside the Pakistani article - it
+    named a real subject ("CME"), just not one connected to this story at
+    all. Requiring at least one shared non-generic word with the story's own
+    headline keeps the scan from wandering into an unrelated citation.
+    """
+    story_tokens = _story_relevance_tokens(candidate.base_feed.headline) | (
+        _story_relevance_tokens(candidate.representative_article.headline)
+    )
+    if not story_tokens:
+        return True
+    return bool(story_tokens & _story_relevance_tokens(sentence))
+
+
+def _watch_reference_date(candidate: ClusterEditorialCandidate) -> date:
+    timestamps = [trusted_article_timestamp(article) for article in candidate.articles]
+    reference = max(timestamps) if timestamps else datetime.now(timezone.utc)
+    return reference.astimezone(ZoneInfo("Asia/Karachi")).date()
+
+
+def _watch_date_is_current_or_future(match: re.Match[str], reference: date) -> bool:
+    parts = re.sub(r"[.,]", "", match.group(0)).split()
+    if len(parts) < 2:
+        return False
+    month = _WATCH_MONTHS.get(parts[0].casefold())
+    if month is None:
+        return False
+    year = int(parts[2]) if len(parts) >= 3 else reference.year
+    try:
+        mentioned = date(year, month, int(parts[1]))
+    except ValueError:
+        return False
+    return mentioned >= reference
+
+
+def _adds_nothing_to(sentence: str, already_said: str) -> bool:
+    """Does this line tell the reader anything the card has not already said?
+
+    A live card carried the headline "PIA increases weekly flights to London to
+    seven from October 27", an impact line repeating "starting October 27", a
+    snippet repeating it again, and then "What to watch: October 27" - the same
+    date four times on one card. A watch line whose every content word is
+    already in the headline or the impact line is furniture, not a next step.
+    """
+    said = _story_relevance_tokens(already_said)
+    if not said:
+        return False
+    tokens = _story_relevance_tokens(sentence)
+    # No content words at all is the degenerate case: a bare date.
+    return not tokens or tokens <= said
+
+
+def _derive_what_to_watch(
+    current: Optional[str],
+    candidate: ClusterEditorialCandidate,
+    *,
+    already_said: str = "",
+) -> str:
+    reference = _watch_reference_date(candidate)
+    if (current or "").strip():
+        clean = str(current).strip()
+        dates = list(_WATCH_DATE_RE.finditer(clean))
+        if dates and not all(
+            _watch_date_is_current_or_future(match, reference) for match in dates
+        ):
+            return ""
+        # The model-supplied line used to ship verbatim once its dates were in
+        # the future - the derived path below has always had to name a subject
+        # and connect to the story, and this one had no guard at all. It
+        # published "What to watch: October 27": a bare date, naming nothing.
+        # An unusable line is worse than no line, so failures return "" rather
+        # than being patched into a sentence the reporting did not write.
+        if not _sentence_names_a_subject(clean):
+            return ""
+        if not _sentence_relates_to_story(clean, candidate):
+            return ""
+        if _adds_nothing_to(clean, already_said):
+            return ""
+        return clean
+    for article in candidate.articles:
+        for text in (article.headline, article.main_text):
+            for sentence in split_sentences(text or ""):
+                date = _WATCH_DATE_RE.search(sentence)
+                if not date:
+                    continue
+                folded = sentence.casefold()
+                event = next((item for item in _WATCH_EVENTS if item in folded), None)
+                if (
+                    event
+                    and _watch_date_is_current_or_future(date, reference)
+                    and _sentence_names_a_subject(sentence, exclude=event)
+                    and _sentence_relates_to_story(sentence, candidate)
+                ):
+                    return f"The {event} is scheduled for {date.group(0)}."
+    return ""
 
 
 def merge_editorial_story(
@@ -527,7 +886,7 @@ def merge_editorial_story(
     model_name: str,
 ) -> AnalyzedFeed:
     feed = candidate.base_feed.model_copy(deep=True)
-    feed.headline = story.headline.strip()
+    feed.headline = _repair_headline_measurement(story.headline, candidate)
     feed.category = story.category
     feed.impact_labels = story.impact_labels
 
@@ -540,7 +899,11 @@ def merge_editorial_story(
             "editorial_grade": story.public_impact,
             "impact_line": story.impact_line.strip(),
             "why_it_matters": story.impact_line.strip(),
-            "what_to_watch": (story.what_to_watch or "").strip(),
+            "what_to_watch": _derive_what_to_watch(
+                story.what_to_watch,
+                candidate,
+                already_said=f"{feed.headline} {story.impact_line}",
+            ),
             "story_tags": list(story.story_tags),
             "selection_reason": story.selection_reason.strip(),
             "cluster_algorithm": candidate.algorithm_used,
@@ -572,6 +935,7 @@ def build_editorial_user_prompt(candidate_rows: Sequence[Dict[str, Any]], *, max
                 "Return at most max_stories items in stories.",
                 "typical_story_range describes a full news day, not a quota. Return fewer stories when fewer candidates deserve a slot, and never pad the count to reach the range.",
                 "Each story must map to exactly one provided cluster_id.",
+                "Do not select two clusters about the same underlying incident or institution response. Pick the strongest development; related follow-ups belong in that story's analysis, not in a second card.",
                 "Every card must earn its slot: include it only if an ordinary reader in Pakistan would be worse off not knowing it by this evening.",
                 "evidence carries what the pipeline knows about each candidate. Use evidence.pk_relevance and evidence.source_count to judge whether a story is real and national - never as a reason to publish it.",
                 "A high evidence.source_count often means a ministry or a military press office issued a statement that every publisher reprinted. Syndication is not importance. A bilateral protocol, a reaffirmed commitment, an expanded cooperation, a courtesy call or a reviewed progress carried by seven publishers is still a card with no reader in it, and it must lose its slot to a story that changes something for someone.",
@@ -579,7 +943,7 @@ def build_editorial_user_prompt(candidate_rows: Sequence[Dict[str, Any]], *, max
                 "publisher_topline_score measures position in a publisher's feed, not importance. Use it only to break a tie between otherwise equal candidates.",
                 "Do not let an isolated local incident lead the brief when a national development is available.",
                 "A narrow legal, regulatory or trade-association ruling earns a slot only when the supplied reporting itself states a broad, immediate national consequence - a price ordinary consumers now pay, a nationwide supply or service effect, or a rule binding a whole sector's customers from a stated date. A consumer-adjacent topic is not that consequence, and such a ruling must never displace a security incident, a disaster, a major price change, or a nationally consequential political development.",
-                "headline must be 10-12 words, active voice, and direct.",
+                "headline must be concise, active voice, and direct. Never drop a number's unit to meet a word target.",
                 "impact_line is two parts and both are required: name the people, then name the one thing that is different for them today. Apply that as a test, not as advice - read your own line back and point at the people in it and at what changed. If you cannot point at both, omit the story.",
                 "impact_line must never restate the headline in different words, and must never be a generic observation such as 'this highlights ongoing challenges' or 'this could affect public perception'. A sentence whose subject is an institution, a relationship or a process - 'ties strengthen', 'cooperation expands', 'the commission enforces' - has no reader in it and fails the test.",
                 "Part two must be a fact a reader could pay, miss, queue for or read on a bill - not a mood such as 'a critical safety crisis', 'heightened scrutiny' or 'growing concerns'. Never use 'potential' or 'potentially' to smuggle a hedge past the ban on 'may' and 'could'.",

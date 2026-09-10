@@ -27,9 +27,10 @@ describe("BrandHeader", () => {
     expect(container.querySelector("svg")).not.toBeNull();
   });
 
-  it("renders Focus button", () => {
+  it("keeps a single appearance control and no Focus button", () => {
     renderHeader();
-    expect(screen.getByText("Focus")).toBeDefined();
+    expect(screen.queryByText("Focus")).toBeNull();
+    expect(screen.getAllByRole("button")).toHaveLength(1);
   });
 
   it("leads with the greeting, same as mobile", () => {

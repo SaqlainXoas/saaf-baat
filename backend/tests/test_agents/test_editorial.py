@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -12,8 +13,10 @@ from src.agents.editorial import (
     EditorialError,
     EditorialResponse,
     EditorialStory,
+    _derive_what_to_watch,
     _log_thin_admissions,
     _normalize_editorial_payload,
+    _stories_by_cluster_id,
     build_editorial_user_prompt,
     merge_editorial_story,
     review_with_short_pass_retries,
@@ -73,6 +76,201 @@ def test_merge_editorial_story_overrides_card_fields_and_sets_metadata():
     assert merged.metadata["editorial_model"] == "openai/gpt-oss-120b"
     assert merged.metadata["editorial_priority"] == 91
     assert merged.metadata["llm_augmented"] is True
+
+
+@pytest.mark.parametrize(
+    ("evidence", "headline", "impact"),
+    [
+        (
+            "The Green Certificate system was suspended pending review.",
+            "Punjab suspends Green Certificate system",
+            "Property buyers face a six-month halt in transactions from today.",
+        ),
+        (
+            "Punjab ordered fire safety audits at government hospitals.",
+            "Punjab orders hospital fire safety audits",
+            "Patients face service disruptions while the hospital audits continue.",
+        ),
+        (
+            "The minister called for a uniform gas policy and proposed ending categories.",
+            "Government moves to replace household gas categories",
+            "Households must track a proposed change to gas categories.",
+        ),
+    ],
+)
+def test_editorial_gate_rejects_unsupported_consequences(evidence, headline, impact):
+    candidate = _build_candidate()
+    candidate.representative_article.headline = headline
+    candidate.representative_article.main_text = evidence
+    candidate.base_feed.headline = headline
+    story = EditorialStory(
+        cluster_id=str(candidate.cluster_id),
+        priority=80,
+        headline=headline,
+        impact_line=impact,
+        category="economy",
+        impact_labels=["💳 WALLET"],
+        public_impact="high",
+        story_tags=["policy"],
+        confidence=0.8,
+        selection_reason="Direct reported public impact.",
+    )
+
+    accepted, rejected = _stories_by_cluster_id(
+        EditorialResponse(stories=[story]), [candidate]
+    )
+    assert accepted == {}
+    assert rejected == {candidate.cluster_id}
+
+
+def test_merge_repairs_truncated_unit_and_derives_concrete_watch_date():
+    candidate = _build_candidate()
+    candidate.representative_article.publish_date = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    candidate.representative_article.headline = (
+        "Government cuts diesel price by 19 paise before September 3 strike"
+    )
+    candidate.representative_article.main_text = (
+        "Diesel was cut by 19 paise. Transporters scheduled a nationwide strike for September 3."
+    )
+    story = EditorialStory(
+        cluster_id=str(candidate.cluster_id),
+        priority=90,
+        headline="Government cuts diesel by 19",
+        impact_line="Drivers pay the newly reported diesel price from today.",
+        category="economy",
+        impact_labels=["💳 WALLET"],
+        public_impact="high",
+        story_tags=["fuel"],
+        confidence=0.9,
+        selection_reason="A direct change in transport costs.",
+    )
+
+    merged = merge_editorial_story(candidate, story, model_name="test-model")
+
+    assert merged.headline == "Government cuts diesel by 19 paise"
+    assert merged.metadata["what_to_watch"] == "The strike is scheduled for September 3."
+
+
+def test_what_to_watch_does_not_resurface_a_past_event_date():
+    candidate = _build_candidate()
+    candidate.representative_article.publish_date = datetime(2026, 8, 29, tzinfo=timezone.utc)
+    candidate.representative_article.main_text = (
+        "The election was held on August 24 and the new prime minister has taken oath."
+    )
+
+    assert _derive_what_to_watch(None, candidate) == ""
+    assert (
+        _derive_what_to_watch("The election is scheduled for August 24.", candidate)
+        == ""
+    )
+
+
+def test_what_to_watch_rejects_a_subjectless_sentence():
+    """Regression: a live PSX card shipped 'The meeting is scheduled for
+    September 16.' - a bare event and date with no one named. The source
+    sentence that produced it never named who called the meeting or what it
+    was about, so it must be rejected rather than templated as-is.
+    """
+    candidate = _build_candidate()
+    candidate.representative_article.publish_date = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    candidate.representative_article.main_text = (
+        "Selling pressure hit the market today. The meeting is scheduled for September 16."
+    )
+
+    assert _derive_what_to_watch(None, candidate) == ""
+
+
+def test_what_to_watch_rejects_a_subject_unrelated_to_the_story():
+    """Regression: a live PSX card's watch line was lifted from a sentence
+    about a U.S. Federal Reserve rate decision, cited only as market-context
+    boilerplate inside the PSX article. It named a real subject ("CME"), and
+    the naive '.' splitter used to cut the sentence right after "U.S." - but
+    neither should be enough, because nothing in it is about this story.
+    """
+    candidate = _build_candidate()
+    candidate.base_feed.headline = "Pakistan Stock Exchange sheds over 1,000 points"
+    candidate.representative_article.headline = "PSX: Stocks shed over 1,000 points in"
+    candidate.representative_article.publish_date = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    candidate.representative_article.main_text = (
+        "Selling pressure hit the market. Fed funds futures are pricing an implied "
+        "67% probability of a 25-basis-point increase in benchmark borrowing costs "
+        "at the U.S. central bank's two-day meeting ending on September 16, compared "
+        "to a 39.6% chance a week ago, according to the CME Group's FedWatch tool."
+    )
+
+    assert _derive_what_to_watch(None, candidate) == ""
+
+
+def test_what_to_watch_accepts_a_sentence_naming_a_subject():
+    candidate = _build_candidate()
+    candidate.representative_article.publish_date = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    candidate.representative_article.main_text = (
+        "Selling pressure hit the market today. "
+        "The Petroleum Division holds a subsidy review meeting on September 16."
+    )
+
+    assert (
+        _derive_what_to_watch(None, candidate)
+        == "The meeting is scheduled for September 16."
+    )
+
+
+def test_a_model_supplied_bare_date_is_not_a_watch_line():
+    """Regression: a live card rendered 'What to watch: October 27'.
+
+    The model-supplied path only checked that the date had not already passed,
+    so a string naming nobody and nothing shipped verbatim - while the derived
+    path beside it had required a subject all along.
+    """
+    candidate = _build_candidate()
+    candidate.representative_article.publish_date = datetime(2026, 9, 2, tzinfo=timezone.utc)
+
+    assert _derive_what_to_watch("October 27", candidate) == ""
+
+
+def test_a_model_supplied_line_must_still_be_about_this_story():
+    candidate = _build_candidate()
+    candidate.base_feed.headline = "Pakistan Stock Exchange sheds over 1,000 points"
+    candidate.representative_article.headline = "PSX: Stocks shed over 1,000 points in"
+    candidate.representative_article.publish_date = datetime(2026, 9, 2, tzinfo=timezone.utc)
+
+    assert (
+        _derive_what_to_watch(
+            "The CME Group publishes its FedWatch revision on September 16.", candidate
+        )
+        == ""
+    )
+
+
+def test_a_model_supplied_line_that_only_repeats_the_card_is_dropped():
+    """The same date appeared in the headline, the impact line and here."""
+    candidate = _build_candidate()
+    candidate.representative_article.publish_date = datetime(2026, 9, 2, tzinfo=timezone.utc)
+
+    assert (
+        _derive_what_to_watch(
+            "PIA increases flights from October 27.",
+            candidate,
+            already_said=(
+                "PIA increases weekly flights to London to seven from October 27. "
+                "Travelers gain more scheduling options as PIA increases its flights."
+            ),
+        )
+        == ""
+    )
+
+
+def test_a_model_supplied_line_that_adds_a_real_next_step_survives():
+    candidate = _build_candidate()
+    candidate.representative_article.publish_date = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    line = "The Petroleum Division reviews the fuel subsidy on September 16."
+
+    assert (
+        _derive_what_to_watch(
+            line, candidate, already_said="Government weighs changes to pump prices"
+        )
+        == line
+    )
 
 
 def test_gemini_editorial_service_uses_application_json_schema_config_and_parses():
@@ -308,7 +506,7 @@ def _story_payload(cluster_id: str, *, priority: int = 90, **overrides) -> dict:
         "cluster_id": cluster_id,
         "priority": priority,
         "headline": "A clear headline about a real Pakistani development today",
-        "impact_line": "Drivers pay 20 percent more on the Swat Expressway from today.",
+        "impact_line": "Drivers pay a newly notified toll on the Swat Expressway from today.",
         "category": "economy",
         "impact_labels": ["\U0001f4b3 WALLET"],
         "what_to_watch": "Watch the toll notification due on Thursday.",
@@ -363,6 +561,50 @@ def test_a_confident_short_brief_costs_one_call():
 
     assert len(windows) == 1, "a deliberately short brief is not retried into the weak tail"
     assert len(result) == 7
+
+
+def test_a_five_card_pass_gets_deeper_replacement_opportunity():
+    candidates = [_build_candidate() for _ in range(30)]
+    review_once, windows = _editor_returning([5, 5, 6])
+
+    result = review_with_short_pass_retries(review_once, candidates, max_stories=12)
+
+    assert windows == [18, 26, 30]
+    assert len(result) == 6
+
+
+def test_a_grounding_rejected_cluster_is_not_re_offered_on_retry():
+    """Regression: a live run repeatedly re-proposed and re-rejected the same
+    ungrounded cluster across retry attempts, spending retry budget on a
+    rejection instead of a candidate the editor hadn't judged yet.
+    """
+    candidates = [_build_candidate() for _ in range(30)]
+    bad_id = candidates[0].cluster_id
+    seen_candidate_ids = []
+
+    def review_once(prompt_candidates):
+        seen_candidate_ids.append([c.cluster_id for c in prompt_candidates])
+        stories = []
+        if any(c.cluster_id == bad_id for c in prompt_candidates):
+            stories.append(
+                _story_payload(
+                    str(bad_id),
+                    priority=99,
+                    impact_line="Officials say this may affect prices.",
+                )
+            )
+        deepest = prompt_candidates[-1]
+        stories.append(_story_payload(str(deepest.cluster_id), priority=50))
+        return EditorialResponse.model_validate({"stories": stories, "omitted_cluster_ids": []})
+
+    result = review_with_short_pass_retries(review_once, candidates, max_stories=12)
+
+    assert len(seen_candidate_ids) == MAX_SHORT_PASS_ATTEMPTS
+    assert bad_id in seen_candidate_ids[0]
+    assert bad_id not in seen_candidate_ids[1]
+    assert bad_id not in seen_candidate_ids[2]
+    assert bad_id not in result
+    assert set(result.keys()) == {candidates[17].cluster_id}
 
 
 def test_a_full_brief_on_the_first_pass_costs_one_call():
@@ -509,3 +751,13 @@ def test_thin_admission_accounting_is_silent_when_nothing_national_was_dropped(c
         _log_thin_admissions([thin, foreign], {thin.cluster_id: None})
 
     assert not [r for r in caplog.records if "published a" in r.getMessage()]
+
+
+@pytest.mark.parametrize("impact", ["Workers receive the subsidy from May 2026.", "Workers receive the subsidy from 2 may 2026."])
+def test_month_may_is_not_rejected_as_hedging(impact):
+    candidate = _build_candidate()
+    candidate.representative_article.main_text = impact
+    story = EditorialStory.model_validate(_story_payload(str(candidate.cluster_id), impact_line=impact))
+    accepted, rejected = _stories_by_cluster_id(EditorialResponse(stories=[story]), [candidate])
+    assert candidate.cluster_id in accepted
+    assert not rejected

@@ -6,7 +6,7 @@ import { normaliseTheme } from "@/utils/theme";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const TITLE = "Saaf Baat — Pakistan Morning Brief";
 const DESCRIPTION =
-  "A calm, finite morning news brief for Pakistan. Ten to twelve stories that matter, " +
+  "A calm, finite morning news brief for Pakistan. Six to twelve stories that matter, " +
   "why each one changes your day, and the original sources one tap away.";
 
 export const metadata: Metadata = {

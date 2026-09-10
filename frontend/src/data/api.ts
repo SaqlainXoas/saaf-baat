@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import { FEED, getMockDetail } from "./mock-data";
 import { sortStoriesForBrief } from "@/utils/storyPresentation";
+import { isMorningEditionFresh } from "@/utils/edition";
 import { FEED_REQUEST_LIMIT } from "./briefSize";
 
 export type DataStatus =
@@ -90,7 +91,7 @@ function isStrictLiveMode() {
 }
 
 function missingApiMessage() {
-  return "Live data mode is enabled but the backend API base is missing (set BACKEND_API_BASE_URL or NEXT_PUBLIC_BACKEND_API_BASE_URL).";
+  return "The brief is unavailable right now. Please try again shortly.";
 }
 
 function liveFetchFailureMessage(status?: number) {
@@ -139,33 +140,48 @@ function toStoryDetail(row: ApiStoryDetailRow): StoryDetailData {
   };
 }
 
-async function fetchJson<T>(input: string) {
-  const response = await fetch(input, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new ApiRequestError(`Request failed with HTTP ${response.status}`, response.status);
+// Render Free sleeps and wakes in roughly a minute. Fetching per request with
+// `no-store` made every cold visit wait on that wake-up and then fail the 8s
+// abort, so the first reader of the day saw the retry state instead of the
+// brief. These responses are tagged and cached instead: Vercel serves the last
+// good edition straight from its cache while the backend wakes, and
+// `publish_hosted.py` calls /api/revalidate to swap in a new edition the moment
+// it publishes. REVALIDATE_WINDOW_SECONDS is only the fallback for a run whose
+// revalidate ping did not land.
+const REVALIDATE_WINDOW_SECONDS = 900;
+const FETCH_TIMEOUT_MS = 25_000;
+
+async function fetchJson<T>(input: string, tags: string[]) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(input, {
+      headers: { Accept: "application/json" },
+      next: { tags, revalidate: REVALIDATE_WINDOW_SECONDS },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new ApiRequestError(`Request failed with HTTP ${response.status}`, response.status);
+    }
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timeout);
   }
-  return (await response.json()) as T;
 }
 
 async function fetchBackendFeed(baseUrl: string, limit: number): Promise<FeedResponseData> {
   const url = buildApiUrl(baseUrl, `/feed?limit=${limit}`);
-  return fetchJson<FeedResponseData>(url);
+  return fetchJson<FeedResponseData>(url, ["feed"]);
 }
 
 async function fetchBackendStory(baseUrl: string, clusterId: string): Promise<StoryDetailData | null> {
   const url = buildApiUrl(baseUrl, `/stories/${clusterId}`);
-  const row = await fetchJson<ApiStoryDetailRow>(url);
+  const row = await fetchJson<ApiStoryDetailRow>(url, ["feed", "story"]);
   return row ? toStoryDetail(row) : null;
 }
 
 function isFreshBrief(generatedAt?: string | null) {
-  if (!generatedAt) return false;
-  const parsed = Date.parse(generatedAt);
-  if (Number.isNaN(parsed)) return false;
-  return Date.now() - parsed <= 20 * 60 * 60 * 1000;
+  return isMorningEditionFresh(generatedAt);
 }
 
 export async function fetchFeedWithMeta(): Promise<FeedResult> {
@@ -196,7 +212,7 @@ export async function fetchFeedWithMeta(): Promise<FeedResult> {
         message:
           error instanceof ApiRequestError
             ? liveFetchFailureMessage(error.status)
-            : "Live feed request failed and strict mode blocks mock fallback.",
+            : liveFetchFailureMessage(),
       };
     }
     return { stories: FEED, status: "mock-fallback" };
@@ -239,7 +255,7 @@ export async function fetchStoryWithMeta(clusterId: string): Promise<StoryResult
         message:
           error instanceof ApiRequestError
             ? liveFetchFailureMessage(error.status)
-            : "Live story request failed and strict mode blocks mock fallback.",
+            : liveFetchFailureMessage(),
       };
     }
     const fallback = getMockDetail(clusterId);

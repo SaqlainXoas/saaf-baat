@@ -27,9 +27,12 @@ def get_db():
     try:
         return _client()
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
 
 
 def get_db_or_none():
     """The health check reports a dead database; it does not 503 over one."""
-    return _client()
+    try:
+        return _client()
+    except Exception:
+        return None

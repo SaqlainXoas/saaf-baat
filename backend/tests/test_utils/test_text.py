@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.agents.analysis import build_snippet
-from src.utils.text import split_sentences
+from src.utils.text import normalize_text, split_sentences
 
 
 def test_an_abbreviation_is_not_a_sentence_boundary():
@@ -59,3 +59,43 @@ def test_a_lowercase_word_after_a_period_does_not_start_a_sentence():
     assert split_sentences("It rose to 22.5 per cent. and then fell") == [
         "It rose to 22.5 per cent. and then fell"
     ]
+
+
+def test_zero_width_characters_are_removed():
+    # 92 of 1680 live articles carried one; `\s` does not match them, so every
+    # whitespace collapse in the pipeline left them in place and one reached a
+    # published card.
+    assert normalize_text("exchanged ​strikes") == "exchanged strikes"
+    assert normalize_text("a‌b‍c⁠d﻿e­f") == "abcdef"
+
+
+def test_unicode_spaces_fold_to_an_ordinary_space():
+    assert normalize_text("Rs 500 million today") == "Rs 500 million today"
+
+
+def test_whitespace_is_collapsed_and_trimmed():
+    assert normalize_text("  two   words \n here ") == "two words here"
+
+
+def test_normalization_is_nfc_not_nfkc():
+    # NFKC would rewrite these into forms the number canonicalisation in
+    # story_analysis has never been measured against.
+    assert normalize_text("２０ per cent") == "２０ per cent"
+    assert normalize_text("½ of the fund") == "½ of the fund"
+
+
+def test_composed_and_decomposed_accents_compare_equal():
+    decomposed = "Andre\u0301"  # e + combining acute
+    composed = "Andr\u00e9"  # precomposed e-acute
+    assert decomposed != composed
+    assert normalize_text(decomposed) == normalize_text(composed) == composed
+
+
+def test_normalization_is_idempotent():
+    once = normalize_text("Rs 500 million ​paid")
+    assert normalize_text(once) == once
+
+
+def test_empty_and_none_are_safe():
+    assert normalize_text("") == ""
+    assert normalize_text(None) == ""

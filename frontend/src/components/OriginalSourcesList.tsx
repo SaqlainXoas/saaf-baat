@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { StoryArticleData } from "@/data/types";
-import { capitalise, formatSourceDate, formatSourceTimestamp } from "@/utils/storyMeta";
+import { publisherName, formatSourceDate, formatSourceTimestamp } from "@/utils/storyMeta";
 
 const SOURCE_BADGE_BG: Record<string, string> = {
   dawn: "#52B7A3",
@@ -59,7 +59,7 @@ export default function OriginalSourcesList({
   const canExpand = articles.length > 4;
   const defaultDescription =
     articles.length === 0
-      ? "Original publisher links are still being attached to this brief."
+      ? "Original publisher links are unavailable for this story."
       : articles.length === 1
         ? "This brief currently links to one original publisher report."
         : "The original publisher reports supporting this brief.";
@@ -124,9 +124,9 @@ export default function OriginalSourcesList({
                   </span>
                   <div className="min-w-0">
                     <p className="text-xs font-semibold mb-1" style={{ color: "var(--ink-muted)" }}>
-                      {capitalise(a.source)}
+                      {publisherName(a.source)}
                     </p>
-                    <p className="text-sm font-semibold truncate" style={{ color: "var(--ink)" }}>
+                    <p className="text-sm font-semibold sb-source-headline" style={{ color: "var(--ink)" }}>
                       {a.headline}
                     </p>
                     {publishedAt ? (
@@ -142,7 +142,7 @@ export default function OriginalSourcesList({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="sb-focusable text-xs font-semibold flex-shrink-0 inline-flex items-center min-h-11 px-3 rounded-lg"
-                  aria-label={`Read ${capitalise(a.source)} ${linkRole}: ${a.headline}`}
+                  aria-label={`Read ${publisherName(a.source)} ${linkRole}: ${a.headline}`}
                   style={{ color: "var(--ink-muted)" }}
                 >
                   Read

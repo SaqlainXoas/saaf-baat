@@ -45,6 +45,32 @@ function toPakistanDateParts(date: Date) {
   return `${lookup.year}-${lookup.month}-${lookup.day}`;
 }
 
+function toPakistanHour(date: Date) {
+  const hour = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Karachi",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+  return Number(hour);
+}
+
+export function isMorningEditionFresh(
+  generatedAt?: string | null,
+  now = new Date(),
+  editionHour = 7,
+) {
+  if (!generatedAt) return false;
+  const generated = new Date(generatedAt);
+  if (Number.isNaN(generated.getTime())) return false;
+  const age = now.getTime() - generated.getTime();
+  return (
+    age >= 0 &&
+    age <= 20 * 60 * 60 * 1000 &&
+    toPakistanDateParts(generated) === toPakistanDateParts(now) &&
+    toPakistanHour(generated) >= editionHour
+  );
+}
+
 export function isCurrentEdition(generatedAt?: string | null, isFresh?: boolean, now = new Date()) {
   if (isFresh === false) {
     return false;

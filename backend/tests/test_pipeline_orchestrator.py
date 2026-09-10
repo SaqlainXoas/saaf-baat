@@ -242,7 +242,9 @@ class FakeDB:
         rows = [a for a in self._articles_by_id.values() if a.scraped_at >= since]
         return rows[:limit]
 
-    def get_articles_without_clusters_since(self, since: datetime, limit: int = 100) -> List[RawArticle]:
+    def get_articles_without_clusters_since(
+        self, since: datetime, limit: Optional[int] = None
+    ) -> List[RawArticle]:
         rows = [
             a
             for a in self._articles_by_id.values()
@@ -254,7 +256,9 @@ class FakeDB:
         rows = [a for a in self._articles_by_id.values() if a.embedding is None]
         return rows[:limit]
 
-    def get_articles_with_embeddings_since(self, since: datetime, limit: int = 100) -> List[RawArticle]:
+    def get_articles_with_embeddings_since(
+        self, since: datetime, limit: Optional[int] = None
+    ) -> List[RawArticle]:
         rows = [
             a
             for a in self._articles_by_id.values()
@@ -290,7 +294,9 @@ class FakeDB:
                 count += 1
         return count
 
-    def get_all_clusters(self, limit: int = 100, *, order: str = "recent") -> List[Cluster]:
+    def get_all_clusters(
+        self, limit: Optional[int] = 100, *, order: str = "recent"
+    ) -> List[Cluster]:
         clusters = list(self._clusters_by_id.values())
         if order == "size":
             clusters.sort(key=lambda c: -int(getattr(c, "cluster_size", 0) or 0))
@@ -349,6 +355,37 @@ class FakeDB:
             del self._articles_by_id[aid]
             self._articles_by_url.pop(url, None)
         return len(to_delete)
+
+
+def test_recent_regrouping_requests_the_entire_bounded_window(tmp_path):
+    class RecordingDB(FakeDB):
+        def __init__(self):
+            super().__init__()
+            self.unclustered_limit = "unset"
+            self.embedded_limit = "unset"
+
+        def get_articles_without_clusters_since(self, since, limit=None):
+            self.unclustered_limit = limit
+            return []
+
+        def get_articles_with_embeddings_since(self, since, limit=None):
+            self.embedded_limit = limit
+            return []
+
+    sources_yaml = tmp_path / "sources.yaml"
+    sources_yaml.write_text("sources: {}\n", encoding="utf-8")
+    db = RecordingDB()
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(sources_yaml=sources_yaml, recluster_recent_window=True),
+        db=db,  # type: ignore[arg-type]
+    )
+    stats = PipelineStats()
+
+    runner.remediate_recent_clusters(stats)
+    runner.cluster_unclustered_articles(stats)
+
+    assert db.embedded_limit is None
+    assert db.unclustered_limit is None
 
 
 def test_pipeline_orchestrator_chains_phases(tmp_path):
@@ -1407,6 +1444,149 @@ def test_diversity_rules_cap_politics_and_keep_economy(tmp_path):
     categories = [candidate.base_feed.category for candidate in selected]
     assert categories.count("politics") == 3
     assert "economy" in categories
+
+
+def test_diversity_rules_keep_one_card_per_named_story_family(tmp_path):
+    sources_yaml = tmp_path / "sources.yaml"
+    sources_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "sources": {
+                    "dawn": {
+                        "url": "https://example.com",
+                        "tier": "A",
+                        "feed_urls": ["https://example.com/rss"],
+                        "enabled": False,
+                    }
+                },
+                "scraping_config": {"max_articles_per_source": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(sources_yaml=sources_yaml, recluster_recent_window=False),
+        db=FakeDB(),  # type: ignore[arg-type]
+        ingestor=FakeIngestor({}),  # type: ignore[arg-type]
+    )
+
+    def _candidate(headline: str, sources: int = 1) -> ClusterEditorialCandidate:
+        articles = tuple(
+            RawArticle(
+                source=name,
+                url=f"https://example.com/{uuid4()}",
+                headline=headline,
+                main_text=("x " * 80),
+                publish_date=datetime.now(timezone.utc),
+                embedding=[1.0, 0.0, 0.0],
+            )
+            for name in ("dawn", "geo", "ary", "nation")[:sources]
+        )
+        feed = AnalyzedFeed(
+            cluster_id=uuid4(),
+            headline=headline,
+            summary="Snippet",
+            category="politics",
+            impact_labels=["🏛️ GOVERNANCE"],
+            source_attribution={article.source: 1 for article in articles},
+        )
+        return ClusterEditorialCandidate(
+            cluster_id=feed.cluster_id,
+            base_feed=feed,
+            representative_article=articles[0],
+            articles=articles,
+            algorithm_used="event_graph",
+            avg_similarity=1.0,
+            min_member_similarity=1.0,
+        )
+
+    selected = runner._select_diverse_candidates(
+        [
+            _candidate("National Assembly forms PIMS fact-finding committee"),
+            _candidate("Health secretary removed following PIMS tragedy"),
+            _candidate("Judicial commission begins Mir Raza inquiry"),
+        ],
+        max_items=3,
+    )
+
+    assert [candidate.base_feed.headline for candidate in selected] == [
+        "National Assembly forms PIMS fact-finding committee",
+        "Judicial commission begins Mir Raza inquiry",
+    ]
+
+
+def test_a_well_corroborated_story_is_not_collapsed_into_another_card_family(tmp_path):
+    """Four publishers is a story, not a presentation-layer duplicate.
+
+    A province-wide hospital safety audit carried by four publishers was being
+    deleted from the brief behind the fire that prompted it, purely because a
+    member headline named PIMS.
+    """
+    sources_yaml = tmp_path / "sources.yaml"
+    sources_yaml.write_text(
+        yaml.safe_dump(
+            {
+                "sources": {
+                    "dawn": {
+                        "url": "https://example.com",
+                        "tier": "A",
+                        "feed_urls": ["https://example.com/rss"],
+                        "enabled": False,
+                    }
+                },
+                "scraping_config": {"max_articles_per_source": 5},
+            }
+        ),
+        encoding="utf-8",
+    )
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(sources_yaml=sources_yaml, recluster_recent_window=False),
+        db=FakeDB(),  # type: ignore[arg-type]
+        ingestor=FakeIngestor({}),  # type: ignore[arg-type]
+    )
+
+    def _candidate(headline: str, sources: int) -> ClusterEditorialCandidate:
+        articles = tuple(
+            RawArticle(
+                source=name,
+                url=f"https://example.com/{uuid4()}",
+                headline=headline,
+                main_text=("x " * 80),
+                publish_date=datetime.now(timezone.utc),
+                embedding=[1.0, 0.0, 0.0],
+            )
+            for name in ("dawn", "geo", "ary", "nation")[:sources]
+        )
+        feed = AnalyzedFeed(
+            cluster_id=uuid4(),
+            headline=headline,
+            summary="Snippet",
+            category="politics",
+            impact_labels=["🏛️ GOVERNANCE"],
+            source_attribution={article.source: 1 for article in articles},
+        )
+        return ClusterEditorialCandidate(
+            cluster_id=feed.cluster_id,
+            base_feed=feed,
+            representative_article=articles[0],
+            articles=articles,
+            algorithm_used="event_graph",
+            avg_similarity=1.0,
+            min_member_similarity=1.0,
+        )
+
+    selected = runner._select_diverse_candidates(
+        [
+            _candidate("14 newborns killed in fire at PIMS Hospital", sources=4),
+            _candidate("PIMS fire: Punjab CM directs safety audits of govt hospitals", sources=4),
+            _candidate("My head hanged in shame over PIMS incident: AG Punjab", sources=1),
+        ],
+        max_items=3,
+    )
+
+    headlines = [candidate.base_feed.headline for candidate in selected]
+    assert "PIMS fire: Punjab CM directs safety audits of govt hospitals" in headlines
+    assert "My head hanged in shame over PIMS incident: AG Punjab" not in headlines
 
 
 def test_editorial_candidate_articles_are_capped_at_eight(tmp_path):

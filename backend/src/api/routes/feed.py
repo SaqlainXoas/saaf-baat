@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -11,6 +12,8 @@ from src.db.errors import DatabaseError
 
 router = APIRouter()
 _FRESH_BRIEF_WINDOW = timedelta(hours=20)
+_PAKISTAN_TZ = ZoneInfo("Asia/Karachi")
+_MORNING_EDITION_HOUR = 7
 
 
 # Every card must carry a why-it-matters line. This is the API contract the
@@ -78,10 +81,24 @@ def _normalize_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def _is_fresh(generated_at: Optional[datetime]) -> bool:
+def _is_fresh(
+    generated_at: Optional[datetime],
+    *,
+    now: Optional[datetime] = None,
+    edition_hour: int = _MORNING_EDITION_HOUR,
+) -> bool:
     if generated_at is None:
         return False
-    return datetime.now(timezone.utc) - _normalize_utc(generated_at) <= _FRESH_BRIEF_WINDOW
+    generated_utc = _normalize_utc(generated_at)
+    current_utc = _normalize_utc(now or datetime.now(timezone.utc))
+    age = current_utc - generated_utc
+    generated_pkt = generated_utc.astimezone(_PAKISTAN_TZ)
+    current_pkt = current_utc.astimezone(_PAKISTAN_TZ)
+    return (
+        timedelta(0) <= age <= _FRESH_BRIEF_WINDOW
+        and generated_pkt.date() == current_pkt.date()
+        and generated_pkt.hour >= int(edition_hour)
+    )
 
 
 def _latest_brief_only(feeds):
@@ -115,7 +132,7 @@ def get_feed(
     try:
         feeds = db.get_analyzed_feed(category=category, impact_label=impact_label, limit=limit)
     except DatabaseError as exc:
-        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
     feeds = _latest_brief_only(feeds)
     feeds = sorted(feeds, key=_story_sort_key)
     generated_at = max((_normalize_utc(feed.created_at) for feed in feeds), default=None)

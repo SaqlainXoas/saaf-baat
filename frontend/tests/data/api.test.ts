@@ -75,7 +75,9 @@ describe("api data mode", () => {
       `http://127.0.0.1:8000/api/feed?limit=${FEED_REQUEST_LIMIT}`,
     );
     expect((global as unknown as { fetch: jest.Mock }).fetch.mock.calls[0][1]).toMatchObject({
-      cache: "no-store",
+      // Tagged so publish_hosted.py can swap the cached edition the moment it
+      // publishes. An untagged fetch makes revalidateTag a silent no-op.
+      next: { tags: ["feed"] },
       headers: { Accept: "application/json" },
     });
   });
@@ -209,7 +211,8 @@ describe("api data mode", () => {
     const result = await fetchFeedWithMeta();
     expect(result.status).toBe("error-live-required");
     expect(result.stories).toEqual([]);
-    expect(result.message).toContain("BACKEND_API_BASE_URL");
+    expect(result.message).toContain("unavailable right now");
+    expect(result.message).not.toContain("BACKEND_API_BASE_URL");
   });
 
   it("blocks story mock fallback in strict live mode when live request fails", async () => {
@@ -226,4 +229,21 @@ describe("api data mode", () => {
     expect(result.story).toBeNull();
     expect(result.message).toContain("HTTP 503");
   });
+  it("bounds a stalled backend request and returns a reader-friendly error", async () => {
+    jest.useFakeTimers();
+    process.env.NEXT_PUBLIC_STRICT_LIVE_DATA = "1";
+    process.env.BACKEND_API_BASE_URL = "http://127.0.0.1:8000";
+    (global as unknown as { fetch: jest.Mock }).fetch = jest.fn((_url, init) =>
+      new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))))
+    );
+    const pending = fetchFeedWithMeta();
+    // The abort now allows for a Render Free cold start rather than 8s.
+    await jest.advanceTimersByTimeAsync(25_000);
+    const result = await pending;
+    expect(result.status).toBe("error-live-required");
+    expect(result.stories).toEqual([]);
+    expect(result.message).toBe("Unable to load brief. Please try again shortly.");
+    jest.useRealTimers();
+  });
+
 });

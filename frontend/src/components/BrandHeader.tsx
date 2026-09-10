@@ -1,4 +1,3 @@
-import FocusControl from "@/components/FocusControl";
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 import { formatEssentialStoryCount, getBriefEditionIdentity, getGreeting } from "@/utils/edition";
@@ -15,30 +14,27 @@ import { formatEssentialStoryCount, getBriefEditionIdentity, getGreeting } from 
  * holding. The greeting is the thing this product opens with.
  */
 export default function BrandHeader({
-  availableSources = [],
   storyCount,
   generatedAt,
   isFresh,
 }: {
-  availableSources?: string[];
   storyCount?: number;
   generatedAt?: string;
   isFresh?: boolean;
 }) {
-  const city = process.env.NEXT_PUBLIC_CITY_NAME || "Islamabad";
+  const city = "Pakistan";
   const edition = getBriefEditionIdentity(generatedAt, isFresh);
   const { greeting, translation } = getGreeting();
 
   return (
     <header className="sb-masthead">
-      <div className="flex items-center justify-between gap-4">
+      <div className="sb-brand-row flex items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
           <Logo size={26} decorative className="flex-shrink-0" />
           <span className="sb-wordmark">Saaf Baat</span>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <FocusControl availableSources={availableSources} size="sm" />
         </div>
       </div>
 
@@ -51,8 +47,8 @@ export default function BrandHeader({
       </h1>
 
       <p className="sb-masthead-note">
-        {typeof storyCount === "number" ? `${formatEssentialStoryCount(storyCount)}, ` : ""}
-        ranked for public impact. Read them and you&apos;re done.
+        {typeof storyCount === "number" ? `${formatEssentialStoryCount(storyCount)}. ` : ""}
+        What happened and why it matters.
       </p>
     </header>
   );

@@ -21,22 +21,34 @@ export function useBriefProgress(count: number) {
     const nodes = refs.current.filter(Boolean) as HTMLElement[];
     if (!nodes.length || typeof IntersectionObserver === "undefined") return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .map((entry) => Number((entry.target as HTMLElement).dataset.briefIndex))
-          .filter((index) => !Number.isNaN(index));
-        // The topmost visible card is the one being read; taking the minimum
-        // stops the counter jumping ahead when two cards share the viewport.
-        if (visible.length) setPosition(Math.min(...visible) + 1);
-      },
-      // A band across the middle of the viewport: a card counts as "current"
-      // only once it is genuinely the thing in front of the reader.
-      { rootMargin: "-45% 0px -45% 0px" }
-    );
-    nodes.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
+    let observer: IntersectionObserver;
+    const visible = new Set<number>();
+    const observe = () => {
+      observer?.disconnect();
+      visible.clear();
+      // IntersectionObserver percentage margins resolve against width, which
+      // can erase the entire band on a wide screen. Use viewport-height pixels.
+      const inset = Math.round(window.innerHeight * 0.35);
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const index = Number((entry.target as HTMLElement).dataset.briefIndex);
+            if (Number.isNaN(index)) continue;
+            if (entry.isIntersecting) visible.add(index);
+            else visible.delete(index);
+          }
+          if (visible.size) setPosition(Math.min(...visible) + 1);
+        },
+        { rootMargin: `-${inset}px 0px -${inset}px 0px` },
+      );
+      nodes.forEach((node) => observer.observe(node));
+    };
+    observe();
+    window.addEventListener("resize", observe);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", observe);
+    };
   }, [count]);
 
   const register = (index: number) => (node: HTMLElement | null) => {

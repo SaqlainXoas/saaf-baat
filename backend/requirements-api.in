@@ -1,0 +1,7 @@
+# Render: only the read API and Supabase client.
+fastapi>=0.135,<1
+uvicorn>=0.41,<1
+supabase>=2.27.3,<3
+pydantic>=2.12,<3
+python-dotenv>=1.2.2,<2
+pyyaml>=6.0.3,<7

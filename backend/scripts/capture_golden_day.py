@@ -86,12 +86,26 @@ def main() -> int:
     parser.add_argument("--no-embeddings", action="store_true")
     parser.add_argument("--no-triage", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
+    # `embeddings.npz` is keyed on the exact text the pipeline embeds, so any
+    # change to headline or body cleaning invalidates it - and the replay
+    # answers a miss with a random vector, which scores a pipeline nobody
+    # ships. This re-records the vectors for an existing fixture without
+    # re-fetching the day (which is impossible; the news has moved on).
+    parser.add_argument(
+        "--reuse-endpoints",
+        action="store_true",
+        help="Re-record embeddings for an existing fixture from its stored payloads.",
+    )
     args = parser.parse_args()
 
     captured_at = datetime.now(timezone.utc).replace(microsecond=0)
     name = args.name or captured_at.date().isoformat()
     out = GOLDEN_DAYS_DIR / name
-    if out.exists() and not args.overwrite:
+    if args.reuse_endpoints:
+        if not (out / MANIFEST).exists():
+            print(f"{out} has no {MANIFEST}; --reuse-endpoints needs an existing fixture.")
+            return 1
+    elif out.exists() and not args.overwrite:
         print(f"{out} already exists; pass --overwrite to replace it.")
         return 1
     (out / ENDPOINTS_DIR).mkdir(parents=True, exist_ok=True)
@@ -100,15 +114,28 @@ def main() -> int:
     specs = SourceSpec.from_config(sources_config)
 
     # 1. Snapshot every endpoint verbatim ---------------------------------
-    endpoints: dict[str, dict] = {}
-    for spec in specs:
-        for url in list(spec.feed_urls) + list(spec.sitemap_urls):
-            status, payload = default_fetcher(url)
-            # Gzipped: a day of raw feeds is ~3MB, and these are committed.
-            filename = f"{slugify(url)}.xml.gz"
-            (out / ENDPOINTS_DIR / filename).write_bytes(gzip.compress(payload))
-            endpoints[url] = {"file": filename, "status": status, "bytes": len(payload)}
-            print(f"  captured {status} {len(payload):>8}B  {url}")
+    if args.reuse_endpoints:
+        manifest = json.loads((out / MANIFEST).read_text(encoding="utf-8"))
+        endpoints = dict(manifest.get("endpoints") or {})
+        captured_at = datetime.fromisoformat(
+            str(manifest["captured_at"]).replace("Z", "+00:00")
+        )
+        sources_config = yaml.safe_load((out / SOURCES).read_text(encoding="utf-8"))
+        specs = SourceSpec.from_config(sources_config)
+        # The cap decides which articles exist, so it has to be the recorded
+        # one and not this invocation's default.
+        args.max_articles = int(manifest.get("max_articles_per_source") or args.max_articles)
+        print(f"reusing {len(endpoints)} recorded endpoints from {name}")
+    else:
+        endpoints = {}
+        for spec in specs:
+            for url in list(spec.feed_urls) + list(spec.sitemap_urls):
+                status, payload = default_fetcher(url)
+                # Gzipped: a day of raw feeds is ~3MB, and these are committed.
+                filename = f"{slugify(url)}.xml.gz"
+                (out / ENDPOINTS_DIR / filename).write_bytes(gzip.compress(payload))
+                endpoints[url] = {"file": filename, "status": status, "bytes": len(payload)}
+                print(f"  captured {status} {len(payload):>8}B  {url}")
 
     # 2. Replay the snapshot through the real ingest ----------------------
     def replay(url: str) -> tuple[int, bytes]:
@@ -133,12 +160,29 @@ def main() -> int:
 
         provider = GeminiEmbeddingProvider()
         keys = [embedding_key(a.headline, a.main_text) for a in result.articles]
-        print(f"embedding {len(keys)} articles (paced to the free-tier quota)...")
-        embedded = provider.embed_batch(keys, batch_size=50)
+
+        # Reuse any vector already recorded under an unchanged key. The
+        # embedder reproduces a recorded vector exactly (measured: cosine 1.0
+        # against August's vectors), so this is not an approximation - it keeps
+        # the fixture a single consistent set while re-embedding only the texts
+        # that actually changed, instead of spending the whole quota.
+        recorded: dict[str, np.ndarray] = {}
+        if args.reuse_endpoints and (out / EMBEDDINGS).exists():
+            archive = np.load(out / EMBEDDINGS, allow_pickle=False)
+            recorded = dict(zip(archive["keys"].tolist(), archive["vectors"]))
+
+        missing = [key for key in dict.fromkeys(keys) if key not in recorded]
+        if missing:
+            print(f"embedding {len(missing)} of {len(keys)} articles (paced to the free-tier quota)...")
+            fresh = provider.embed_batch(missing, batch_size=50)
+            recorded.update(zip(missing, fresh.embeddings))
+        else:
+            print(f"all {len(keys)} article vectors already recorded; nothing to embed")
+
         np.savez_compressed(
             out / EMBEDDINGS,
             keys=np.array(keys, dtype=object).astype(str),
-            vectors=embedded.embeddings.astype(np.float32),
+            vectors=np.vstack([recorded[key] for key in keys]).astype(np.float32),
         )
         print(f"  wrote {EMBEDDINGS} ({(out / EMBEDDINGS).stat().st_size / 1024:.0f} KB)")
 
