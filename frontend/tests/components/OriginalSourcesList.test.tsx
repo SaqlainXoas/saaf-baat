@@ -53,9 +53,9 @@ describe("OriginalSourcesList", () => {
     render(<OriginalSourcesList articles={articles} />);
     expect(screen.getByText("Dawn")).toBeDefined();
     expect(screen.getByText(/Pakistan IMF talks/)).toBeDefined();
-    expect(screen.getByText("Geo")).toBeDefined();
+    expect(screen.getByText("Geo News")).toBeDefined();
     expect(screen.getByText(/Markets react/)).toBeDefined();
-    expect(screen.getByText("Tribune")).toBeDefined();
+    expect(screen.getByText("The Express Tribune")).toBeDefined();
     expect(screen.getByText(/Analysts watch/)).toBeDefined();
   });
 
@@ -103,7 +103,7 @@ describe("OriginalSourcesList", () => {
   it("gives each Read link a descriptive accessible name", () => {
     render(<OriginalSourcesList articles={articles} />);
     expect(screen.getByLabelText(/Read Dawn report: Pakistan IMF talks underway/i)).toBeDefined();
-    expect(screen.getByLabelText(/Read Geo report: Markets react positively/i)).toBeDefined();
+    expect(screen.getByLabelText(/Read Geo News report: Markets react positively/i)).toBeDefined();
   });
 
   it("does not render View all reports when there are 4 or fewer entries", () => {
@@ -122,7 +122,7 @@ describe("OriginalSourcesList", () => {
     render(<OriginalSourcesList articles={[]} />);
     expect(screen.getByText("Original sources")).toBeDefined();
     expect(screen.queryByText("Read")).toBeNull();
-    expect(screen.getByText(/still being attached to this brief/i)).toBeDefined();
+    expect(screen.getByText(/links are unavailable for this story/i)).toBeDefined();
     expect(screen.getByText(/not available for this story yet/i)).toBeDefined();
   });
 
@@ -174,13 +174,13 @@ describe("analysis-aware source ordering", () => {
     render(<OriginalSourcesList articles={nine} prioritiseSources={["brecorder"]} />);
 
     expect(screen.getByText("Showing 4 of 9 reports.")).toBeDefined();
-    expect(screen.getByRole("link", { name: /Read Brecorder report: PIMS report 8/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Read Business Recorder report: PIMS report 8/i })).toBeDefined();
   });
 
   it("leaves the order alone when the analysis names nobody", () => {
     render(<OriginalSourcesList articles={nine} />);
 
-    expect(screen.queryByRole("link", { name: /Read Brecorder report/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Read Business Recorder report/i })).toBeNull();
   });
 
   it("labels the link role so context reports are distinguishable", () => {

@@ -1,7 +1,7 @@
 import Pill from "./primitives/Pill";
 import Card from "./primitives/Card";
 import type { StoryCardData } from "@/data/types";
-import { capitalise, getMetadataString } from "@/utils/storyMeta";
+import { publisherName, getMetadataString, cardSnippet } from "@/utils/storyMeta";
 
 /**
  * One card of the brief, in the one shape both surfaces use.
@@ -27,9 +27,10 @@ export default function StoryCard({
   isBackground?: boolean;
   variant?: "lead" | "supporting";
 }) {
+  const snippet = cardSnippet(story.headline, story.snippet);
   const isLead = variant === "lead";
   const primaryLabel = story.impact_labels?.[0] || "UPDATE";
-  const sourceNames = story.sources.map((s) => capitalise(s.source));
+  const sourceNames = story.sources.map((s) => publisherName(s.source));
   const whyItMatters = getMetadataString(story.metadata, "why_it_matters");
   const whatToWatch = getMetadataString(story.metadata, "what_to_watch");
   const sourceChipLabel =
@@ -51,15 +52,15 @@ export default function StoryCard({
             <Pill label={primaryLabel} />
           </div>
 
-          <h2 className={`${isLead ? "sb-headline-lead" : "sb-headline-supporting"} sb-clamp-3`}>
+          <h2 className={`${isLead ? "sb-headline-lead" : "sb-headline-supporting"}`}>
             {story.headline}
           </h2>
 
-          {whyItMatters ? <p className="sb-impact-line">{whyItMatters}</p> : null}
+          {whyItMatters ? <div className="sb-card-impact"><span className="sb-kicker">Why it matters</span><p className="sb-impact-line">{whyItMatters}</p></div> : null}
 
-          <p className={`${isLead ? "sb-snippet-lead" : "sb-snippet-supporting"} sb-clamp-2`}>
-            {story.snippet}
-          </p>
+          {snippet ? <p className={`${isLead ? "sb-snippet-lead" : "sb-snippet-supporting"} sb-clamp-2`}>
+            {snippet}
+          </p> : null}
 
           {whatToWatch ? (
             <p className="sb-meta sb-watch-line">
@@ -72,7 +73,7 @@ export default function StoryCard({
           <span className="sb-meta" style={{ opacity: story.sources.length <= 1 ? 0.72 : 1 }}>
             {sourceChipLabel}
           </span>
-          {!isBackground ? <span className="sb-open-link">Open →</span> : null}
+          {!isBackground ? <span className="sb-open-link">Read brief →</span> : null}
         </div>
       </div>
     </Card>

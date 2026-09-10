@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: saaf-baat-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements-api.lock
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.14
+      - key: ENVIRONMENT
+        value: production
+      - key: SAAF_DB_BACKEND
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: BACKEND_CORS_ALLOW_ORIGINS
+        sync: false

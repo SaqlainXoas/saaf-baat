@@ -139,6 +139,42 @@ def _article(
 
 
 class TestEventGroupingService:
+    def test_separates_incident_from_causal_follow_up_actions(self):
+        """PIMS is context for two follow-ups, not their shared event identity."""
+        from src.agents.clustering import EventGroupingService
+
+        now = datetime(2026, 8, 27, 5, 0, tzinfo=timezone.utc)
+        rows = [
+            ("PIMS fire kills 14 newborns as inquiry begins", "dawn"),
+            ("Inquiry finds PIMS fire killed 14 newborns", "tribune"),
+            ("After PIMS blaze, Punjab orders hospital fire safety inspections", "app"),
+            ("Punjab reviews hospital fire safety after PIMS tragedy", "nation"),
+            ("PIMS fire: Maritime minister orders building safety audits", "brecorder"),
+            ("Maritime ministry starts fire safety audits of its buildings", "geo"),
+            ("Infant deaths at PIMS prompt Sindh hospitals to renew fire safety directives", "dawn"),
+            ("Sindh hospitals renew fire safety directives after PIMS tragedy", "tribune"),
+        ]
+        articles = [
+            _article(
+                index,
+                headline,
+                f"{headline}. The PIMS tragedy was cited as context.",
+                source=source,
+                publish_date=now + timedelta(minutes=index),
+                embedding=[1.0, 0.0, 0.0],
+            )
+            for index, (headline, source) in enumerate(rows)
+        ]
+
+        result = EventGroupingService(min_cluster_size=2).group_articles(articles)
+
+        assert {frozenset(group.indices) for group in result.groups} == {
+            frozenset({0, 1}),
+            frozenset({2, 3}),
+            frozenset({4, 5}),
+            frozenset({6, 7}),
+        }
+
     def test_groups_same_event_across_sources(self):
         from src.agents.clustering import EventGroupingService
 
@@ -462,5 +498,3 @@ class TestClusterAnalysis:
 
         # Single point has perfect "similarity" (no pairs to compare)
         assert similarity == 1.0
-
-

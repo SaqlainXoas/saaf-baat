@@ -8,7 +8,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from src.api.app import create_app
-from src.api.routes.feed import get_db
+from src.api.routes.feed import _is_fresh, get_db
 from src.db.client import DatabaseError
 from src.db.models import AnalyzedFeed
 
@@ -30,6 +30,17 @@ class _FakeDB:
         if impact_label:
             items = [i for i in items if impact_label in (i.impact_labels or [])]
         return items[:limit]
+
+
+def test_freshness_requires_the_completed_morning_edition():
+    now = datetime(2026, 8, 28, 5, 0, tzinfo=timezone.utc)  # 10:00 PKT
+
+    assert _is_fresh(
+        datetime(2026, 8, 27, 19, 25, tzinfo=timezone.utc), now=now
+    ) is False  # 00:25 PKT: an overnight run, not the morning edition
+    assert _is_fresh(
+        datetime(2026, 8, 28, 2, 5, tzinfo=timezone.utc), now=now
+    ) is True  # 07:05 PKT today
 
 
 def test_feed_route_returns_items():

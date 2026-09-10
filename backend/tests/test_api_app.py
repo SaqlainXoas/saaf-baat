@@ -12,6 +12,26 @@ from src.api.routes.health import get_db
 from src.db.models import AnalyzedFeed
 
 
+def test_database_initialisation_failure_is_private_and_health_still_responds(monkeypatch):
+    from src.api import deps
+
+    def unavailable():
+        raise RuntimeError("postgres://private-user:private-password@internal-host/db")
+
+    monkeypatch.setattr(deps, "_client", unavailable)
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    client = TestClient(create_app())
+    for path in ("/api/feed", f"/api/stories/{uuid4()}"):
+        response = client.get(path)
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Database unavailable"
+        assert "private-password" not in response.text
+    health = client.get("/health")
+    assert health.status_code == 200
+    assert health.json()["status"] == "degraded"
+    assert health.json()["database"] == "disconnected"
+
+
 def test_docs_and_health_endpoints(tmp_path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("BACKEND_CORS_ALLOW_ORIGINS", "http://localhost:3000")
@@ -193,6 +213,7 @@ def test_health_reports_stale_db_fallback_when_heartbeat_missing(tmp_path, monke
     assert body["last_successful_run_at"].startswith(stale_feed_time.isoformat().split("+")[0])
     assert body["last_successful_run_source"] == "latest_feed_created_at"
     assert body["pipeline_is_stale"] is True
+    assert body["status"] == "degraded"
     assert "heartbeat is missing" in body["pipeline_status_reason"]
     assert "newest analyzed feed row is older than the 28-hour freshness window" in body["pipeline_status_reason"]
 
@@ -503,3 +524,22 @@ def test_health_story_analysis_counters_default_to_zero(tmp_path, monkeypatch):
         "fallbacks": 0,
         "failures": 0,
     }
+
+
+def test_health_does_not_count_unpublished_drafts(monkeypatch, tmp_path):
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("SAAF_PIPELINE_HEARTBEAT_FILE", str(tmp_path / "missing.json"))
+
+    class DraftOnlyDB:
+        def is_connected(self):
+            return True
+
+        def get_analyzed_feed(self, limit=1, published_only=False):
+            assert published_only is True
+            return []
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: DraftOnlyDB()
+    result = TestClient(app).get("/health").json()
+    assert result["status"] == "degraded"
+    assert result["latest_feed_created_at"] is None

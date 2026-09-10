@@ -346,38 +346,44 @@ class SupabaseClient:
         except Exception as e:
             raise DatabaseError(f"Failed to get articles without clusters: {e}") from e
 
-    def get_articles_without_clusters_since(self, since: datetime, limit: int = 500) -> ArticleList:
+    def get_articles_without_clusters_since(
+        self, since: datetime, limit: Optional[int] = None
+    ) -> ArticleList:
         """Get unclustered articles scraped since a given timestamp."""
         try:
             if since.tzinfo is None:
                 since = since.replace(tzinfo=timezone.utc)
-            response = (
+            query = (
                 self.client.table(self.TABLE_RAW_ARTICLES)
                 .select("*")
                 .is_("cluster_id", "null")
                 .gte("scraped_at", since.isoformat())
                 .order("scraped_at", desc=True)
-                .limit(limit)
-                .execute()
             )
+            if limit is not None:
+                query = query.limit(limit)
+            response = query.execute()
             return [RawArticle(**self._parse_embedding(item)) for item in response.data]
         except Exception as e:
             raise DatabaseError(f"Failed to get recent unclustered articles: {e}") from e
 
-    def get_articles_with_embeddings_since(self, since: datetime, limit: int = 500) -> ArticleList:
+    def get_articles_with_embeddings_since(
+        self, since: datetime, limit: Optional[int] = None
+    ) -> ArticleList:
         """Get articles with embeddings scraped since a given timestamp."""
         try:
             if since.tzinfo is None:
                 since = since.replace(tzinfo=timezone.utc)
-            response = (
+            query = (
                 self.client.table(self.TABLE_RAW_ARTICLES)
                 .select("*")
                 .not_.is_("embedding", "null")
                 .gte("scraped_at", since.isoformat())
                 .order("scraped_at", desc=True)
-                .limit(limit)
-                .execute()
             )
+            if limit is not None:
+                query = query.limit(limit)
+            response = query.execute()
             return [RawArticle(**self._parse_embedding(item)) for item in response.data]
         except Exception as e:
             raise DatabaseError(f"Failed to get recent embedded articles: {e}") from e
@@ -591,7 +597,9 @@ class SupabaseClient:
                 raise NotFoundError(f"Cluster not found: {cluster_id}") from e
             raise DatabaseError(f"Failed to get cluster: {e}") from e
 
-    def get_all_clusters(self, limit: int = 100, *, order: str = "recent") -> ClusterList:
+    def get_all_clusters(
+        self, limit: Optional[int] = 100, *, order: str = "recent"
+    ) -> ClusterList:
         """Get clusters, newest first by default or biggest first on request.
 
         Must match `SqliteClient.get_all_clusters`; see the note there for why
@@ -601,7 +609,10 @@ class SupabaseClient:
             query = self.client.table(self.TABLE_CLUSTERS).select("*")
             if order == "size":
                 query = query.order("cluster_size", desc=True)
-            response = query.order("created_at", desc=True).limit(limit).execute()
+            query = query.order("created_at", desc=True)
+            if limit is not None:
+                query = query.limit(limit)
+            response = query.execute()
 
             clusters = []
             for item in response.data:
@@ -695,6 +706,12 @@ class SupabaseClient:
                 feed = AnalyzedFeed(**feed)
 
             data = feed.to_db_dict()
+            if os.getenv("SAAF_STAGE_PUBLICATION") == "1":
+                token = os.getenv("SAAF_PUBLICATION_TOKEN", "").strip()
+                if not token:
+                    raise DatabaseError("Staged publishing requires a publication token")
+                data["is_published"] = False
+                data["metadata"] = {**data.get("metadata", {}), "publication_token": token}
             response = self.client.table(self.TABLE_ANALYZED_FEED).insert(data).execute()
 
             if response.data:
@@ -738,6 +755,7 @@ class SupabaseClient:
                 self.client.table(self.TABLE_ANALYZED_FEED)
                 .select("*")
                 .eq("cluster_id", str(cluster_id))
+                .eq("is_published", True)
                 .order("created_at", desc=True)
                 .limit(1)
                 .execute()

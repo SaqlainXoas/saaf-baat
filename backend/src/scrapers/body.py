@@ -15,15 +15,15 @@ ensemble and the Playwright fallback are gone.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from typing import Optional
 
 import trafilatura
 
 from src.db.models import RawArticle
-from src.scrapers.feeds import BODY_FULL, DEFAULT_FULL_TEXT_MIN_CHARS
+from src.scrapers.feeds import BODY_FULL, DEFAULT_FULL_TEXT_MIN_CHARS, clean_article_body
 from src.scrapers.network import StealthFetcher
+from src.utils.text import normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class ArticleBodyFetcher:
             logger.warning("Body extraction failed for %s: %s", url, exc)
             return None
 
-        text = re.sub(r"\s+", " ", text).strip()
+        text = normalize_text(text)
         if len(text) < self.min_chars:
             return None
         return text
@@ -93,7 +93,11 @@ class ArticleBodyFetcher:
             logger.info("Lazy body fetch produced nothing usable for %s", article.url)
             return False
 
-        article.main_text = text
+        # The same publisher furniture the RSS path strips. trafilatura is good
+        # at article extraction and still returns a wrapper that is part of the
+        # page's article body, so this path needs the identical treatment -
+        # here rather than in `fetch_body`, which has no headline to compare.
+        article.main_text = clean_article_body(text, article.headline or "")
         article.metadata = {
             **(article.metadata or {}),
             "body_status": BODY_FULL,

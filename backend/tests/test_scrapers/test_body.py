@@ -73,6 +73,34 @@ class TestHydrate:
         assert article.metadata["body_source"] == "lazy_fetch"
         assert fetcher.stats.hydrated == 1
 
+    def test_publisher_furniture_is_stripped_on_the_lazy_path_too(self, extraction):
+        """trafilatura returns the wrapper because it is part of the article body.
+
+        This path never called `clean_article_body`, so a lazily fetched body
+        kept furniture the RSS path had always removed.
+        """
+        extraction["text"] = (
+            "Associated Press Of Pakistan Cabinet approves gas tariff revision "
+            + LONG_TEXT
+            + " This post Cabinet approves gas tariff revision first appeared on "
+            "Associated Press Of Pakistan and owns the property."
+        )
+        article = make_article("Cabinet approves gas tariff revision")
+        fetcher = ArticleBodyFetcher(StubFetcher({str(article.url): "<html>...</html>"}))
+
+        assert fetcher.hydrate(article) is True
+        assert article.main_text == LONG_TEXT.strip()
+
+    def test_invisible_characters_are_stripped_on_the_lazy_path(self, extraction):
+        extraction["text"] = LONG_TEXT + " The US and Iran exchanged ​strikes."
+        article = make_article("Cabinet approves gas tariff revision")
+        fetcher = ArticleBodyFetcher(StubFetcher({str(article.url): "<html>...</html>"}))
+
+        fetcher.hydrate(article)
+
+        assert "​" not in article.main_text
+        assert article.main_text.endswith("The US and Iran exchanged strikes.")
+
     def test_content_hash_is_not_rewritten(self, extraction):
         article = make_article("Cabinet approves gas tariff revision")
         original_hash = article.content_hash

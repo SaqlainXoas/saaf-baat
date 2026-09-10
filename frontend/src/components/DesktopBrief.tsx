@@ -25,14 +25,12 @@ import type { DataStatus } from "@/data/api";
  */
 export default function DesktopBrief({
   stories,
-  availableSources,
   status,
   statusMessage,
   generatedAt,
   isFresh,
 }: {
   stories: StoryCardData[];
-  availableSources: string[];
   status: Exclude<DataStatus, "not-found">;
   statusMessage?: string;
   generatedAt?: string;
@@ -45,7 +43,6 @@ export default function DesktopBrief({
   return (
     <div className="sb-desktop-shell">
       <BrandHeader
-        availableSources={availableSources}
         storyCount={stories.length}
         generatedAt={generatedAt}
         isFresh={isFresh}
@@ -68,7 +65,7 @@ export default function DesktopBrief({
               key={story.story_id}
               className={`sb-brief-item ${index === 0 ? "sb-brief-item-lead" : ""}`}
               data-brief-index={index}
-              id={index === 0 ? "lead-story" : undefined}
+              id={index === 0 ? "lead-story" : `story-${index + 1}`}
               tabIndex={index === 0 ? -1 : undefined}
               ref={register(index)}
             >
@@ -86,19 +83,18 @@ export default function DesktopBrief({
             </article>
           ))}
 
-          <BriefEnd />
+          <BriefEnd isFresh={isFresh} />
         </section>
 
         {/* The right-hand space was dead margin. It now carries the one thing
             desktop was missing: how far through a finite brief you are. */}
-        <aside className="sb-desktop-rail" aria-hidden="true">
+        <aside className="sb-desktop-rail" aria-label="In this edition">
           <div className="sb-desktop-rail-inner">
             <p className="sb-kicker">Your progress</p>
             <BriefProgress position={position} total={stories.length} variant="static" />
-            <p className="sb-rail-note">
-              This brief is finite. When the cards run out, you have read everything
-              Saaf Baat thinks matters today.
-            </p>
+            <nav className="sb-edition-index" aria-label="Jump to a story">
+              {stories.map((story, index) => <a key={story.story_id} href={index === 0 ? "#lead-story" : `#story-${index + 1}`} className="sb-focusable"><span>{String(index + 1).padStart(2, "0")}</span>{story.headline}</a>)}
+            </nav>
           </div>
         </aside>
       </div>

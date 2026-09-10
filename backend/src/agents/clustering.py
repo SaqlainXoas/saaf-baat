@@ -11,13 +11,14 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
 
 from src.db.models import RawArticle
+from src.utils.timestamps import trusted_article_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,26 @@ _STOPWORDS = {
     "was",
     "with",
 }
+_GENERIC_EVENT_CUES = {
+    "audit",
+    "audits",
+    "fire",
+    "government",
+    "govt",
+    "health",
+    "hospital",
+    "hospitals",
+    "inspection",
+    "inspections",
+    "order",
+    "ordered",
+    "orders",
+    "review",
+    "reviews",
+    "report",
+    "reports",
+    "safety",
+}
 
 
 def _normalize_ws(text: str) -> str:
@@ -80,12 +101,51 @@ def _tokenize(text: str) -> Set[str]:
     }
 
 
+def _event_core_headline(headline: str) -> str:
+    """Remove incident context that is not the event asserted by a headline.
+
+    "After the PIMS fire, Punjab orders hospital inspections" is an inspection
+    story, not another report of the fire.  Treating every word as event
+    identity allowed causal follow-ups to bridge otherwise separate groups.
+    """
+    text = _normalize_ws(headline)
+    leading = re.match(r"(?i)^(?:after|following)\s+[^,:;]{3,120}[,:]\s+(.+)$", text)
+    if leading:
+        text = leading.group(1).strip()
+
+    prefix, separator, suffix = text.partition(":")
+    if separator and re.search(
+        r"(?i)\b(?:fire|blaze|blast|crash|flood|killing|death|tragedy)\b", prefix
+    ) and re.search(
+        r"(?i)\b(?:audit|inspect|launch|order|review|seek|start|survey)\w*\b", suffix
+    ):
+        text = suffix.strip()
+
+    caused = re.match(
+        r"(?i)^(.+?\b(?:fire|blaze|blast|crash|flood|killing|death|tragedy))\s+"
+        r"(?:prompts?|sparks?|triggers?)\s+(.+)$",
+        text,
+    )
+    if caused:
+        text = caused.group(2).strip()
+
+    trailing = re.match(r"(?i)^(.+?)\s+(?:after|following)\s+[^,;:]{3,120}$", text)
+    if trailing and re.search(
+        r"(?i)\b(?:audit|inspect|launch|order|review|seek|start|survey)\w*\b",
+        trailing.group(1),
+    ):
+        text = trailing.group(1).strip()
+    return text
+
+
 def _headline_tokens(article: RawArticle) -> Set[str]:
-    return _tokenize(article.headline)
+    return _tokenize(_event_core_headline(article.headline))
 
 
 def _entity_cues(article: RawArticle) -> Set[str]:
-    text = _normalize_ws(f"{article.headline}. {article.main_text[:240]}")
+    # Body intros routinely recap the event that caused a new action.  Those
+    # names are context, not proof that the action and incident are one event.
+    text = _event_core_headline(article.headline)
     cues: Set[str] = set()
     for match in _ACRONYM_RE.findall(text):
         cues.add(match.lower())
@@ -107,21 +167,6 @@ def _set_overlap(left: Set[str], right: Set[str]) -> float:
     return float(len(left & right) / len(union))
 
 
-def trusted_article_timestamp(article: RawArticle, max_publish_skew_hours: int = 36) -> datetime:
-    """
-    When the event happened, per the publisher.
-
-    The skew heuristics this replaced inferred from page content what the feed
-    states directly. They are unreachable now: ingest drops any item with no
-    publish_date and quarantines any endpoint whose newest item is stale, so
-    every stored article already has a publisher date inside the window
-    (`issues.md` I-6). `max_publish_skew_hours` is kept for call compatibility.
-    """
-    published = article.publish_date
-    if published is not None:
-        return published if published.tzinfo else published.replace(tzinfo=timezone.utc)
-    scraped = article.scraped_at
-    return scraped if scraped.tzinfo else scraped.replace(tzinfo=timezone.utc)
 
 
 # ============================================================================
@@ -360,9 +405,26 @@ class EventGroupingService:
             and not (prepared[left_idx].headline_tokens & prepared[right_idx].headline_tokens)
         ):
             return False, similarity, headline_overlap, entity_overlap
-        shared_cues = len(
+        shared = (
             (prepared[left_idx].headline_tokens & prepared[right_idx].headline_tokens)
             | (prepared[left_idx].entity_cues & prepared[right_idx].entity_cues)
+        )
+        distinctive_shared = len(shared - _GENERIC_EVENT_CUES)
+        if (
+            prepared[left_idx].source == prepared[right_idx].source
+            and distinctive_shared < 2
+        ):
+            # Two separate articles from one newsroom need stronger identity
+            # than the shared subject alone. This keeps a PIMS rescue-delay
+            # report separate from a PIMS historic-violations report.
+            return False, similarity, headline_overlap, entity_overlap
+        # One distinctive owner plus several matching action cues is enough
+        # ("Maritime ... safety audits"). Generic action cues alone are not
+        # ("Punjab ... safety audits" vs "Maritime ... safety audits").
+        shared_cues = (
+            2
+            if distinctive_shared == 1 and len(shared) >= 3 and headline_overlap >= 0.20
+            else distinctive_shared
         )
         compatible = self._has_required_overlap(headline_overlap, entity_overlap, shared_cues)
         verdict = self._adjudicated.get((min(left_idx, right_idx), max(left_idx, right_idx)))
@@ -532,9 +594,16 @@ class EventGroupingService:
                 shared_headline_tokens = (
                     prepared[left].headline_tokens & prepared[right].headline_tokens
                 )
-                shared_cues = len(
-                    shared_headline_tokens
-                    | (prepared[left].entity_cues & prepared[right].entity_cues)
+                shared = shared_headline_tokens | (
+                    prepared[left].entity_cues & prepared[right].entity_cues
+                )
+                distinctive_shared = len(shared - _GENERIC_EVENT_CUES)
+                shared_cues = (
+                    2
+                    if distinctive_shared == 1
+                    and len(shared) >= 3
+                    and headline_overlap >= 0.20
+                    else distinctive_shared
                 )
                 overlap_says_same = self._has_required_overlap(
                     headline_overlap, entity_overlap, shared_cues

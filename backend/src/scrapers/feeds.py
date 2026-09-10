@@ -31,6 +31,7 @@ import feedparser
 import requests
 
 from src.db.models import RawArticle
+from src.utils.text import normalize_text
 from src.utils.urls import canonicalize_url_for_dedup, host_allowed_for_base
 
 logger = logging.getLogger(__name__)
@@ -46,12 +47,18 @@ DEFAULT_ARTICLE_MAX_AGE_HOURS = 36
 DEFAULT_FULL_TEXT_MIN_CHARS = 600
 DEFAULT_MAX_WORKERS = 16
 DEFAULT_TIMEOUT = 25.0
+# A newest item dated in the future is a broken publisher clock, not fresh
+# news. Nation's endpoints report newest items around -11h (future-dated) on
+# every run and were being read as simply current. A small tolerance allows
+# for ordinary clock skew between us and a publisher's server.
+DEFAULT_FUTURE_CLOCK_TOLERANCE_HOURS = 1.0
 
 CHANNEL_RSS = "rss"
 CHANNEL_SITEMAP = "sitemap"
 
 STATUS_OK = "ok"
 STATUS_STALE = "STALE"
+STATUS_FUTURE_CLOCK = "future-clock"
 STATUS_NO_DATES = "no-dates"
 STATUS_EMPTY = "empty"
 STATUS_UNREACHABLE = "unreachable"
@@ -90,7 +97,7 @@ def clean(raw: str) -> str:
     with its wrapper, which silently discards the whole item.
     """
     unwrapped = _CDATA_RE.sub(r"\1", raw or "")
-    return re.sub(r"\s+", " ", html_mod.unescape(re.sub(r"<[^>]+>", " ", unwrapped))).strip()
+    return normalize_text(html_mod.unescape(re.sub(r"<[^>]+>", " ", unwrapped)))
 
 
 def entry_body(entry: Any) -> str:
@@ -105,6 +112,74 @@ def entry_body(entry: Any) -> str:
         if isinstance(value, str) and len(value) > len(best):
             best = value
     return clean(best)
+
+
+_MONTH_DATE = (
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|"
+    r"Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},\s+\d{4}"
+)
+
+# "Associated Press Of Pakistan <headline> <one sentence>. This post <headline>
+# first appeared on Associated Press Of Pakistan and owns the property."
+_APP_PREFIX_RE = re.compile(r"(?i)^associated press of pakistan\s*[-–—:]?\s*")
+_APP_FOOTER_RE = re.compile(
+    r"(?i)\s*this post\b.{0,200}?first appeared on associated press of pakistan"
+    r"(?:\s+and owns the property)?\.?\s*$"
+)
+# ARY's breaking-news ticker, ending in its own `02-Sep-2026 - ` stamp.
+_ARY_TICKER_RE = re.compile(r"^.{0,120}?\d{1,2}-[A-Za-z]{3}-\d{4}\s*[-–—]\s*")
+
+
+def clean_article_body(body: str, headline: str) -> str:
+    """Remove feed furniture before it can become a user-visible snippet.
+
+    Order matters. Publisher wrappers come off first, because each of them
+    *hides* the furniture behind it: APP's "Associated Press Of Pakistan "
+    prefix sits in front of a duplicated headline, so stripping the headline
+    first left the duplicate in place and the body still opened with its own
+    title.
+    """
+    text = _normalize_feed_text(body)
+
+    # APP wraps every item, not some: all 198 of its articles in a 1680-row
+    # live corpus carried both halves. The body it ships is often one sentence,
+    # so the wrapper was a large fraction of the text that got embedded.
+    text = _APP_PREFIX_RE.sub("", text, count=1).strip()
+    text = _APP_FOOTER_RE.sub("", text, count=1).strip()
+
+    # ARY prepends its breaking-news ticker to the body, so an unrelated
+    # headline becomes the first thing a reader sees: a card about a Rs500m
+    # loan scheme opened "BISE Lahore 9th class result 2026 announced
+    # 02-Sep-2026 - ". Guarded, because the same shape could in principle open
+    # a genuine dated lede - only strip when what remains is still the article.
+    ticker = _ARY_TICKER_RE.sub("", text, count=1).strip()
+    if ticker and (len(ticker) >= 80 or len(ticker) * 2 >= len(text)):
+        text = ticker
+
+    clean_headline = _normalize_feed_text(headline)
+    if clean_headline and text.casefold().startswith(clean_headline.casefold()):
+        text = text[len(clean_headline) :].lstrip(" .:—–-")
+
+    # ARY commonly emits: By Name - - Aug 27, 2026 - LAHORE, August 27, 2026:
+    text = re.sub(
+        rf"(?i)^by\s+[a-z .'-]{{2,80}}?\s*(?:[-–—]\s*){{1,3}}"
+        rf"(?:{_MONTH_DATE})?\s*(?:[-–—]\s*)?",
+        "",
+        text,
+        count=1,
+    ).strip()
+    text = re.sub(
+        rf"(?i)^[A-Z][A-Z .'-]{{1,40}},?\s+(?:{_MONTH_DATE})\s*:\s*",
+        "",
+        text,
+        count=1,
+    ).strip()
+    return text
+
+
+def _normalize_feed_text(value: str) -> str:
+    return normalize_text(value)
 
 
 def entry_date(entry: Any) -> Optional[datetime]:
@@ -243,6 +318,7 @@ class FeedIngestor:
         now: Optional[Clock] = None,
         stale_feed_hours: int = DEFAULT_STALE_FEED_HOURS,
         article_max_age_hours: int = DEFAULT_ARTICLE_MAX_AGE_HOURS,
+        future_clock_tolerance_hours: float = DEFAULT_FUTURE_CLOCK_TOLERANCE_HOURS,
         full_text_min_chars: int = DEFAULT_FULL_TEXT_MIN_CHARS,
         max_articles_per_source: Optional[int] = None,
         max_workers: int = DEFAULT_MAX_WORKERS,
@@ -253,6 +329,7 @@ class FeedIngestor:
         self._now = now or (lambda: datetime.now(timezone.utc))
         self.stale_feed_hours = int(stale_feed_hours)
         self.article_max_age_hours = int(article_max_age_hours)
+        self.future_clock_tolerance_hours = float(future_clock_tolerance_hours)
         self.full_text_min_chars = int(full_text_min_chars)
         self.max_articles_per_source = (
             int(max_articles_per_source) if max_articles_per_source else None
@@ -281,6 +358,11 @@ class FeedIngestor:
         if newest_age > self.stale_feed_hours:
             return (
                 self._report(source, CHANNEL_RSS, url, STATUS_STALE, newest_age),
+                [],
+            )
+        if newest_age < -self.future_clock_tolerance_hours:
+            return (
+                self._report(source, CHANNEL_RSS, url, STATUS_FUTURE_CLOCK, newest_age),
                 [],
             )
 
@@ -361,6 +443,11 @@ class FeedIngestor:
         if newest_age > self.stale_feed_hours:
             return (
                 self._report(source, CHANNEL_SITEMAP, url, STATUS_STALE, newest_age),
+                [],
+            )
+        if newest_age < -self.future_clock_tolerance_hours:
+            return (
+                self._report(source, CHANNEL_SITEMAP, url, STATUS_FUTURE_CLOCK, newest_age),
                 [],
             )
         return (
@@ -553,7 +640,7 @@ class FeedIngestor:
         return articles
 
     def _to_article(self, item: DiscoveredItem) -> Optional[RawArticle]:
-        body = item.body.strip()
+        body = clean_article_body(item.body, item.headline)
         if len(body) >= self.full_text_min_chars:
             body_status = BODY_FULL
             main_text = body

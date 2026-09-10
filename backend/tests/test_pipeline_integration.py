@@ -92,7 +92,14 @@ class _SelectAllEditorialService:
                 impact_line="This story has immediate public relevance in Pakistan.",
                 category=str(candidate.base_feed.category),
                 impact_labels=list(candidate.base_feed.impact_labels or ["🏛️ GOVERNANCE"]),
-                what_to_watch="Watch for the next official update or policy response.",
+                # Story-specific on purpose. "Watch for the next official
+                # update or policy response." is exactly the subjectless
+                # filler `_derive_what_to_watch` now drops, so asserting it
+                # survived would have asserted the guard was broken.
+                what_to_watch=(
+                    f"The National Assembly reviews the {candidate.base_feed.headline} "
+                    "decision on September 16."
+                ),
                 public_impact="high",
                 story_tags=["pakistan", "brief"],
                 confidence=0.9,

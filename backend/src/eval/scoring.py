@@ -177,6 +177,14 @@ class GoldenDayReport:
     # Set by `run_golden_day`; None when the day has too few embedded articles
     # to measure. Reported, never gated - see `measure_cluster_quality`.
     cluster_quality: Optional[Any] = None
+    # Article texts the fixture had no recorded vector for. `RecordedEmbedder`
+    # answers a miss with a seeded random vector so the replay stays
+    # deterministic, which means drift does not fail - it quietly measures a
+    # different pipeline. Nothing clusters at 0.92, `max_merged_articles` is a
+    # *max* so the ratchet still passes, and keyword recall finds its must-have
+    # inside the resulting blob. A green run over a fixture full of misses is
+    # worth nothing, so this is gated rather than reported.
+    embedding_misses: List[str] = field(default_factory=list)
 
     @property
     def brief_size(self) -> int:
@@ -251,6 +259,7 @@ class GoldenDayReport:
             "impact_lines_without_a_number": len(self.unquantified_impact_lines),
             "impact_lines_hedged": len(self.hedged_impact_lines),
             "impact_lines_templated": len(self.templated_impact_lines),
+            "embedding_misses": len(self.embedding_misses),
         }
 
     def format(self) -> str:

@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import Deck from "@/components/Deck";
+import Deck, { BriefEnd } from "@/components/Deck";
 import type { StoryCardData } from "@/data/types";
 
 function story(id: string): StoryCardData {
@@ -71,7 +71,7 @@ describe("Deck", () => {
 
   it("shows the finite-end copy", () => {
     render(<Deck stories={stories} />);
-    expect(screen.getByText(/You're all caught up/)).toBeDefined();
+    expect(screen.getByText(/You’re all caught up/)).toBeDefined();
     expect(screen.getByText(/ends here on purpose/)).toBeDefined();
   });
 
@@ -95,4 +95,10 @@ describe("Deck", () => {
     expect(screen.getByText("Latest brief")).toBeDefined();
     expect(screen.queryByText("Today's brief")).toBeNull();
   });
+});
+
+it("does not tell readers of an old edition that they are caught up", () => {
+  render(<BriefEnd isFresh={false} />);
+  expect(screen.getByText(/end of this edition/)).toBeDefined();
+  expect(screen.queryByText(/all caught up/)).toBeNull();
 });

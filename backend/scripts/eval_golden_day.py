@@ -100,6 +100,23 @@ def main() -> int:
                 "- this fixture has no adjudication.json, so grouping above is measured "
                 "with adjudication OFF (live runs merge some of these)."
             )
+        # `embeddings.npz` is keyed on the exact text the pipeline embeds
+        # (`embedding_key`), so any change to headline or body cleaning silently
+        # invalidates it. A miss is answered with a seeded random vector, which
+        # keeps the replay deterministic but measures a pipeline that does not
+        # exist: nothing groups at 0.92, and both the `max_merged_articles`
+        # ratchet and keyword recall still pass. This gates in every mode,
+        # `--live-editorial` included, because it is a fixture-integrity failure
+        # rather than an editorial one. Re-record with capture_golden_day.py.
+        if report.embedding_misses:
+            failures += 1
+            print(
+                f"  FAIL: {len(report.embedding_misses)} embedding misses - the recorded "
+                "vectors no longer match the text this pipeline embeds, so every number "
+                "above is measured against random vectors. Re-record embeddings.npz."
+            )
+            for sample in report.embedding_misses[:3]:
+                print(f"    - {sample}")
         print()
         reports.append(report.as_dict())
 

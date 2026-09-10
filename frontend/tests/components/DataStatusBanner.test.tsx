@@ -15,7 +15,7 @@ describe("DataStatusBanner", () => {
   });
 
   it("shows partial brief warning when too few live stories are available", () => {
-    render(<DataStatusBanner status="live" generatedAt={new Date().toISOString()} isFresh storyCount={3} />);
+    render(<DataStatusBanner status="live" generatedAt={new Date().toISOString()} isFresh storyCount={5} />);
     expect(screen.getByRole("status").textContent).toContain("Partial brief");
   });
 
@@ -44,3 +44,9 @@ describe("DataStatusBanner", () => {
     expect(screen.getByRole("status").textContent).not.toContain("Last successful live update");
   });
 });
+
+ it("prioritises stale edition warning over short edition copy", () => {
+   render(<DataStatusBanner status="live" isFresh={false} storyCount={4} />);
+   expect(screen.getByRole("status")).toHaveTextContent("older edition");
+   expect(screen.getByRole("status")).not.toHaveTextContent("being reviewed");
+ });

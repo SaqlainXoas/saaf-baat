@@ -70,20 +70,24 @@ export default function Deck({
         ))}
       </div>
 
-      <BriefEnd />
+      <BriefEnd isFresh={isFresh} />
     </section>
   );
 }
 
 /** The brief ends on purpose, and says so. */
-export function BriefEnd() {
+export function BriefEnd({ isFresh }: { isFresh?: boolean }) {
   return (
     <div className="sb-brief-end">
       <span className="sb-brief-end-rule" aria-hidden="true" />
-      <p className="sb-brief-end-title">You&apos;re all caught up.</p>
+      <p className="sb-brief-end-title">{isFresh === false ? "You’ve reached the end of this edition." : "You’re all caught up."}</p>
       <p className="sb-brief-end-note">
-        The brief ends here on purpose. There is no more to scroll — come back tomorrow morning.
+        The brief ends here on purpose. Enjoy the rest of your day.
       </p>
+      <details className="sb-about">
+        <summary className="sb-focusable">How Saaf Baat works</summary>
+        <p>A short Pakistan briefing, drawn from original publisher reporting. AI helps group stories and write summaries, with checks against the reporting. It can still make mistakes. Open a story to check its original sources.</p>
+      </details>
     </div>
   );
 }

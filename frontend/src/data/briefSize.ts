@@ -20,3 +20,15 @@ export const MAX_STORIES = 12;
  * high-priority card before it is ever ranked.
  */
 export const FEED_REQUEST_LIMIT = 30;
+
+/**
+ * Below this, the brief is short and the reader is told so.
+ *
+ * It must be measured against the brief the pipeline produced, never against
+ * a filtered view: narrowing to one publisher used to raise "Partial brief —
+ * more stories being reviewed" over a complete brief the reader had chosen to
+ * narrow themselves.
+ *
+ * Keep in step with TARGET_STORY_FLOOR in backend/src/agents/editorial.py.
+ */
+export const MIN_STORIES = 6;

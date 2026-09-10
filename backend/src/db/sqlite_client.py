@@ -389,7 +389,9 @@ class SqliteClient:
         except Exception as exc:
             raise DatabaseError(f"Failed to get articles without clusters: {exc}") from exc
 
-    def get_articles_without_clusters_since(self, since: datetime, limit: int = 500) -> ArticleList:
+    def get_articles_without_clusters_since(
+        self, since: datetime, limit: Optional[int] = None
+    ) -> ArticleList:
         """Get unclustered articles scraped since a given timestamp."""
         try:
             return self._query_articles(
@@ -398,7 +400,9 @@ class SqliteClient:
         except Exception as exc:
             raise DatabaseError(f"Failed to get recent unclustered articles: {exc}") from exc
 
-    def get_articles_with_embeddings_since(self, since: datetime, limit: int = 500) -> ArticleList:
+    def get_articles_with_embeddings_since(
+        self, since: datetime, limit: Optional[int] = None
+    ) -> ArticleList:
         """Get articles with embeddings scraped since a given timestamp."""
         try:
             return self._query_articles(
@@ -577,7 +581,9 @@ class SqliteClient:
             raise NotFoundError(f"Cluster not found: {cluster_id}")
         return _row_to_cluster(row)
 
-    def get_all_clusters(self, limit: int = 100, *, order: str = "recent") -> ClusterList:
+    def get_all_clusters(
+        self, limit: Optional[int] = 100, *, order: str = "recent"
+    ) -> ClusterList:
         """Get clusters, newest first by default or biggest first on request.
 
         `order="size"` exists because the limit truncates. Ordered by
@@ -592,11 +598,15 @@ class SqliteClient:
         clause = "cluster_size DESC, created_at DESC" if order == "size" else "created_at DESC"
         try:
             with self._connect() as conn:
-                rows = conn.execute(
+                query = (
                     f"SELECT {self._CLUSTER_COLUMNS} FROM {self.TABLE_CLUSTERS} "
-                    f"ORDER BY {clause} LIMIT ?",
-                    (int(limit),),
-                ).fetchall()
+                    f"ORDER BY {clause}"
+                )
+                rows = (
+                    conn.execute(f"{query} LIMIT ?", (int(limit),)).fetchall()
+                    if limit is not None
+                    else conn.execute(query).fetchall()
+                )
             return [_row_to_cluster(row) for row in rows]
         except Exception as exc:
             raise DatabaseError(f"Failed to get clusters: {exc}") from exc

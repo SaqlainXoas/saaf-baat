@@ -110,7 +110,7 @@ describe("Story detail page", () => {
 
     render(await StoryDetail({ params: Promise.resolve({ cluster_id: "story-1" }) }));
 
-    expect(screen.getByRole("link", { name: /today's brief/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /back to brief/i })).toBeDefined();
     expect(screen.getAllByRole("link", { name: /finance ministry says talks continue/i })).toHaveLength(1);
     expect(screen.queryByText("Top reporting")).toBeNull();
   });
@@ -184,7 +184,7 @@ describe("Story detail page", () => {
     expect(screen.getByRole("heading", { name: "Related reporting used for analysis" })).toBeDefined();
     expect(screen.getByText(/not counted as event corroboration/i)).toBeDefined();
     // The role is in the label, not only in the section heading above it.
-    expect(screen.getByRole("link", { name: /Read Nation context report/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Read The Nation context report/i })).toBeDefined();
     // A real analysis keeps the "Analysis" heading and no missing-analysis note.
     expect(screen.getByRole("heading", { name: "Analysis" })).toBeDefined();
     expect(screen.queryByText(/multi-source analysis is not available/i)).toBeNull();
@@ -214,7 +214,7 @@ describe("Story detail page", () => {
 
     render(await StoryDetail({ params: Promise.resolve({ cluster_id: "story-1" }) }));
 
-    expect(screen.getByRole("link", { name: /today's brief/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /back to brief/i })).toBeDefined();
   });
 
   it("keeps the unavailable-story recovery link keyboard focusable", async () => {
@@ -228,7 +228,7 @@ describe("Story detail page", () => {
 
     render(await StoryDetail({ params: Promise.resolve({ cluster_id: "missing-story" }) }));
 
-    const backLink = screen.getByRole("link", { name: /today's brief/i });
+    const backLink = screen.getByRole("link", { name: /back to brief/i });
     expect(backLink.className).toContain("sb-focusable");
   });
 });

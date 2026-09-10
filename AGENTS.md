@@ -5,11 +5,12 @@
 - Working directory: `/Users/saqlain/projects/personal/saaf-baat`
 - Active phase: `freshness-safe brief ship hardening with backend monitoring`
 - Core product target: a trustworthy Pakistan morning brief with `6-12` must-know stories
-- Source-of-truth docs, and there are only four:
+- Source-of-truth docs, with deployment instructions kept under `docs/`:
   - `README.md` — what the product is, and how to run it
   - `AGENTS.md` — this file: locked product decisions
   - `CLAUDE.md` — the working guide and architecture reference
   - `docs/status.md` — current state, verification numbers, open work
+  - `docs/deployment.md` — provider setup, secrets and hosted verification
 
 For current progress, blockers and next actions, read `docs/status.md`.
 For architecture and the reasoning behind each threshold, read `CLAUDE.md`.
@@ -85,10 +86,7 @@ These decisions are currently approved and should be treated as active constrain
 
 ## Documentation Hygiene
 
-- **Four tracked docs, no more**: `README.md`, `AGENTS.md`, `CLAUDE.md`,
-  `docs/status.md`. On `2026-08-28` the repo carried 32 markdown files across
-  `claude-thinking-notes/`, `codex-thinking/`, `program.md` and a release plan;
-  most described a system that no longer existed. They were deleted.
+- Keep `README.md`, `AGENTS.md`, and `CLAUDE.md` in the root. Supporting user documentation and screenshots belong in `docs/`. Runtime prompts and golden-day fixtures remain with their code; do not move them as documentation cleanup.
 - After meaningful work, **update `docs/status.md`** — what ships, what the
   numbers are, what is still open. Do not add a new dated note.
 - Scratch, experiments and abandoned plans belong outside the repo.
@@ -119,7 +117,7 @@ Backend:
 - Models: `python -m spacy download en_core_web_sm`
 - API: `uvicorn main:app --reload`
 - Pipeline: `python run_pipeline.py --log-level INFO`
-- Daily cron: `0 0 * * * cd /Users/saqlain/projects/personal/saaf-baat/backend && /bin/zsh -lc 'source venv/bin/activate && python run_pipeline.py --log-level INFO'`
+- Daily cron: `0 2 * * * cd /Users/saqlain/projects/personal/saaf-baat/backend && /bin/zsh -lc 'source venv/bin/activate && python run_pipeline.py --log-level INFO'` (07:00 PKT)
 - Quality report: `python scripts/quality_report.py --limit 20`
 - Tests: `pytest`
 

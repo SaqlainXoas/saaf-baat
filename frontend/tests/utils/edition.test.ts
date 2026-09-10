@@ -5,6 +5,7 @@ import {
   getBriefEditionIdentity,
   getGreeting,
   isCurrentEdition,
+  isMorningEditionFresh,
 } from "@/utils/edition";
 
 describe("getGreeting", () => {
@@ -25,6 +26,12 @@ describe("edition identity", () => {
     const now = new Date("2026-08-25T08:00:00Z");
     expect(isCurrentEdition("2026-08-25T05:00:00Z", true, now)).toBe(true);
     expect(formatBriefEditionTitle("2026-08-25T05:00:00Z", true, now)).toMatch(/^Today's Brief ·/);
+  });
+
+  it("does not call an overnight pre-edition run fresh", () => {
+    const now = new Date("2026-08-28T05:00:00Z"); // 10:00 PKT
+    expect(isMorningEditionFresh("2026-08-27T19:25:00Z", now)).toBe(false);
+    expect(isMorningEditionFresh("2026-08-28T02:05:00Z", now)).toBe(true);
   });
 
   it("stops claiming 'today' once the brief is a day old", () => {

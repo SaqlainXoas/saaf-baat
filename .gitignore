@@ -64,7 +64,6 @@ coverage.xml
 docs/extra/
 codex-thinking/
 MEMORY.md
-CLAUDE.md
 docs/plan.md
 docs/saaf-baat-prd-final.md
 docs/final-draft-plan.md
@@ -77,6 +76,12 @@ backend/.claude/
 design-mockups/
 design/
 frontend/mockups/
+
+# Local scratch: demo-film rendering artifacts and UI exploration
+artifacts/
+UI-concepts/
+UI-real-testing/
+frontend/public/_demo-stage.html
 
 # Next.js/TypeScript incremental build artifact
 frontend/tsconfig.tsbuildinfo

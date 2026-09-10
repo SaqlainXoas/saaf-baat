@@ -5,6 +5,7 @@ import {
   formatSourceDate,
   formatSourceTimestamp,
   getMetadataString,
+  latestReportTime,
 } from "@/utils/storyMeta";
 
 describe("storyMeta", () => {
@@ -80,5 +81,53 @@ describe("storyMeta", () => {
     expect(formatted).toMatch(/Aug/);
     expect(formatted).not.toMatch(/PKT|:/);
     expect(formatSourceDate(undefined)).toBeNull();
+  });
+});
+
+describe("latestReportTime", () => {
+  const article = (over: Record<string, unknown> = {}) =>
+    ({
+      article_id: "a",
+      source: "dawn",
+      headline: "h",
+      url: "https://example.com",
+      publish_date: null,
+      published_on: null,
+      publish_date_status: "missing",
+      ...over,
+    }) as never;
+
+  it("reports the newest source time, not the pipeline write time", () => {
+    // A story whose newest source was 13h old rendered "25m ago" because the
+    // detail page formatted `created_at`.
+    expect(
+      latestReportTime([
+        article({ publish_date: "2026-09-01T20:15:00Z", publish_date_status: "precise" }),
+        article({ publish_date: "2026-09-02T00:25:00Z", publish_date_status: "precise" }),
+      ]),
+    ).toBe("2026-09-02T00:25:00Z");
+  });
+
+  it("ignores articles the publisher gave no usable date for", () => {
+    expect(
+      latestReportTime([
+        article({ publish_date: "2026-09-02T09:00:00Z", publish_date_status: "missing" }),
+        article({ publish_date: "2026-09-01T20:15:00Z", publish_date_status: "precise" }),
+      ]),
+    ).toBe("2026-09-01T20:15:00Z");
+  });
+
+  it("falls back to the date-only field when that is all a publisher gave", () => {
+    expect(
+      latestReportTime([
+        article({ published_on: "2026-09-01T00:00:00Z", publish_date_status: "date_only" }),
+      ]),
+    ).toBe("2026-09-01T00:00:00Z");
+  });
+
+  it("returns null rather than inviting a created_at fallback", () => {
+    expect(latestReportTime([])).toBeNull();
+    expect(latestReportTime(undefined)).toBeNull();
+    expect(latestReportTime([article()])).toBeNull();
   });
 });

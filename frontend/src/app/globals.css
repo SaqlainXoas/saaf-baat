@@ -505,39 +505,6 @@ body {
     color: var(--ink-muted);
   }
 
-  .sb-theme-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding: 2px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface) 84%, var(--surface-base));
-    border: 1px solid color-mix(in srgb, var(--outline-ghost) 74%, transparent);
-  }
-
-  /* 24px is the WCAG 2.5.8 floor for a pointer target and these were 21.
-     Growing the hit area rather than the type keeps the control quiet. */
-  .sb-theme-option {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 26px;
-    border: 0;
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 11px;
-    line-height: 1.2;
-    color: var(--ink-muted);
-    background: transparent;
-    transition: color 140ms ease, background-color 140ms ease;
-  }
-
-  .sb-theme-option[data-active="true"] {
-    background: var(--surface-inset);
-    color: var(--ink);
-    font-weight: 700;
-  }
-
   .sb-skeleton {
     border-radius: 12px;
     background: linear-gradient(
@@ -548,40 +515,6 @@ body {
     );
     background-size: 240% 100%;
     animation: sb-shimmer 1.4s ease-in-out infinite;
-  }
-
-  .sb-sheet-backdrop-open,
-  .sb-sheet-backdrop-closed {
-    transition: opacity 170ms ease;
-  }
-
-  .sb-sheet-backdrop-open {
-    opacity: 1;
-  }
-
-  .sb-sheet-backdrop-closed {
-    opacity: 0;
-  }
-
-  .sb-sheet-panel-open,
-  .sb-sheet-panel-closed {
-    transition: opacity 170ms ease, transform 170ms ease;
-  }
-
-  .sb-sheet-panel-open {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  .sb-sheet-panel-closed {
-    opacity: 0;
-    transform: translateY(18px);
-  }
-
-  @media (min-width: 640px) {
-    .sb-sheet-panel-closed {
-      transform: translateY(10px) scale(0.99);
-    }
   }
 
   /* ==========================================================================
@@ -891,12 +824,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .sb-card-interactive,
-  .sb-theme-option,
   .sb-brief-progress-fill,
-  .sb-sheet-backdrop-open,
-  .sb-sheet-backdrop-closed,
-  .sb-sheet-panel-open,
-  .sb-sheet-panel-closed {
+  .sb-theme-toggle {
     transition: none;
     animation: none;
   }
@@ -969,3 +898,50 @@ body {
     font-size: 15px;
   }
 }
+
+/* Editorial finish: a quiet masthead, readable cards and a useful edition index. */
+.sb-masthead { padding-bottom: 24px; border-bottom: 1px solid var(--hairline-strong); }
+.sb-wordmark { font-size: 20px; letter-spacing: -0.04em; }
+.sb-brand-row { min-height: 44px; margin-bottom: 12px; }
+.sb-story-card { border-radius: 16px; box-shadow: 0 5px 18px -14px rgba(0,0,0,.24); }
+.sb-story-card-lead { border-top: 3px solid var(--teal); padding: 28px; }
+.sb-story-card-supporting { padding: 24px; }
+.sb-card-impact { margin-top: 18px; }
+.sb-card-impact .sb-kicker { font-size: 10px; color: var(--teal); }
+.sb-card-impact .sb-impact-line { margin-top: 6px; line-height: 1.6; }
+.sb-story-card-foot { min-height: 44px; }
+.sb-desktop-rail-inner { border-radius: 12px; background: transparent; padding: 20px 0 0 24px; border: 0; border-left: 1px solid var(--hairline-strong); }
+.sb-edition-index { display: grid; margin-top: 20px; }
+.sb-edition-index a { display: flex; gap: 12px; padding: 14px 0; border-top: 1px solid var(--hairline); font-size: 13px; line-height: 1.5; color: var(--ink-muted); }
+.sb-edition-index a:hover { color: var(--teal); }
+.sb-edition-index span { color: var(--teal); font-variant-numeric: tabular-nums; }
+.sb-about { max-width: 480px; margin: 28px auto 0; font-size: 13px; line-height: 1.7; color: var(--ink-muted); }
+.sb-about summary { cursor: pointer; padding: 12px; }
+.sb-about p { margin-top: 10px; }
+.sb-source-headline { line-height: 1.5; overflow-wrap: anywhere; }
+.sb-focusable:focus-visible { outline: 2px solid var(--teal); outline-offset: 4px; }
+@media (max-width: 767px) {
+  .sb-brand-row { flex-wrap: wrap; gap: 10px; }
+  .sb-brand-row > :last-child { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+  .sb-masthead-mobile { padding-top: 16px; padding-bottom: 20px; }
+  .sb-story-card-lead, .sb-story-card-supporting { padding: 20px; }
+  .sb-headline-supporting { font-size: 23px; line-height: 1.22; }
+  .sb-story-card-foot .sb-meta { font-size: 12px; line-height: 1.5; }
+}
+@media (max-width: 767px) {
+  .sb-brand-row { margin-bottom: 4px; }
+  .sb-wordmark { font-size: 18px; }
+}
+
+.sb-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: var(--ink-muted);
+  background: transparent;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.sb-theme-toggle:hover { background: var(--surface-inset); color: var(--teal); }

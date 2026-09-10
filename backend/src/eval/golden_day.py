@@ -437,12 +437,16 @@ def run_golden_day(
     )
 
     db = create_db_client()
+    # Held rather than inlined so its misses can be read back after the run:
+    # a fixture whose recorded vectors no longer match the text the pipeline
+    # embeds scores a pipeline nobody ships.
+    embedder = day.embedder()
     try:
         runner = PipelineOrchestrator(
             config=config,
             db=db,
             ingestor=ReplayIngestor(day),  # type: ignore[arg-type]
-            embedder=day.embedder(),  # type: ignore[arg-type]
+            embedder=embedder,  # type: ignore[arg-type]
             triage_service=day.triager(),
             adjudicator=day.adjudicator(),
         )
@@ -455,6 +459,7 @@ def run_golden_day(
     cards = [BriefCard.from_feed(feed) for feed in feeds]
     report = score_brief(cards, day.expectations, day=day.name)
     report.cluster_quality = cluster_quality
+    report.embedding_misses = list(embedder.misses)
     return report, stats
 
 

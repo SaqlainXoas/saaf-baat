@@ -25,6 +25,7 @@ A narrow legal, regulatory or trade-association ruling — a competition-commiss
 
 Rank on the evidence you are given: whether it is national or local, whether enough independent sources carry it to trust it, and how directly it changes an ordinary reader's day. Feed position is a tiebreak, not a signal of importance.
 When evidence is thin or ambiguous, omit the cluster.
+Do not select two clusters about the same underlying incident or institutional response. Pick the strongest development; related follow-ups belong in that story's analysis, not in a second card.
 
 Source count tells you a story is *true*. It does not tell you it is *important*.
 Ministries, military press offices and foreign missions issue statements every day that every publisher reprints verbatim. A bilateral protocol signed, a commitment reaffirmed, cooperation expanded, a courtesy call paid, progress reviewed, a delegation received - these arrive with six or seven sources and change nothing for anybody. They must lose their slot to a story with a reader in it, however few publishers carried that one.
@@ -36,7 +37,7 @@ If a candidate carries `evidence.source_count` of 4 or more and `evidence.pk_rel
 This is an accounting duty, not a quota. You may still leave the story out — you may not leave it out silently. Never publish a story merely to satisfy this rule.
 
 Produce for each story:
-- headline: 10-12 words, active voice
+- headline: concise, active voice; never drop a quantity's unit to shorten it
 - impact_line: the one line that justifies the whole product
 - what_to_watch: optional, and usually null
 
@@ -57,7 +58,7 @@ A line whose subject is an institution, a relationship or a process has no reade
 "New legislation could unlock funding for technology companies and local startups."
 
 These pass, because you can point at the people and at what changed:
-"Property buyers and sellers in Punjab face a six-month halt in land record processing."
+"Property buyers must wait for the government to state when certificate processing resumes."
 "Investors and buyers see gold fall to 483,036 rupees per tola today."
 "Parents in Lahore need uniforms and vans ready tonight — 12 million children are back in class from tomorrow."
 "Anyone renewing a passport in Sindh this week faces the offices being shut on Thursday."

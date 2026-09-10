@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -63,6 +64,7 @@ from src.scrapers.feeds import (
     IngestResult,
     SourceSpec,
 )
+from src.utils.text import GENERIC_ACRONYMS
 from src.utils.urls import canonicalize_url_for_dedup, host_allowed_for_base
 from src.utils.validators import validate_sources_config
 
@@ -110,6 +112,12 @@ _SOURCE_PROMINENCE_FALLBACKS: Dict[str, int] = {
     "reuters_pk": 12,
     "business_recorder": 10,
 }
+
+# Source count at which a candidate stops being collapsible into another card's
+# story family. Three independent publishers is the same bar the corroboration
+# oracle in `derive_expectations.py` uses to call something a must-have, so a
+# story that clears it cannot be a presentation-layer duplicate.
+_STORY_FAMILY_CORROBORATION_FLOOR = 3
 
 
 # Facts the editor is given about a candidate. Deliberately not a score: the
@@ -877,7 +885,9 @@ class PipelineOrchestrator:
 
         raise TypeError("Grouping service must define group_articles() or cluster()")
 
-    def cluster_unclustered_articles(self, stats: PipelineStats, limit: int = 500) -> List[UUID]:
+    def cluster_unclustered_articles(
+        self, stats: PipelineStats, limit: Optional[int] = None
+    ) -> List[UUID]:
         """
         Cluster DB articles with embeddings but no cluster_id.
 
@@ -1011,9 +1021,10 @@ class PipelineOrchestrator:
 
         since = datetime.now(timezone.utc) - timedelta(hours=self.config.cluster_lookback_hours)
         try:
-            recent_embedded = self.db.get_articles_with_embeddings_since(
-                since=since, limit=self.config.recluster_limit
-            )
+            # Remediation clears the whole bounded lookback window, so it must
+            # also load that whole window. A 500-row cap previously cleared
+            # assignments for rows it never regrouped and stranded hundreds.
+            recent_embedded = self.db.get_articles_with_embeddings_since(since=since, limit=None)
         except Exception as e:
             logger.warning("Recent cluster remediation skipped (fetch failed): %s", e)
             return
@@ -1037,7 +1048,11 @@ class PipelineOrchestrator:
             except Exception as e:
                 logger.warning("Failed deleting cluster %s during remediation: %s", cluster_id, e)
 
-    def analyze_clusters_missing_feed(self, stats: PipelineStats) -> List[UUID]:
+    def analyze_clusters_missing_feed(
+        self,
+        stats: PipelineStats,
+        cluster_ids: Optional[Sequence[UUID]] = None,
+    ) -> List[UUID]:
         analyzer = self._get_analyzer()
         editorial = self._get_editorial_service()
 
@@ -1045,8 +1060,20 @@ class PipelineOrchestrator:
         # Biggest first, not newest first. The limit truncates, and ordered by
         # creation time it discarded whichever clusters happened to be written
         # last - which has nothing to do with whether anyone should read them.
-        clusters = self.db.get_all_clusters(limit=limit, order="size")
-        if len(clusters) >= limit:
+        if cluster_ids is None:
+            clusters = self.db.get_all_clusters(limit=limit, order="size")
+        else:
+            # A normal run knows exactly which clusters it just rebuilt. Load
+            # the complete retained set and keep only those IDs so older large
+            # clusters cannot consume the analysis cap ahead of today's small
+            # but important events.
+            wanted = set(cluster_ids)
+            clusters = [
+                cluster
+                for cluster in self.db.get_all_clusters(limit=None, order="size")
+                if cluster.id in wanted
+            ]
+        if cluster_ids is None and len(clusters) >= limit:
             # Not fatal - size ordering means what falls off the end is the
             # least-corroborated - but it must not be silent. Raising the
             # similarity threshold to 0.92 took one day from 268 clusters to
@@ -1265,11 +1292,35 @@ class PipelineOrchestrator:
                             current_articles=current_articles,
                         )
                         try:
-                            generated = story_analysis.analyze(story_input)
-                            stats.story_analysis_calls += max(
-                                1, int(getattr(story_analysis, "last_call_count", 1) or 1)
-                            )
-                            validated = validate_story_analysis(generated, story_input)
+                            generated = None
+                            validated = None
+                            for validation_attempt in range(2):
+                                generated = story_analysis.analyze(story_input)
+                                stats.story_analysis_calls += max(
+                                    1,
+                                    int(
+                                        getattr(story_analysis, "last_call_count", 1)
+                                        or 1
+                                    ),
+                                )
+                                try:
+                                    validated = validate_story_analysis(
+                                        generated, story_input
+                                    )
+                                    break
+                                except StoryAnalysisValidationError as exc:
+                                    if validation_attempt:
+                                        raise
+                                    logger.warning(
+                                        "Story analysis failed evidence validation for cluster %s; "
+                                        "retrying once with the same source packet: %s",
+                                        candidate.cluster_id,
+                                        exc,
+                                    )
+                            if validated is None:
+                                raise StoryAnalysisValidationError(
+                                    "analysis_missing_after_validation_retry"
+                                )
                             metadata = dict(merged_feed.metadata or {})
                             metadata["story_analysis"] = validated.to_metadata(
                                 model=str(getattr(story_analysis, "model", "injected"))
@@ -1598,14 +1649,37 @@ class PipelineOrchestrator:
 
         selected: List[ClusterEditorialCandidate] = []
         selected_ids: set[UUID] = set()
+        selected_story_families: set[str] = set()
         tag_counts: Dict[str, int] = {}
 
         for candidate in ordered:
             tag = self._candidate_tag(candidate)
             if tag_counts.get(tag, 0) >= 3:
                 continue
+            family_cues = self._candidate_story_family_cues(candidate)
+            repeated = family_cues & selected_story_families
+            # A story several publishers independently ran is not a
+            # presentation-layer duplicate, whatever institution its headlines
+            # name. This check exists to collapse thin follow-ups - a
+            # condolence, an official's regret, a taskforce statement - and it
+            # was silently deleting the day's third-best-corroborated story:
+            # a province-wide hospital safety audit carried by four publishers,
+            # suppressed behind the fire that prompted it purely because a
+            # member headline said "PIMS". Judge it by the same corroboration
+            # the rest of selection runs on.
+            if repeated and (
+                self._candidate_evidence(candidate).source_count
+                < _STORY_FAMILY_CORROBORATION_FLOOR
+            ):
+                logger.info(
+                    "Skipping cluster %s as a repeated brief storyline (%s)",
+                    candidate.cluster_id,
+                    ",".join(sorted(repeated)),
+                )
+                continue
             selected.append(candidate)
             selected_ids.add(candidate.cluster_id)
+            selected_story_families.update(family_cues)
             tag_counts[tag] = tag_counts.get(tag, 0) + 1
             if len(selected) >= max_items:
                 break
@@ -1625,6 +1699,30 @@ class PipelineOrchestrator:
                     break
 
         return selected[:max_items]
+
+    @staticmethod
+    def _candidate_story_family_cues(
+        candidate: ClusterEditorialCandidate,
+    ) -> set[str]:
+        """Named institutions that should appear only once in a finite brief.
+
+        Event clustering intentionally keeps a tragedy, a later dismissal and
+        a parliamentary inquiry separate. That is correct for provenance but
+        can still produce three cards about one incident. Acronyms such as
+        PIMS provide a conservative story-family key for the presentation
+        layer without loosening event identity underneath.
+        """
+        headlines = [
+            candidate.base_feed.headline,
+            candidate.representative_article.headline,
+            *(article.headline for article in candidate.articles),
+        ]
+        return {
+            token.casefold()
+            for headline in headlines
+            for token in re.findall(r"\b[A-Z][A-Z0-9-]{2,}\b", headline or "")
+            if token not in GENERIC_ACRONYMS
+        }
 
     def _rank_publishable_candidates(
         self, candidates: Sequence[ClusterEditorialCandidate]
@@ -1833,7 +1931,7 @@ class PipelineOrchestrator:
         # Re-cluster recent window to remediate historical low-quality clusters.
         self.remediate_recent_clusters(stats)
         # Clustering uses DB state so it can resume after partial failures.
-        self.cluster_unclustered_articles(stats)
+        created_cluster_ids = self.cluster_unclustered_articles(stats)
         logger.info(
             "Clustering complete: clustered_articles=%d clusters_created=%d cluster_failures=%d "
             "rejected_low_similarity=%d adjudicated=%d merged=%d",
@@ -1846,7 +1944,10 @@ class PipelineOrchestrator:
         )
 
         # Analysis also uses DB state and avoids duplicate feed items per cluster.
-        self.analyze_clusters_missing_feed(stats)
+        self.analyze_clusters_missing_feed(
+            stats,
+            cluster_ids=created_cluster_ids or None,
+        )
         logger.info(
             "Analysis complete: feeds_inserted=%d feeds_replaced=%d feeds_rejected_editorial=%d "
             "analyze_failures=%d editorial_status=%s story_analysis_status=%s",
