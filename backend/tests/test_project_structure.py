@@ -3,8 +3,11 @@ Test suite for Phase 0: Foundation & Environment Setup
 
 These tests validate that the project structure is correctly set up.
 """
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 
 class TestDirectoryStructure:
@@ -147,6 +150,15 @@ class TestPythonEnvironment:
         assert True, "pytest is configured and running"
 
 
+# CI installs into the runner's own Python; there is no backend/venv there and
+# there is no reason for one. These two check that a developer machine is set up
+# the way CLAUDE.md says to set it up, which is a real thing to catch locally and
+# a guaranteed red build everywhere else.
+_CI = os.getenv("CI", "").strip().lower() in {"1", "true", "yes"}
+_local_only = pytest.mark.skipif(_CI, reason="developer-environment check; CI has no backend/venv")
+
+
+@_local_only
 class TestVirtualEnvironment:
     """Test virtual environment setup."""
 
