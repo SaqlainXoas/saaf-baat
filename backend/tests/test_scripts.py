@@ -76,5 +76,7 @@ class TestE2EPipelinePathResolution:
         env_path = os.path.join(backend_dir, ".env")
         src_path = os.path.join(backend_dir, "src")
 
-        assert os.path.isfile(env_path), f"Expected .env at {env_path}"
+        # The regression is the path arithmetic landing on backend/, not the
+        # presence of .env — that file is gitignored and never exists in CI.
+        assert env_path == str(_BACKEND_DIR / ".env"), f"Resolved .env to {env_path}"
         assert os.path.isdir(src_path), f"Expected src/ at {src_path}"
