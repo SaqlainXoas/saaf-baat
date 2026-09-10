@@ -84,6 +84,35 @@ Enable GitHub Actions failure notifications for yourself. Public repository sche
 
 The RPC keeps publication atomic; it does not prove editorial quality. Review several consecutive days and monitor failures. Back up Supabase and test restoration. Watch database size: the pipeline prunes after seven days, while database guards retain the last published edition and source context still referenced by published stories. Free storage is limited. A recurring verified backup and restore process is still operational work before a dependable long-term launch.
 
+## 7. Add your own domain
+
+Optional, and best done after step 6 passes on the `.vercel.app` URL.
+
+Point the domain at **Vercel only**. The browser never calls Render directly — Next fetches the API server-side — so the API can keep its `.onrender.com` address and needs no domain, no DNS record and no certificate of its own.
+
+In Vercel → project → **Settings → Domains**, add both the apex (`example.com`) and `www`. Vercel then shows the exact records to create at Namecheap or Name.com; use the values Vercel gives you rather than any copied from elsewhere, since they differ per project:
+
+| Host | Type | Points to |
+|---|---|---|
+| `@` | `A` | The apex IP Vercel displays |
+| `www` | `CNAME` | The `…vercel-dns.com` target Vercel displays |
+
+At **Namecheap** these go under Domain List → Manage → Advanced DNS, and the domain must be on *Namecheap BasicDNS*, not a parking page or a third-party nameserver. At **Name.com** they are under Manage → DNS Records. Delete any pre-existing parking `A` or `CNAME` record on the same host first, or the new one will not resolve. Propagation is usually minutes; Vercel issues the certificate automatically once it sees the records.
+
+Pick one of the two as the canonical domain in Vercel and let it redirect the other, so a story is not served under two URLs.
+
+Then update three values to the new origin and redeploy:
+
+| Where | Variable | New value |
+|---|---|---|
+| Vercel | `NEXT_PUBLIC_SITE_URL` | `https://example.com` — otherwise page metadata and `robots.txt` keep advertising the `.vercel.app` host |
+| GitHub secret | `SAAF_REVALIDATE_URL` | `https://example.com/api/revalidate` |
+| Render | `BACKEND_CORS_ALLOW_ORIGINS` | Add the new origin (comma-separated, `https://`, no trailing slash) |
+
+The Render value matters least — nothing in the browser calls that API today — but leaving it correct keeps the service honest if anything ever does, and an empty or `*` value makes it refuse to boot in production.
+
+Check afterwards that the site loads on the domain, that a published story page loads directly (not only via the home page), and that `SAAF_REVALIDATE_URL` still returns `{"ok":true}` on the next pipeline run.
+
 ## Local validation and maintenance
 
 ```bash
@@ -108,3 +137,4 @@ Runtime lockfiles are generated from `requirements-api.in` and `requirements-pip
 - [Supabase server keys](https://supabase.com/docs/guides/getting-started/api-keys) and [pricing/quotas](https://supabase.com/pricing)
 - [Vercel Hobby eligibility](https://vercel.com/docs/plans/hobby)
 - [GitHub scheduled workflow behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+- [Vercel custom domains](https://vercel.com/docs/domains/working-with-domains/add-a-domain)
