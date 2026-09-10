@@ -2,11 +2,32 @@
 
 Vercel hosts the website. Render hosts the read-only FastAPI endpoints. GitHub Actions runs the Python news pipeline, and Supabase stores the results. Visitors never trigger AI generation.
 
-**Current state:** configuration is prepared locally; no provider accounts are connected and no hosted deployment has been verified. Render Free sleeps after idling and takes about a minute to wake, so the website serves the brief from Vercel's cache rather than calling Render on each visit — a reader gets the page immediately whether or not the API is awake. A request that does reach a waking backend is given 25 seconds before it is abandoned.
+**Current state:** Supabase is connected and its schema is applied and verified (project `ayjimcicmtjwenvldmvm`, 2026-09-10). Vercel, Render and the GitHub Actions secrets are not yet configured, and no end-to-end hosted run has been verified. Render Free sleeps after idling and takes about a minute to wake, so the website serves the brief from Vercel's cache rather than calling Render on each visit — a reader gets the page immediately whether or not the API is awake. A request that does reach a waking backend is given 25 seconds before it is abandoned.
 
 ## 1. Create Supabase
 
 Create a project dedicated to Saaf Baat. Keep the database password in your password manager. In its SQL editor, run [`backend/src/db/schema.sql`](../backend/src/db/schema.sql). The script is repeatable and preserves existing rows; it also removes the old cascading feed/cluster relation, enables RLS and denies anonymous/authenticated table access.
+
+**Re-running it on a database an older copy of the file created is not automatically enough.** `CREATE TABLE IF NOT EXISTS` is a no-op on an existing table and skips its `CONSTRAINT` clauses with it, so the script reports success while leaving the table without its CHECKs and without the `UNIQUE` on `raw_articles.content_hash` that is the article dedup guarantee. The live project was in exactly that state until 2026-09-10. The file now ends with a backfill block that adds any missing constraint, so a re-run repairs this — but verify rather than assume, with the query below.
+
+Verify by querying, not by trusting a green run. All four tables should report `rls_enabled=true`; `anon` and `authenticated` should hold zero table grants and no EXECUTE on the RPC:
+
+```sql
+SELECT c.relname, c.relrowsecurity AS rls_enabled,
+       (SELECT count(*) FROM pg_constraint k WHERE k.conrelid = c.oid AND k.contype IN ('c','u')) AS constraints
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND c.relname IN ('raw_articles','clusters','analyzed_feed','pipeline_state');
+
+SELECT r.rolname,
+       has_function_privilege(r.rolname,'public.publish_brief(text,integer,jsonb)','EXECUTE') AS can_publish,
+       (SELECT count(*) FROM information_schema.role_table_grants g
+         WHERE g.grantee = r.rolname AND g.table_schema = 'public'
+           AND g.table_name IN ('raw_articles','clusters','analyzed_feed','pipeline_state')) AS table_grants
+FROM pg_roles r WHERE r.rolname IN ('anon','authenticated','service_role');
+```
+
+Then run the project's database linter (Advisors → Security). Four `rls_enabled_no_policy` notices at INFO are the intended design: RLS denies everything and only the server key, which bypasses it, has grants. One `extension_in_public` warning for `vector` is accepted — relocating the extension would rewrite the embedding column types for no security gain on a database with no public role access.
 
 Copy the **project URL** and a **server secret key** (or legacy `service_role` key) from the project's API settings. The app calls it `SUPABASE_KEY`. Do not use the publishable/anon key: this deployment intentionally has no public database policies.
 
@@ -71,10 +92,11 @@ Open **Actions → Publish morning brief → Run workflow**. It installs the loc
 
 Once the first run and public reader flow pass, create the **repository variable** `ENABLE_DAILY_PIPELINE=true`. This deliberate setup switch prevents unconfigured scheduled runs. The schedule starts at **06:17 Pakistan time**, allowing generation time before the morning. It is best-effort, not a guaranteed completion time. The workflow must exist on the repository's default branch for scheduling.
 
-Enable GitHub Actions failure notifications for yourself. Public repository schedules may be disabled after 60 days of inactivity. Standard public runners are free; private repositories have an allowance. Model quotas and provider storage/bandwidth limits remain separate.
+Enable GitHub Actions failure notifications for yourself. This repository is private, so scheduled runs draw on the account's included Actions minutes rather than the free public-runner pool — one pipeline run per day, and worth watching against the allowance. (The 60-day inactivity rule that disables schedules applies to public repositories, not this one.) Model quotas and provider storage/bandwidth limits remain separate.
 
 ## 6. Verify before sharing
 
+0. Know what the database already holds. It carries a 2026-05-14 run — 180 articles, 23 clusters and 7 published cards — and those cards predate `metadata.brief_run_at`, so they carry no stamp. `_latest_brief_only` discards empty stamps and, finding none at all, returns every row, which means `/api/feed` serves that four-month-old 7-card brief until the first pipeline run. This is the expected pre-run state, not a misconfiguration, and the first real edition outranks those rows and filters them out permanently. Do not delete them first: the `preserve_published_context` trigger protects the last published edition on purpose, and clearing it before a run that might publish nothing leaves the reader with no brief at all.
 1. Wait for Render's initial build to finish. Open `/health` and check `database: connected`.
 2. Run the GitHub workflow once. Check its publication step and uploaded heartbeat; do not treat a green install step as a published edition.
 3. Open Render `/api/feed`: confirm a fresh timestamp and a distinct, meaningful edition. Open each returned `story_id` at `/api/stories/{story_id}`.
