@@ -205,7 +205,14 @@ CREATE OR REPLACE FUNCTION preserve_published_context()
 RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
     IF TG_TABLE_NAME = 'analyzed_feed' THEN
-        IF OLD.is_published AND OLD.metadata->>'brief_run_at' = (
+        -- IS NOT DISTINCT FROM, not `=`: an edition published before
+        -- `brief_run_at` existed carries a NULL stamp, and `NULL = NULL` is
+        -- NULL rather than TRUE, so plain equality let the retention prune
+        -- delete the very edition this trigger exists to keep. That happened
+        -- on 2026-09-11: the prune removed all seven standing cards during a
+        -- run whose own publication then failed, leaving the database with no
+        -- published edition at all and the site alive only on cache.
+        IF OLD.is_published AND OLD.metadata->>'brief_run_at' IS NOT DISTINCT FROM (
             SELECT metadata->>'brief_run_at' FROM analyzed_feed
             WHERE is_published ORDER BY created_at DESC LIMIT 1
         ) THEN RETURN NULL; END IF;
