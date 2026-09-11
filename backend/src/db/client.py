@@ -9,6 +9,8 @@ Provides:
 """
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
 import time
@@ -33,6 +35,49 @@ from .errors import (
 from .models import AnalyzedFeed, ArticleList, Cluster, ClusterList, FeedList, RawArticle
 
 logger = logging.getLogger(__name__)
+
+
+def _key_role(key: str) -> Optional[str]:
+    """
+    Return the role a Supabase API key carries, or None if it cannot be read.
+
+    Legacy keys are JWTs whose payload names the role; the current keys carry
+    it in a `sb_publishable_` / `sb_secret_` prefix instead.
+    """
+    if key.startswith("sb_publishable_"):
+        return "anon"
+    if key.startswith("sb_secret_"):
+        return "service_role"
+
+    parts = key.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        payload = parts[1] + "=" * (-len(parts[1]) % 4)
+        return json.loads(base64.urlsafe_b64decode(payload)).get("role")
+    except Exception:
+        return None
+
+
+def _reject_public_key(key: str) -> None:
+    """
+    Fail at construction on a publishable/anon key rather than at first query.
+
+    This deployment has no public database policies: RLS denies everything and
+    only the server key has grants. An anon key therefore connects happily and
+    then fails every statement with a bare `permission denied for table
+    raw_articles`, which names neither the cause nor the fix. The mistake is
+    easy to make because both keys sit side by side in the Supabase dashboard,
+    and a pipeline run that hits it has already spent its ingest and its LLM
+    budget before the first write fails.
+    """
+    if _key_role(key) == "anon":
+        raise DBConnectionError(
+            "SUPABASE_KEY is a publishable/anon key, which has no privileges on "
+            "this project: row-level security denies all access and only the "
+            "server key holds grants. Use the service_role / secret key from "
+            "the project's API settings (never in frontend code)."
+        )
 
 
 class SupabaseClient:
@@ -97,6 +142,8 @@ class SupabaseClient:
                 "Missing Supabase credentials. Set SUPABASE_URL and SUPABASE_KEY "
                 "environment variables or pass them to the constructor."
             )
+
+        _reject_public_key(self.key)
 
     @property
     def client(self) -> Client:
