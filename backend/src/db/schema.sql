@@ -108,7 +108,9 @@ FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE SET NULL;
 -- Function: Update cluster timestamp on modification
 -- ============================================
 CREATE OR REPLACE FUNCTION update_cluster_timestamp()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SET search_path = public
+AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
@@ -126,7 +128,9 @@ CREATE TRIGGER trigger_update_cluster_timestamp
 -- Function: Update cluster size when articles change
 -- ============================================
 CREATE OR REPLACE FUNCTION update_cluster_size()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SET search_path = public
+AS $$
 BEGIN
     NEW.cluster_size = COALESCE(array_length(NEW.article_ids, 1), 0);
     RETURN NEW;
@@ -225,3 +229,47 @@ FOR EACH ROW EXECUTE FUNCTION preserve_published_context();
 DROP TRIGGER IF EXISTS preserve_published_article ON raw_articles;
 CREATE TRIGGER preserve_published_article BEFORE DELETE ON raw_articles
 FOR EACH ROW EXECUTE FUNCTION preserve_published_context();
+
+-- ============================================
+-- Constraint backfill for databases created by an earlier copy of this file
+--
+-- `CREATE TABLE IF NOT EXISTS` above is a no-op on a table that already
+-- exists, and it skips the table's CONSTRAINT clauses with it. Re-running
+-- this file therefore reported success while leaving an older database
+-- without a single CHECK and, worse, without the UNIQUE on
+-- `raw_articles.content_hash` that is the article dedup guarantee. The live
+-- Supabase project was in exactly that state on 2026-09-10. Adding each
+-- constraint only when absent keeps the file a true upgrade script.
+--
+-- These deliberately fail loudly if existing rows violate them: a database
+-- holding duplicate content hashes or an out-of-vocabulary category is a
+-- problem to see, not to skip past.
+-- ============================================
+DO $$
+DECLARE
+    spec RECORD;
+BEGIN
+    FOR spec IN SELECT * FROM (VALUES
+        ('raw_articles',  'raw_articles_content_hash_key', 'UNIQUE (content_hash)'),
+        ('raw_articles',  'valid_source',          'CHECK (LENGTH(source) > 0)'),
+        ('raw_articles',  'valid_headline',        'CHECK (LENGTH(headline) > 0)'),
+        ('raw_articles',  'valid_main_text',       'CHECK (LENGTH(main_text) > 0)'),
+        ('raw_articles',  'valid_content_hash',    'CHECK (LENGTH(content_hash) = 64)'),
+        ('clusters',      'valid_cluster_size',    'CHECK (cluster_size >= 0)'),
+        ('clusters',      'valid_similarity',      'CHECK (avg_similarity IS NULL OR (avg_similarity >= 0 AND avg_similarity <= 1))'),
+        ('analyzed_feed', 'valid_category',        'CHECK (category IN (''economy'', ''politics'', ''city'', ''education'', ''health'', ''sports'', ''technology'', ''entertainment'', ''security'', ''international'', ''other''))'),
+        ('analyzed_feed', 'valid_headline_length', 'CHECK (LENGTH(headline) > 0)'),
+        ('analyzed_feed', 'valid_confidence',      'CHECK (classification_confidence IS NULL OR (classification_confidence >= 0 AND classification_confidence <= 1))')
+    ) AS t(table_name, constraint_name, definition)
+    LOOP
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = spec.constraint_name
+              AND conrelid = format('public.%I', spec.table_name)::regclass
+        ) THEN
+            EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I %s',
+                           spec.table_name, spec.constraint_name, spec.definition);
+        END IF;
+    END LOOP;
+END;
+$$;
