@@ -89,3 +89,6 @@ frontend/public/_demo-stage.html
 
 # Next.js/TypeScript incremental build artifact
 frontend/tsconfig.tsbuildinfo
+
+# Local docs — not shipped, not tracked
+docs/
