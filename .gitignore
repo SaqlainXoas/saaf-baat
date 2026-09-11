@@ -1,94 +1,35 @@
 # Python
-backend/venv/
-backend/backend/venv/
 venv/
-env/
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-dist/
-build/
-*.egg
 .mypy_cache/
 .ruff_cache/
-
-# Environment variables
-.env
-.env.*
-!.env.example
-!.env.*.example
-backend/.pipeline_heartbeat.json
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Node
 frontend/node_modules/
 frontend/.next/
 frontend/.swc/
 frontend/out/
-frontend/build/
 frontend/.vercel
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
-coverage.xml
-*.cover
-.hypothesis/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Documentation (archive/local notes)
-docs/extra/
-codex-thinking/
-MEMORY.md
-docs/plan.md
-docs/saaf-baat-prd-final.md
-docs/final-draft-plan.md
-docs/final-draft-product.md
-.claude/
-backend/.claude/
-.github/copilot-instructions.md
-
-# Design exploration artifacts
-design-mockups/
-design/
-frontend/mockups/
-
-# Local MCP wiring: points at one personal Supabase project, not project config
-.mcp.json
-
-# Local scratch: demo-film rendering artifacts and UI exploration
-artifacts/
-UI-concepts/
-UI-real-testing/
-frontend/public/_demo-stage.html
-
-# Next.js/TypeScript incremental build artifact
 frontend/tsconfig.tsbuildinfo
 
-# Local docs — not shipped, not tracked
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local only
 docs/
+.claude/
+.mcp.json
+backend/.pipeline_heartbeat.json
+frontend/public/_demo-stage.html
+
+# Data and noise
+*.db
+*.sqlite3
+*.log
+.DS_Store
