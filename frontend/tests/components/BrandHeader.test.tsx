@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import BrandHeader from "@/components/BrandHeader";
 import ThemeProvider from "@/components/ThemeProvider";
@@ -35,7 +35,12 @@ describe("BrandHeader", () => {
 
   it("leads with the greeting, same as mobile", () => {
     renderHeader({ storyCount: 8 });
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Subah bakhair");
+    const heading = screen.getByRole("heading", { level: 1 });
+
+    // Same three bands as the mobile masthead, from the same component - the
+    // desktop header is a server component and cannot resolve the hour itself.
+    expect(within(heading).getByTitle("Good morning").textContent).toBe("Subah Bakhair");
+    expect(heading.querySelectorAll("[data-band]")).toHaveLength(3);
   });
 
   it("uses Pakistan time for the edition date and singular story copy", () => {

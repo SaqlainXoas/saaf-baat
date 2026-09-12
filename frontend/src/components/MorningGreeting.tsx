@@ -2,7 +2,8 @@
 
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
-import { formatEssentialStoryCount, getBriefEditionIdentity, getGreeting } from "@/utils/edition";
+import MastheadGreeting from "@/components/MastheadGreeting";
+import { formatEssentialStoryCount, getBriefEditionIdentity } from "@/utils/edition";
 
 /**
  * The mobile masthead: the greeting the brief opens with.
@@ -23,7 +24,6 @@ export default function MorningGreeting({
 }) {
   const city = "Pakistan";
   const edition = getBriefEditionIdentity(generatedAt, isFresh);
-  const { greeting, translation } = getGreeting();
 
   return (
     <header className="sb-masthead sb-masthead-mobile">
@@ -41,9 +41,7 @@ export default function MorningGreeting({
         {city} · {edition.dateLabel}
       </p>
 
-      <h1 className="sb-display-mobile" lang="ur-Latn" title={translation}>
-        {greeting}
-      </h1>
+      <MastheadGreeting className="sb-display-mobile" />
 
       <p className="sb-masthead-note">
         {storyCount > 0 ? `${formatEssentialStoryCount(storyCount)}. ` : ""}What happened and why it matters.
