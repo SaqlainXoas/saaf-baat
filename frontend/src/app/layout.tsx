@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ThemeProvider from "@/components/ThemeProvider";
+import { PKT_BAND_SCRIPT } from "@/utils/edition";
 import { normaliseTheme } from "@/utils/theme";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -49,6 +50,15 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme={defaultTheme} suppressHydrationWarning>
       <body>
+        {/*
+          Picks the masthead greeting's time band from the Karachi clock and
+          stamps it on <html> before anything paints. Blocking on purpose: the
+          page is cache-served, so the band cannot be decided at render time,
+          and deciding it after hydration would flash the wrong greeting. The
+          suppressHydrationWarning on <html> above covers the attribute this
+          adds.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: PKT_BAND_SCRIPT }} />
         <ThemeProvider defaultTheme={defaultTheme}>{children}</ThemeProvider>
       </body>
     </html>

@@ -323,6 +323,28 @@ body {
     font-style: italic;
   }
 
+  /* The masthead greeting's three time bands. All three are in the DOM on
+     every render - see MastheadGreeting - and the inline script in the root
+     layout sets data-pkt-band on <html> from the Karachi clock before first
+     paint. Morning is the default, so a reader with JavaScript off, or one
+     whose Intl lookup threw, still gets a sensible masthead rather than a
+     blank one. display:none keeps the other two out of the a11y tree. */
+  [data-band] {
+    display: none;
+  }
+
+  [data-band="morning"],
+  html[data-pkt-band="morning"] [data-band="morning"],
+  html[data-pkt-band="midday"] [data-band="midday"],
+  html[data-pkt-band="evening"] [data-band="evening"] {
+    display: inline;
+  }
+
+  html[data-pkt-band="midday"] [data-band="morning"],
+  html[data-pkt-band="evening"] [data-band="morning"] {
+    display: none;
+  }
+
   .sb-display-mobile {
     font-size: 34px;
     font-weight: 600;
