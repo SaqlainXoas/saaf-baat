@@ -2012,16 +2012,55 @@ def default_config(
         "false",
         "no",
     }
+    def _env_is_set(name: str) -> bool:
+        return bool((os.getenv(name) or "").strip())
+
+    def _low_cost_ceiling(name: str, value: int, ceiling: int) -> int:
+        """Apply a low-cost ceiling to a *default*, never to an explicit request.
+
+        This used to be a bare `min()`, and it silently discarded configuration
+        an operator had deliberately written. The scheduled workflow set
+        SAAF_MAX_ARTICLES_PER_SOURCE=40 next to SAAF_LOW_COST_MODE=1 and got
+        25, with nothing in the log to say so. The consequences ran the whole
+        length of the pipeline: 200 articles instead of ~320, 171 clusters
+        instead of the ~320 the selection thresholds were measured against, and
+        - because the candidate shortlist was clamped the same silent way - an
+        editor that saw 24 candidates, exhausted all 24 by its second attempt
+        and had nothing deeper to retry against. Three consecutive live briefs
+        shipped at 4, 4 and 5 cards against a floor of 6, filled out from the
+        weak tail. Explicit beats implicit, and either way it is logged.
+        """
+        if value <= ceiling:
+            return value
+        if _env_is_set(name):
+            logger.info(
+                "Low-cost mode: keeping explicit %s=%d (would otherwise cap at %d)",
+                name,
+                value,
+                ceiling,
+            )
+            return value
+        logger.info("Low-cost mode: %s lowered from %d to %d", name, value, ceiling)
+        return ceiling
+
     low_cost_mode = os.getenv("SAAF_LOW_COST_MODE", "0").strip().lower() in {"1", "true", "yes"}
     max_articles_per_source = _env_int("SAAF_MAX_ARTICLES_PER_SOURCE", 40)
     embedding_backfill_limit = _env_int("SAAF_EMBEDDING_BACKFILL_LIMIT", 100)
     editorial_candidate_limit = _env_int("SAAF_EDITORIAL_CANDIDATE_LIMIT", 30)
     editorial_max_stories = _env_int("SAAF_EDITORIAL_MAX_STORIES", 12)
     if low_cost_mode:
-        max_articles_per_source = min(max_articles_per_source, 25)
-        embedding_backfill_limit = min(embedding_backfill_limit, 50)
-        editorial_candidate_limit = min(editorial_candidate_limit, 24)
-        editorial_max_stories = min(editorial_max_stories, 12)
+        max_articles_per_source = _low_cost_ceiling(
+            "SAAF_MAX_ARTICLES_PER_SOURCE", max_articles_per_source, 25
+        )
+        embedding_backfill_limit = _low_cost_ceiling(
+            "SAAF_EMBEDDING_BACKFILL_LIMIT", embedding_backfill_limit, 50
+        )
+        editorial_candidate_limit = _low_cost_ceiling(
+            "SAAF_EDITORIAL_CANDIDATE_LIMIT", editorial_candidate_limit, 24
+        )
+        editorial_max_stories = _low_cost_ceiling(
+            "SAAF_EDITORIAL_MAX_STORIES", editorial_max_stories, 12
+        )
 
     return PipelineConfig(
         sources_yaml=Path(sources_yaml),

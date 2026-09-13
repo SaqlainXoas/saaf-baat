@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,7 +18,12 @@ from src.agents.editorial import ClusterEditorialCandidate
 from src.agents.story_analysis import StoryAnalysisError
 from src.db.client import DuplicateArticleError
 from src.db.models import AnalyzedFeed, Cluster, RawArticle
-from src.pipeline.orchestrator import PipelineConfig, PipelineOrchestrator, PipelineStats
+from src.pipeline.orchestrator import (
+    PipelineConfig,
+    PipelineOrchestrator,
+    PipelineStats,
+    default_config,
+)
 from src.scrapers.feeds import EndpointReport, IngestResult
 
 
@@ -2370,3 +2376,83 @@ def test_a_missing_embedding_key_degrades_loudly_instead_of_crashing(tmp_path, m
     # Backfill hits the same rows; it must not double-count them.
     runner.embed_articles(articles, stats)
     assert stats.embed_failures == 1
+
+
+class TestLowCostModeConfig:
+    """Low-cost mode lowers defaults; it must never discard explicit config.
+
+    The bare `min()` this replaced cost three consecutive live briefs their
+    floor. The scheduled workflow asked for 40 articles per source and got 25,
+    silently, which starved clustering and left the editor with a 24-candidate
+    shortlist it exhausted on its second attempt - so the short-pass retry had
+    nothing deeper to offer and the brief shipped at 4, 4 and 5 cards.
+    """
+
+    _LOW_COST_KEYS = (
+        "SAAF_MAX_ARTICLES_PER_SOURCE",
+        "SAAF_EMBEDDING_BACKFILL_LIMIT",
+        "SAAF_EDITORIAL_CANDIDATE_LIMIT",
+        "SAAF_EDITORIAL_MAX_STORIES",
+    )
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("SAAF_LOW_COST_MODE", raising=False)
+        for key in self._LOW_COST_KEYS:
+            monkeypatch.delenv(key, raising=False)
+
+    def test_low_cost_mode_lowers_unset_defaults(self, monkeypatch):
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        config = default_config()
+
+        assert config.max_articles_per_source == 25
+        assert config.embedding_backfill_limit == 50
+        assert config.editorial_candidate_limit == 24
+
+    def test_explicit_value_survives_low_cost_mode(self, monkeypatch):
+        # This is the exact pairing in .github/workflows/daily_pipeline.yml.
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        monkeypatch.setenv("SAAF_MAX_ARTICLES_PER_SOURCE", "40")
+        config = default_config()
+
+        assert config.max_articles_per_source == 40
+
+    def test_explicit_candidate_limit_survives_low_cost_mode(self, monkeypatch):
+        # The shortlist the editor retries against. Clamped to 24, attempt two
+        # saw 24/24 and stopped; there was no deeper candidate to reach for.
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        monkeypatch.setenv("SAAF_EDITORIAL_CANDIDATE_LIMIT", "30")
+        config = default_config()
+
+        assert config.editorial_candidate_limit == 30
+
+    def test_explicit_value_below_the_ceiling_is_still_honoured(self, monkeypatch):
+        # Explicit wins in both directions: asking for less than the low-cost
+        # ceiling must not be raised up to it.
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        monkeypatch.setenv("SAAF_MAX_ARTICLES_PER_SOURCE", "10")
+        config = default_config()
+
+        assert config.max_articles_per_source == 10
+
+    def test_low_cost_mode_off_uses_full_defaults(self, monkeypatch):
+        config = default_config()
+
+        assert config.max_articles_per_source == 40
+        assert config.editorial_candidate_limit == 30
+
+    def test_clamping_an_unset_default_is_logged(self, monkeypatch, caplog):
+        # The original defect was silence, not the number itself.
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        with caplog.at_level(logging.INFO, logger="src.pipeline.orchestrator"):
+            default_config()
+
+        assert "SAAF_MAX_ARTICLES_PER_SOURCE lowered from 40 to 25" in caplog.text
+
+    def test_keeping_an_explicit_value_is_logged(self, monkeypatch, caplog):
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        monkeypatch.setenv("SAAF_MAX_ARTICLES_PER_SOURCE", "40")
+        with caplog.at_level(logging.INFO, logger="src.pipeline.orchestrator"):
+            default_config()
+
+        assert "keeping explicit SAAF_MAX_ARTICLES_PER_SOURCE=40" in caplog.text
