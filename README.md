@@ -91,6 +91,10 @@ npm run dev
 
 Open [localhost:3000](http://localhost:3000).
 
+Real credentials belong only in untracked local `.env` files or the hosted
+providers' secret stores. Before committing configuration changes, run
+`python backend/scripts/check_secrets.py`; CI runs the same redacted check.
+
 ## Make it yours
 
 The hosted setup uses **Vercel** for the website, **Render** for the read-only API, **Supabase** for storage, and **GitHub Actions** to prepare each morning's edition. Readers never trigger generation — the brief is written once a day and served from cache.
