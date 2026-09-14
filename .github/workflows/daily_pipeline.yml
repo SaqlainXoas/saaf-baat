@@ -27,6 +27,12 @@ jobs:
       # this run publishes; without them the page refreshes on its own window.
       SAAF_REVALIDATE_URL: ${{ secrets.SAAF_REVALIDATE_URL }}
       SAAF_REVALIDATE_SECRET: ${{ secrets.SAAF_REVALIDATE_SECRET }}
+      # Polled until it answers before the revalidation above is sent. Render
+      # Free sleeps after ~15 minutes idle and this pipeline is not one of its
+      # callers, so revalidating first re-rendered the page against a sleeping
+      # API, blew the frontend's fetch timeout and cached "Unable to load
+      # brief". Not a secret - it is the public API origin.
+      SAAF_BACKEND_HEALTH_URL: https://saaf-baat-api.onrender.com/health
       SAAF_STAGE_PUBLICATION: '1'
       SAAF_PUBLICATION_TOKEN: ${{ github.run_id }}-${{ github.run_attempt }}
       SAAF_LOW_COST_MODE: '1'

@@ -237,8 +237,12 @@ describe("api data mode", () => {
       new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))))
     );
     const pending = fetchFeedWithMeta();
-    // The abort now allows for a Render Free cold start rather than 8s.
-    await jest.advanceTimersByTimeAsync(25_000);
+    // Must exceed FETCH_TIMEOUT_MS in src/data/api.ts. That was 25s and this
+    // line advanced exactly 25s, on a comment claiming it "allows for a Render
+    // Free cold start" - it did not. A cold start outran it, every revalidation
+    // that woke a sleeping Render aborted, and Vercel cached the error state
+    // this test asserts instead of the brief.
+    await jest.advanceTimersByTimeAsync(80_000);
     const result = await pending;
     expect(result.status).toBe("error-live-required");
     expect(result.stories).toEqual([]);
