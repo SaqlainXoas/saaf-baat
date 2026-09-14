@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 
