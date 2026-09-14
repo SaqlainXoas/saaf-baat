@@ -20,7 +20,9 @@ like today's real Pakistan toplines to a Pakistani reader".
 2. `AGENTS.md` — locked product decisions (do not contradict without asking)
 3. The rest of this file — the architecture, and why each threshold is what it is.
 
-Deployment instructions live in `docs/deployment.md`; product screenshots live in `docs/images/`. `claude-thinking-notes/`, `codex-thinking/`
+Deployment instructions live in `docs/deployment.md`. README screenshots live in
+`assets/` and are tracked; `docs/` is gitignored in full, so anything the README
+links to must live outside it or GitHub serves a 404 to every visitor. `claude-thinking-notes/`, `codex-thinking/`
 and `program.md` were deleted on 2026-08-28: they were session records of work
 that is finished, and everything in them that stayed true is in this file or in
 `docs/status.md`. Re-runnable ingest evidence lives in `backend/scripts/research/`.
@@ -399,7 +401,8 @@ Frontend (from `frontend/`): `npm test`, `npm run dev`, `npm run build`.
 - The worktree is frequently dirty with the user's own in-progress edits. **Do
   not revert or "clean up" unrelated modified files.**
 - **Keep root docs to README, AGENTS and CLAUDE**. Supporting documentation
-  and screenshots belong in `docs/`. Update `docs/status.md` after meaningful work rather than
+  belongs in `docs/`, which stays local; anything the README references belongs
+  in `assets/`. Update `docs/status.md` after meaningful work rather than
   adding a new dated note; the note directories were deleted for exactly that
   reason. Scratch belongs outside the repo.
 

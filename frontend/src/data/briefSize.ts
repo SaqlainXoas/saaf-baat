@@ -22,12 +22,12 @@ export const MAX_STORIES = 12;
 export const FEED_REQUEST_LIMIT = 30;
 
 /**
- * Below this, the brief is short and the reader is told so.
+ * The floor the editor aims for, recorded on the frontend side of the contract.
  *
- * It must be measured against the brief the pipeline produced, never against
- * a filtered view: narrowing to one publisher used to raise "Partial brief —
- * more stories being reviewed" over a complete brief the reader had chosen to
- * narrow themselves.
+ * The reader is no longer told when an edition falls below it. A short brief is
+ * the product working - it ends rather than padding - and the banner that
+ * announced it apologised for that in the amber box reserved for real faults.
+ * The masthead states the story count regardless.
  *
  * Keep in step with TARGET_STORY_FLOOR in backend/src/agents/editorial.py.
  */

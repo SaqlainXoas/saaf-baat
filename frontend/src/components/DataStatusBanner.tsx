@@ -1,5 +1,4 @@
 import type { DataStatus } from "@/data/api";
-import { MIN_STORIES } from "@/data/briefSize";
 
 export default function DataStatusBanner({
   status,
@@ -19,13 +18,17 @@ export default function DataStatusBanner({
   const latestUpdate = parseLatestUpdate(generatedAt);
   const briefSize = storyCount;
   const staleFeed = status === "live" && briefSize !== 0 && isFresh === false;
-  const partialBrief =
-    status === "live" &&
-    typeof briefSize === "number" &&
-    briefSize > 0 &&
-    briefSize < MIN_STORIES;
   const emptyBrief = status === "live" && briefSize === 0;
-  if (!staleFeed && !partialBrief && !emptyBrief && status === "live") return null;
+  // A short brief is not a fault and is not announced. This product is finite
+  // on purpose - it ends rather than padding - so a banner warning the reader
+  // that a deliberately finite brief is finite argues against the thing it is
+  // attached to. It used to read "Partial brief - fewer than six stories in
+  // this edition. We haven't added filler.", in the same amber box used for a
+  // stale edition and a dead backend, defending against an accusation no
+  // reader had made in vocabulary no reader shares. The masthead already says
+  // "5 essential stories", so the count reaches them either way. What stays
+  // here are the three cases that really are faults.
+  if (!staleFeed && !emptyBrief && status === "live") return null;
   const tone = status === "error-live-required" ? "error" : "warn";
 
   const body =
@@ -33,8 +36,6 @@ export default function DataStatusBanner({
       ? "The morning brief is being prepared. Check back after 7am PKT."
       : staleFeed
         ? "Brief not updated yet today. You’re reading an older edition; details may have changed."
-        : partialBrief
-          ? "Partial brief — fewer than six stories in this edition. We haven’t added filler."
       : message ||
         (status === "mock-no-api"
           ? "Showing the local preview brief because a live backend is not configured."
