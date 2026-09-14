@@ -21,11 +21,11 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/04695013-06b1-4023-8ce5-41dd2c79da52" width="1200" controls muted playsinline></video>
+  <video src="https://github.com/user-attachments/assets/f01b93ff-716f-4eed-9e19-e4844be70560" width="1200" controls muted playsinline></video>
 </p>
 
 <p align="center">
-  <sub><a href="https://github.com/user-attachments/assets/04695013-06b1-4023-8ce5-41dd2c79da52">Watch the demo</a> if the player does not load.</sub>
+  <sub><a href="https://github.com/user-attachments/assets/f01b93ff-716f-4eed-9e19-e4844be70560">Watch the demo</a> if the player does not load.</sub>
 </p>
 
 <p align="center">
