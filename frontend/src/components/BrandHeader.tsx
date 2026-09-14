@@ -1,6 +1,7 @@
 import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
-import { formatEssentialStoryCount, getBriefEditionIdentity, getGreeting } from "@/utils/edition";
+import MastheadGreeting from "@/components/MastheadGreeting";
+import { formatEssentialStoryCount, getBriefEditionIdentity } from "@/utils/edition";
 
 /**
  * The desktop masthead.
@@ -24,7 +25,6 @@ export default function BrandHeader({
 }) {
   const city = "Pakistan";
   const edition = getBriefEditionIdentity(generatedAt, isFresh);
-  const { greeting, translation } = getGreeting();
 
   return (
     <header className="sb-masthead">
@@ -42,9 +42,7 @@ export default function BrandHeader({
         {edition.briefLabel} · {city} · {edition.stampLabel}
       </p>
 
-      <h1 className="sb-display-home" lang="ur-Latn" title={translation}>
-        {greeting}
-      </h1>
+      <MastheadGreeting className="sb-display-home" />
 
       <p className="sb-masthead-note">
         {typeof storyCount === "number" ? `${formatEssentialStoryCount(storyCount)}. ` : ""}
