@@ -149,7 +149,15 @@ function toStoryDetail(row: ApiStoryDetailRow): StoryDetailData {
 // it publishes. REVALIDATE_WINDOW_SECONDS is only the fallback for a run whose
 // revalidate ping did not land.
 const REVALIDATE_WINDOW_SECONDS = 900;
-const FETCH_TIMEOUT_MS = 25_000;
+// Render Free takes longer than 25s to cold-start, which is what 25_000 was.
+// A revalidation that lands on a sleeping backend therefore always aborted,
+// and the abort is what gets cached - so the page sat on "Unable to load
+// brief" while the API, the pipeline and Supabase were all healthy. The
+// pipeline now wakes Render before it asks for a revalidation; this is the
+// second line of defence, for a cold start nobody warmed. It only bounds a
+// background re-render, not a reader: Vercel serves the cached edition while
+// that runs.
+const FETCH_TIMEOUT_MS = 75_000;
 
 async function fetchJson<T>(input: string, tags: string[]) {
   const controller = new AbortController();
