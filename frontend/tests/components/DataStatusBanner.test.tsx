@@ -14,9 +14,21 @@ describe("DataStatusBanner", () => {
     expect(screen.getByRole("status").textContent).toContain("Brief not updated yet today");
   });
 
-  it("shows partial brief warning when too few live stories are available", () => {
-    render(<DataStatusBanner status="live" generatedAt={new Date().toISOString()} isFresh storyCount={5} />);
-    expect(screen.getByRole("status").textContent).toContain("Partial brief");
+  it("says nothing about a short brief, which is the product working", () => {
+    // This used to raise "Partial brief — ... We haven't added filler." in the
+    // same amber box as a dead backend. The brief is finite on purpose, the
+    // masthead already states the count, and warning a reader that a finite
+    // product is finite argues against it.
+    const { container } = render(
+      <DataStatusBanner status="live" generatedAt={new Date().toISOString()} isFresh storyCount={5} />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("still warns about the faults that are faults", () => {
+    render(<DataStatusBanner status="live" isFresh={false} storyCount={0} />);
+    expect(screen.getByRole("status").textContent).toContain("being prepared");
   });
 
   it("shows the empty-state preparation message for a zero-story live feed", () => {
