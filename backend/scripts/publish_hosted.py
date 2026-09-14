@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -98,6 +99,45 @@ def notify_frontend() -> None:
         print(f"Warning: could not revalidate the frontend cache: {exc}")
 
 
+def warm_frontend_cache() -> None:
+    """Rebuild the cached page now, while the backend is still awake.
+
+    Revalidating empties Vercel's cache; it does not refill it. Overnight that
+    leaves nothing to serve: the run finishes around 06:20, Render idles back to
+    sleep fifteen minutes later, and the first reader of the morning arrives to
+    an empty cache and a sleeping API. Vercel has to build the page on the spot,
+    which means waking Render while the reader waits - half a minute or more,
+    staring at a loading page, for a brief that was ready hours earlier.
+
+    So the run pays that cost itself, here, one request after `wake_backend`
+    while everything is still up. The page is rebuilt and cached, and the
+    morning's first reader gets it in a fraction of a second like everyone else.
+
+    Best effort, like the ping before it: a warm cache is an optimisation, and
+    the edition is already published either way.
+    """
+    revalidate_url = os.getenv("SAAF_REVALIDATE_URL", "").strip()
+    if not revalidate_url:
+        print("No site URL to warm; the first reader will rebuild the page")
+        return
+    parsed = urllib.parse.urlsplit(revalidate_url)
+    if not parsed.scheme or not parsed.netloc:
+        print("Could not read a site origin from SAAF_REVALIDATE_URL; skipping warm")
+        return
+    origin = f"{parsed.scheme}://{parsed.netloc}/"
+
+    started = time.monotonic()
+    request = urllib.request.Request(origin, headers={"User-Agent": "saaf-baat-pipeline/cache-warm"})
+    try:
+        # Generous: this request is the one that may have to wake Render, and
+        # paying 60s here is the entire point of paying it instead of a reader.
+        with urllib.request.urlopen(request, timeout=90) as response:
+            elapsed = time.monotonic() - started
+            print(f"Warmed the cached edition (HTTP {response.status}, {elapsed:.1f}s)")
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        print(f"Warning: could not warm the cached edition: {exc}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--failure", action="store_true")
@@ -118,6 +158,7 @@ def main() -> None:
         print(f"Published {count} cards atomically")
         wake_backend()
         notify_frontend()
+        warm_frontend_cache()
 
 
 if __name__ == "__main__":

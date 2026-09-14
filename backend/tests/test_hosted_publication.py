@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from publish_hosted import publish  # noqa: E402
+from publish_hosted import publish, warm_frontend_cache  # noqa: E402
 
 from src.db.client import SupabaseClient  # noqa: E402
 from src.db.models import AnalyzedFeed  # noqa: E402
@@ -53,3 +53,104 @@ def test_missing_staging_token_cannot_write(monkeypatch):
     with pytest.raises(Exception, match="publication token"):
         db.insert_analyzed_feed(AnalyzedFeed(cluster_id=uuid4(), headline="h", category="economy"))
     db._client.table.assert_not_called()
+
+
+
+class TestWarmFrontendCache:
+    """Revalidating empties Vercel's cache; something has to refill it.
+
+    Overnight nothing does. The run finishes around 06:20, Render idles back to
+    sleep fifteen minutes later, and the morning's first reader arrives to an
+    empty cache and a sleeping API - so Vercel builds the page on the spot and
+    the reader waits out a cold start for a brief that was ready hours earlier.
+    This is the run paying that cost itself, while everything is still awake.
+    """
+
+    def _capture(self, monkeypatch, response_status=200, raises=None):
+        seen = {}
+
+        class _Response:
+            status = response_status
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def fake_urlopen(request, timeout=None):
+            seen["url"] = getattr(request, "full_url", request)
+            seen["timeout"] = timeout
+            if raises is not None:
+                raise raises
+            return _Response()
+
+        monkeypatch.setattr("publish_hosted.urllib.request.urlopen", fake_urlopen)
+        return seen
+
+    def test_warms_the_site_origin_taken_from_the_revalidate_url(self, monkeypatch):
+        # No new secret: the origin is already in the URL the pipeline pings.
+        monkeypatch.setenv("SAAF_REVALIDATE_URL", "https://saaf-baat.vercel.app/api/revalidate")
+        seen = self._capture(monkeypatch)
+
+        warm_frontend_cache()
+
+        assert seen["url"] == "https://saaf-baat.vercel.app/"
+
+    def test_allows_long_enough_for_a_cold_start(self, monkeypatch):
+        # This is the request that may have to wake Render. Paying 90s here is
+        # the whole point of paying it instead of a reader.
+        monkeypatch.setenv("SAAF_REVALIDATE_URL", "https://saaf-baat.vercel.app/api/revalidate")
+        seen = self._capture(monkeypatch)
+
+        warm_frontend_cache()
+
+        assert seen["timeout"] >= 60
+
+    def test_no_url_configured_is_not_an_error(self, monkeypatch, capsys):
+        monkeypatch.delenv("SAAF_REVALIDATE_URL", raising=False)
+
+        warm_frontend_cache()
+
+        assert "first reader will rebuild" in capsys.readouterr().out
+
+    def test_a_malformed_url_is_skipped_rather_than_guessed_at(self, monkeypatch, capsys):
+        monkeypatch.setenv("SAAF_REVALIDATE_URL", "not-a-url")
+
+        warm_frontend_cache()
+
+        assert "site origin" in capsys.readouterr().out
+
+    def test_a_failed_warm_never_fails_the_run(self, monkeypatch, capsys):
+        # The edition is already published by the time this runs. A warm cache
+        # is an optimisation; losing it must not lose the edition.
+        monkeypatch.setenv("SAAF_REVALIDATE_URL", "https://saaf-baat.vercel.app/api/revalidate")
+        self._capture(monkeypatch, raises=OSError("connection reset"))
+
+        warm_frontend_cache()
+
+        assert "could not warm" in capsys.readouterr().out
+
+
+def test_the_warm_runs_after_the_revalidate_not_before(monkeypatch):
+    """Order matters: warming before the purge would cache the old edition."""
+    import publish_hosted
+
+    calls = []
+    monkeypatch.setattr(publish_hosted, "wake_backend", lambda: calls.append("wake"))
+    monkeypatch.setattr(publish_hosted, "notify_frontend", lambda: calls.append("revalidate"))
+    monkeypatch.setattr(publish_hosted, "warm_frontend_cache", lambda: calls.append("warm"))
+    monkeypatch.setattr(publish_hosted, "publish", lambda *a, **k: 6)
+    monkeypatch.setattr(publish_hosted, "create_db_client", lambda: SimpleNamespace())
+    monkeypatch.setattr(publish_hosted, "heartbeat_path", lambda: Path("/nonexistent"))
+    monkeypatch.setattr(
+        publish_hosted.json, "loads", lambda *a, **k: {"stats": {"feeds_inserted": 6}}
+    )
+    monkeypatch.setattr(Path, "read_text", lambda self: "{}")
+    monkeypatch.setenv("SAAF_DB_BACKEND", "supabase")
+    monkeypatch.setenv("SAAF_PUBLICATION_TOKEN", "token")
+    monkeypatch.setattr(sys, "argv", ["publish_hosted.py"])
+
+    publish_hosted.main()
+
+    assert calls == ["wake", "revalidate", "warm"]
