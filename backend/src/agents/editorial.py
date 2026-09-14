@@ -380,9 +380,18 @@ def review_with_short_pass_retries(
         try:
             parsed = review_once(prompt_candidates)
         except EditorialError as exc:
+            # Try the next window rather than giving up on the brief. The
+            # provider is retried underneath this for anything transient, so an
+            # error arriving here has already outlived its backoff - but the
+            # windows differ in size, and a request that failed at one prompt
+            # length can still succeed at another. This used to break, which on
+            # 2026-09-14 turned a single 503 on the second pass into a brief of
+            # four cards: the two attempts that remained were never made.
             last_error = exc
-            logger.warning("Editorial attempt %d failed: %s", attempt, exc)
-            break
+            logger.warning(
+                "Editorial attempt %d failed, continuing to the next window: %s", attempt, exc
+            )
+            continue
 
         by_cluster, grounding_rejected = _stories_by_cluster_id(parsed, prompt_candidates)
         blocked_cluster_ids |= grounding_rejected
