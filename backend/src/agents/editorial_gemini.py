@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, Optional, Sequence
 from uuid import UUID
 
@@ -17,8 +18,13 @@ from src.agents.editorial import (
     build_editorial_user_prompt,
     review_with_short_pass_retries,
 )
+from src.agents.rate_limit import is_retryable_message, retry_after_seconds
 
 logger = logging.getLogger(__name__)
+
+# Enough to outlast a brief provider blip without stalling the run.
+_PROVIDER_ATTEMPTS = 4
+_PROVIDER_MAX_BACKOFF = 30.0
 
 
 _GEMINI_SCHEMA_ALLOWED_KEYS = {
@@ -100,6 +106,39 @@ class GeminiMorningBriefService:
             max_stories=max_stories,
         )
 
+    def _generate_with_retry(self, user_prompt: str, config: Any) -> Any:
+        """Send the editorial request, retrying a server that is merely busy.
+
+        Embeddings have had this since Phase 1; the editor never did, so a
+        provider hiccup was indistinguishable from a malformed request. On
+        2026-09-14 the second pass got a bare `503 UNAVAILABLE`, the short-pass
+        loop treated it as fatal, and the brief shipped the four cards the
+        first pass had grounded. A 503 means "ask again", and now it does.
+        """
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, _PROVIDER_ATTEMPTS + 1):
+            try:
+                return self._client.models.generate_content(
+                    model=self.model,
+                    contents=user_prompt,
+                    config=config,
+                )
+            except Exception as exc:  # noqa: BLE001 - the provider raises bare types
+                last_exc = exc
+                message = str(exc)
+                if not is_retryable_message(message) or attempt == _PROVIDER_ATTEMPTS:
+                    raise EditorialError(f"Gemini editorial request failed: {exc}") from exc
+                delay = retry_after_seconds(message) or min(2.0 ** attempt, _PROVIDER_MAX_BACKOFF)
+                logger.warning(
+                    "Editorial request failed (attempt %d/%d); retrying in %.1fs: %s",
+                    attempt,
+                    _PROVIDER_ATTEMPTS,
+                    delay,
+                    message,
+                )
+                time.sleep(delay)
+        raise EditorialError(f"Gemini editorial request failed: {last_exc}")
+
     def _review_once(
         self,
         candidates: Sequence[ClusterEditorialCandidate],
@@ -115,24 +154,18 @@ class GeminiMorningBriefService:
         system_prompt = EDITORIAL_SYSTEM_PROMPT
         user_prompt = build_editorial_user_prompt(candidate_rows, max_stories=max_stories)
 
-        try:
-            config = {
-                "system_instruction": system_prompt,
-                "temperature": 0,
-                "response_mime_type": "application/json",
-                # google-genai==1.0.0 expects `response_schema`, but its Schema model
-                # rejects fields like additionalProperties that Pydantic emits by default.
-                "response_schema": _gemini_response_schema(EditorialResponse),
-            }
-            if self._genai_types is not None:
-                config = self._genai_types.GenerateContentConfig(**config)
-            response = self._client.models.generate_content(
-                model=self.model,
-                contents=user_prompt,
-                config=config,
-            )
-        except Exception as exc:
-            raise EditorialError(f"Gemini editorial request failed: {exc}") from exc
+        config = {
+            "system_instruction": system_prompt,
+            "temperature": 0,
+            "response_mime_type": "application/json",
+            # google-genai==1.0.0 expects `response_schema`, but its Schema model
+            # rejects fields like additionalProperties that Pydantic emits by default.
+            "response_schema": _gemini_response_schema(EditorialResponse),
+        }
+        if self._genai_types is not None:
+            config = self._genai_types.GenerateContentConfig(**config)
+
+        response = self._generate_with_retry(user_prompt, config)
 
         parsed = getattr(response, "parsed", None)
         if isinstance(parsed, EditorialResponse):

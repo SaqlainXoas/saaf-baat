@@ -22,6 +22,7 @@ from src.agents.editorial import (
     review_with_short_pass_retries,
 )
 from src.agents.editorial_gemini import GeminiMorningBriefService, _gemini_response_schema
+from src.agents.rate_limit import is_retryable_message
 from src.db.models import AnalyzedFeed, RawArticle
 
 
@@ -761,3 +762,106 @@ def test_month_may_is_not_rejected_as_hedging(impact):
     accepted, rejected = _stories_by_cluster_id(EditorialResponse(stories=[story]), [candidate])
     assert candidate.cluster_id in accepted
     assert not rejected
+
+
+class TestTransientProviderFailures:
+    """A 503 means "ask again", not "ship what you have".
+
+    On 2026-09-14 the editor's second pass got a bare 503 UNAVAILABLE. Nothing
+    retried it - embeddings had had backoff since Phase 1, the editor never did
+    - and the short-pass loop treated it as fatal, so the two attempts that
+    remained were never made and the brief shipped the four cards the first
+    pass had grounded.
+    """
+
+    @staticmethod
+    def _candidates(n):
+        return [_build_candidate() for _ in range(n)]
+
+    @staticmethod
+    def _response(candidates, count):
+        return EditorialResponse(
+            stories=[
+                EditorialStory(
+                    cluster_id=str(candidates[i].cluster_id),
+                    priority=i + 1,
+                    headline="Centre weighs new fuel move",
+                    impact_line="Fuel pricing quickly passes through to consumers and businesses.",
+                    category="economy",
+                    impact_labels=["💳 WALLET"],
+                    what_to_watch="Watch for a cabinet or finance ministry announcement.",
+                    public_impact="high",
+                    story_tags=["fuel", "budget"],
+                    confidence=0.84,
+                    selection_reason="Clear household cost impact.",
+                )
+                for i in range(count)
+            ]
+        )
+
+    def test_a_failed_attempt_does_not_abandon_the_rest(self):
+        calls = []
+
+        pool = self._candidates(30)
+
+        def review_once(candidates):
+            calls.append(len(candidates))
+            if len(calls) == 1:
+                return self._response(candidates, 4)
+            if len(calls) == 2:
+                raise EditorialError("Gemini editorial request failed: 503 UNAVAILABLE")
+            return self._response(candidates, 7)
+
+        result = review_with_short_pass_retries(review_once, pool, max_stories=12)
+
+        assert len(calls) == 3, "the third window must still be tried after a 503"
+        assert len(result) == 7
+
+    def test_the_best_pass_survives_a_later_failure(self):
+        pool = self._candidates(30)
+        seen = []
+
+        def review_once(candidates):
+            if not seen:
+                seen.append(True)
+                return self._response(candidates, 3)
+            raise EditorialError("503 UNAVAILABLE")
+
+        result = review_with_short_pass_retries(review_once, pool, max_stories=12)
+
+        assert len(result) == 3, "a later outage must not discard what was already grounded"
+
+    def test_total_failure_still_raises(self):
+        def review_once(candidates):
+            raise EditorialError("Gemini editorial request failed: 401 unauthorised")
+
+        with pytest.raises(EditorialError):
+            review_with_short_pass_retries(review_once, self._candidates(30), max_stories=12)
+
+
+class TestRetryableMessages:
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "503 UNAVAILABLE. {'error': {'code': 503, 'message': 'The service is currently unavailable.'}}",
+            "500 Internal error",
+            "The model is overloaded. Please try again later.",
+            "deadline exceeded",
+        ],
+    )
+    def test_transient_server_errors_are_retryable(self, message):
+        assert is_retryable_message(message) is True
+
+    @pytest.mark.parametrize(
+        "message",
+        ["RESOURCE_EXHAUSTED", "429 rate limit exceeded", "quota exceeded for this project"],
+    )
+    def test_rate_limits_stay_retryable(self, message):
+        assert is_retryable_message(message) is True
+
+    @pytest.mark.parametrize(
+        "message",
+        ["401 unauthorised", "invalid api key", "response parsing failed"],
+    )
+    def test_real_failures_are_not_retried(self, message):
+        assert is_retryable_message(message) is False
