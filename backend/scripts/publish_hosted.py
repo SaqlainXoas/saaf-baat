@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -32,14 +33,52 @@ def publish(db, token: str, heartbeat: dict) -> int:
     }).execute().data
 
 
+def wake_backend() -> None:
+    """Get Render answering before Vercel is told to re-render.
+
+    Render Free spins down after ~15 minutes idle, and nothing else sends it
+    traffic: this pipeline writes straight to Supabase and never calls the API.
+    So the revalidation below reliably woke a *sleeping* instance, and the
+    frontend abandons a backend fetch after 25 seconds - less than a cold boot.
+    Vercel then cached "Unable to load brief", Render finished waking with
+    nobody asking, and idled back to sleep. The site was in that state on
+    2026-09-13 and again on 2026-09-14 while Supabase, the pipeline and the API
+    itself were all healthy; holding Render awake by hand was enough to make the
+    very next revalidation render the brief correctly.
+
+    Best effort, like the ping it precedes: the edition is already committed, so
+    a backend that will not wake costs freshness, never the run.
+    """
+    url = os.getenv("SAAF_BACKEND_HEALTH_URL", "").strip()
+    if not url:
+        print("Backend health URL not configured; revalidating without waking Render")
+        return
+    deadline = time.monotonic() + 120
+    attempt = 0
+    while time.monotonic() < deadline:
+        attempt += 1
+        try:
+            with urllib.request.urlopen(url, timeout=30) as response:
+                if response.status == 200:
+                    print(f"Backend awake after {attempt} attempt(s)")
+                    return
+                print(f"Backend answered HTTP {response.status}; retrying")
+        except (urllib.error.URLError, OSError) as exc:
+            print(f"Backend not awake yet (attempt {attempt}): {exc}")
+        time.sleep(5)
+    print("Warning: backend did not wake in time; revalidating anyway")
+
+
 def notify_frontend() -> None:
     """Swap the cached edition on Vercel for the one just published.
 
-    The page is served from Vercel's cache so a reader never waits on a sleeping
-    Render instance; without this ping a new edition would sit behind the
-    revalidate window. Best effort on purpose: the brief is already committed by
-    the time this runs, so a failed ping must not fail the workflow — it only
-    costs freshness until the window lapses.
+    Call `wake_backend` first. Re-rendering the page makes Vercel fetch the API,
+    and if that fetch times out the *error* state is what gets cached - which is
+    strictly worse than the stale edition this ping was meant to replace.
+
+    Best effort on purpose: the brief is already committed by the time this
+    runs, so a failed ping must not fail the workflow — it only costs freshness
+    until the window lapses.
     """
     url = os.getenv("SAAF_REVALIDATE_URL", "").strip()
     secret = os.getenv("SAAF_REVALIDATE_SECRET", "").strip()
@@ -77,6 +116,7 @@ def main() -> None:
     else:
         count = publish(db, os.environ["SAAF_PUBLICATION_TOKEN"], heartbeat)
         print(f"Published {count} cards atomically")
+        wake_backend()
         notify_frontend()
 
 

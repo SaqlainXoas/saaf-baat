@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 
@@ -17,7 +19,12 @@ from src.agents.editorial import ClusterEditorialCandidate
 from src.agents.story_analysis import StoryAnalysisError
 from src.db.client import DuplicateArticleError
 from src.db.models import AnalyzedFeed, Cluster, RawArticle
-from src.pipeline.orchestrator import PipelineConfig, PipelineOrchestrator, PipelineStats
+from src.pipeline.orchestrator import (
+    PipelineConfig,
+    PipelineOrchestrator,
+    PipelineStats,
+    default_config,
+)
 from src.scrapers.feeds import EndpointReport, IngestResult
 
 
@@ -2370,3 +2377,205 @@ def test_a_missing_embedding_key_degrades_loudly_instead_of_crashing(tmp_path, m
     # Backfill hits the same rows; it must not double-count them.
     runner.embed_articles(articles, stats)
     assert stats.embed_failures == 1
+
+
+class TestLowCostModeConfig:
+    """Low-cost mode lowers defaults; it must never discard explicit config.
+
+    The bare `min()` this replaced cost three consecutive live briefs their
+    floor. The scheduled workflow asked for 40 articles per source and got 25,
+    silently, which starved clustering and left the editor with a 24-candidate
+    shortlist it exhausted on its second attempt - so the short-pass retry had
+    nothing deeper to offer and the brief shipped at 4, 4 and 5 cards.
+    """
+
+    _LOW_COST_KEYS = (
+        "SAAF_MAX_ARTICLES_PER_SOURCE",
+        "SAAF_EMBEDDING_BACKFILL_LIMIT",
+        "SAAF_EDITORIAL_CANDIDATE_LIMIT",
+        "SAAF_EDITORIAL_MAX_STORIES",
+    )
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv("SAAF_LOW_COST_MODE", raising=False)
+        for key in self._LOW_COST_KEYS:
+            monkeypatch.delenv(key, raising=False)
+
+    def test_low_cost_mode_lowers_unset_defaults(self, monkeypatch):
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        config = default_config()
+
+        assert config.max_articles_per_source == 25
+        assert config.embedding_backfill_limit == 50
+        assert config.editorial_candidate_limit == 24
+
+    def test_explicit_value_survives_low_cost_mode(self, monkeypatch):
+        # This is the exact pairing in .github/workflows/daily_pipeline.yml.
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        monkeypatch.setenv("SAAF_MAX_ARTICLES_PER_SOURCE", "40")
+        config = default_config()
+
+        assert config.max_articles_per_source == 40
+
+    def test_explicit_candidate_limit_survives_low_cost_mode(self, monkeypatch):
+        # The shortlist the editor retries against. Clamped to 24, attempt two
+        # saw 24/24 and stopped; there was no deeper candidate to reach for.
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        monkeypatch.setenv("SAAF_EDITORIAL_CANDIDATE_LIMIT", "30")
+        config = default_config()
+
+        assert config.editorial_candidate_limit == 30
+
+    def test_explicit_value_below_the_ceiling_is_still_honoured(self, monkeypatch):
+        # Explicit wins in both directions: asking for less than the low-cost
+        # ceiling must not be raised up to it.
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        monkeypatch.setenv("SAAF_MAX_ARTICLES_PER_SOURCE", "10")
+        config = default_config()
+
+        assert config.max_articles_per_source == 10
+
+    def test_low_cost_mode_off_uses_full_defaults(self, monkeypatch):
+        config = default_config()
+
+        assert config.max_articles_per_source == 40
+        assert config.editorial_candidate_limit == 30
+
+    def test_clamping_an_unset_default_is_logged(self, monkeypatch, caplog):
+        # The original defect was silence, not the number itself.
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        with caplog.at_level(logging.INFO, logger="src.pipeline.orchestrator"):
+            default_config()
+
+        assert "SAAF_MAX_ARTICLES_PER_SOURCE lowered from 40 to 25" in caplog.text
+
+    def test_keeping_an_explicit_value_is_logged(self, monkeypatch, caplog):
+        monkeypatch.setenv("SAAF_LOW_COST_MODE", "1")
+        monkeypatch.setenv("SAAF_MAX_ARTICLES_PER_SOURCE", "40")
+        with caplog.at_level(logging.INFO, logger="src.pipeline.orchestrator"):
+            default_config()
+
+        assert "keeping explicit SAAF_MAX_ARTICLES_PER_SOURCE=40" in caplog.text
+
+
+
+class TestPreviousEditionRepeats:
+    """A card the reader already read, with nothing reported since, is not news.
+
+    On 2026-09-12 two of four published cards had run in the 2026-09-11 brief,
+    one under a byte-identical headline. Nothing caught it: cluster ids are
+    regenerated every run so `analyzed_feed_exists(cluster.id)` never matched,
+    and the editor rewrites headlines so a headline comparison would have
+    missed the second repeat outright.
+    """
+
+    def _candidate(self, source, headline, latest):
+        article = SimpleNamespace(source=source, headline=headline, scraped_at=latest, publish_date=latest)
+        return SimpleNamespace(representative_article=article, articles=[article])
+
+    def _orchestrator(self, rows):
+        db = SimpleNamespace(get_analyzed_feed=lambda limit=60: rows)
+        orch = PipelineOrchestrator.__new__(PipelineOrchestrator)
+        orch.db = db
+        orch._previous_edition_cache = None
+        return orch
+
+    def _row(self, source, headline, run_at):
+        return SimpleNamespace(metadata={
+            "brief_run_at": run_at,
+            "representative_source": source,
+            "representative_headline": headline,
+        })
+
+    RAN_AT = "2026-09-11T18:39:46.408269+00:00"
+    BEFORE = datetime(2026, 9, 11, 12, 0, tzinfo=timezone.utc)
+    AFTER = datetime(2026, 9, 12, 3, 0, tzinfo=timezone.utc)
+
+    def test_suppresses_the_byte_identical_repeat(self):
+        # The real one: same representative article, same headline, next day.
+        orch = self._orchestrator([
+            self._row("nation", "LHC restrains medical colleges from expelling Afghan students", self.RAN_AT)
+        ])
+        candidate = self._candidate(
+            "nation", "LHC restrains medical colleges from expelling Afghan students", self.BEFORE
+        )
+
+        assert orch._repeats_previous_edition(candidate) is True
+
+    def test_suppresses_a_repeat_the_editor_reworded(self):
+        # The editor published this under two different headlines on
+        # consecutive days off one article. Keying on the card headline would
+        # have let it straight through; the representative article held still.
+        orch = self._orchestrator([
+            self._row("tribune", "PM Shehbaz directs no area to face more than two hours of load-shedding", self.RAN_AT)
+        ])
+        candidate = self._candidate(
+            "tribune", "PM Shehbaz directs no area to face more than two hours of load-shedding", self.BEFORE
+        )
+
+        assert orch._repeats_previous_edition(candidate) is True
+
+    def test_a_developing_story_is_never_suppressed(self):
+        # The safety valve, and the reason the gate is two conditions rather
+        # than one. A brief must be able to lead with a running story - the 36h
+        # ingest window exists for that - so any reporting filed since the last
+        # brief ran clears the candidate however familiar it looks.
+        orch = self._orchestrator([
+            self._row("nation", "LHC restrains medical colleges from expelling Afghan students", self.RAN_AT)
+        ])
+        candidate = self._candidate(
+            "nation", "LHC restrains medical colleges from expelling Afghan students", self.AFTER
+        )
+
+        assert orch._repeats_previous_edition(candidate) is False
+
+    def test_a_different_story_is_untouched(self):
+        orch = self._orchestrator([self._row("nation", "Something else entirely", self.RAN_AT)])
+        candidate = self._candidate("dawn", "FBR slaps Rs80/litre FED on 3 POL products", self.BEFORE)
+
+        assert orch._repeats_previous_edition(candidate) is False
+
+    def test_only_the_newest_edition_counts(self):
+        # Two editions in the table. A story that ran two briefs ago but not in
+        # the last one is fair game again.
+        older = "2026-09-10T06:00:00+00:00"
+        orch = self._orchestrator([
+            self._row("nation", "Older story", older),
+            self._row("dawn", "Newest edition story", self.RAN_AT),
+        ])
+
+        assert orch._repeats_previous_edition(self._candidate("nation", "Older story", self.BEFORE)) is False
+        assert orch._repeats_previous_edition(self._candidate("dawn", "Newest edition story", self.BEFORE)) is True
+
+    def test_no_previous_edition_suppresses_nothing(self):
+        orch = self._orchestrator([])
+
+        assert orch._repeats_previous_edition(self._candidate("nation", "Anything", self.BEFORE)) is False
+
+    def test_a_database_failure_fails_open(self):
+        # Losing the edition is far worse than risking a repeat.
+        def boom(limit=60):
+            raise RuntimeError("supabase unavailable")
+
+        orch = PipelineOrchestrator.__new__(PipelineOrchestrator)
+        orch.db = SimpleNamespace(get_analyzed_feed=boom)
+        orch._previous_edition_cache = None
+
+        assert orch._repeats_previous_edition(self._candidate("nation", "Anything", self.BEFORE)) is False
+
+    def test_the_previous_edition_is_read_once_per_run(self):
+        calls = []
+
+        def counted(limit=60):
+            calls.append(limit)
+            return [self._row("nation", "Story", self.RAN_AT)]
+
+        orch = PipelineOrchestrator.__new__(PipelineOrchestrator)
+        orch.db = SimpleNamespace(get_analyzed_feed=counted)
+        orch._previous_edition_cache = None
+
+        for _ in range(5):
+            orch._repeats_previous_edition(self._candidate("nation", "Story", self.BEFORE))
+
+        assert len(calls) == 1

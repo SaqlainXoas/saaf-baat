@@ -412,6 +412,7 @@ class PipelineOrchestrator:
         self.config = config
         self.db = db
         self.ingestor = ingestor
+        self._previous_edition_cache: Optional[tuple[frozenset[tuple[str, str]], Optional[datetime]]] = None
         self.body_fetcher = body_fetcher
         self.embedder = embedder
         self.clusterer = clusterer
@@ -1836,6 +1837,113 @@ class PipelineOrchestrator:
             triage_confidence=float(triage.confidence),
         )
 
+    @staticmethod
+    def _parse_brief_stamp(raw: Any) -> Optional[datetime]:
+        """Read a `brief_run_at` back as an aware UTC datetime."""
+        if isinstance(raw, datetime):
+            return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        text = raw.strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+    @staticmethod
+    def _representative_key(source: Any, headline: Any) -> tuple[str, str]:
+        """Identify the reporting a card was built on, stably across runs.
+
+        Cluster ids cannot do this job: they are regenerated every run, so the
+        same story carried two different ids on consecutive days and
+        `analyzed_feed_exists(cluster.id)` never matched. Headlines cannot
+        either - the editor rewrites them, and it published "PM Shehbaz directs
+        no area to face more than two hours of load-shedding" one day and
+        "Prime Minister Shehbaz Sharif directs two-hour limit on electricity"
+        the next, off the identical article. The representative article is the
+        thing that actually held still.
+        """
+        return (
+            " ".join(str(source or "").split()).lower(),
+            " ".join(str(headline or "").split()).lower(),
+        )
+
+    def _previous_edition(self) -> tuple[frozenset[tuple[str, str]], Optional[datetime]]:
+        """What the last published brief was built on, and when it ran.
+
+        Computed once per run and cached. Fails open: a database that will not
+        answer costs us a possible repeat, which is far cheaper than losing the
+        edition.
+        """
+        if self._previous_edition_cache is not None:
+            return self._previous_edition_cache
+
+        keys: set[tuple[str, str]] = set()
+        ran_at: Optional[datetime] = None
+        try:
+            rows = self.db.get_analyzed_feed(limit=60)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not read the previous edition; repeats unguarded: %s", exc)
+            self._previous_edition_cache = (frozenset(), None)
+            return self._previous_edition_cache
+
+        stamps = []
+        for row in rows:
+            raw = (getattr(row, "metadata", None) or {}).get("brief_run_at")
+            parsed = self._parse_brief_stamp(raw)
+            if parsed is not None:
+                stamps.append(parsed)
+        if stamps:
+            ran_at = max(stamps)
+            for row in rows:
+                metadata = getattr(row, "metadata", None) or {}
+                raw = metadata.get("brief_run_at")
+                parsed = self._parse_brief_stamp(raw)
+                if parsed is None or parsed != ran_at:
+                    continue
+                keys.add(
+                    self._representative_key(
+                        metadata.get("representative_source"),
+                        metadata.get("representative_headline"),
+                    )
+                )
+
+        self._previous_edition_cache = (frozenset(keys), ran_at)
+        if keys:
+            logger.info(
+                "Previous edition: %d cards published at %s; repeats suppressed unless reported on since",
+                len(keys),
+                ran_at.isoformat() if ran_at else "unknown",
+            )
+        return self._previous_edition_cache
+
+    def _repeats_previous_edition(self, candidate: ClusterEditorialCandidate) -> bool:
+        """Is this the previous edition's card again, with nothing new since?
+
+        Two conditions, and the second is what keeps a running story alive. A
+        brief must be able to lead with a story that is still developing - the
+        36h ingest window exists for exactly that - so a candidate carrying any
+        reporting filed since the last brief ran is never suppressed, however
+        familiar it looks. What is suppressed is the case with no second
+        condition to satisfy: the same article, re-clustered, re-selected and
+        re-headlined, with nothing having happened in between. On 2026-09-12
+        that put two of four cards in front of a reader who had read them the
+        morning before, one of them under a byte-identical headline.
+        """
+        published, ran_at = self._previous_edition()
+        if not published or ran_at is None:
+            return False
+
+        key = self._representative_key(
+            candidate.representative_article.source,
+            candidate.representative_article.headline,
+        )
+        if key not in published:
+            return False
+
+        return self._candidate_latest_timestamp(candidate) <= ran_at
+
     def _passes_hard_gates(self, candidate: ClusterEditorialCandidate) -> tuple[bool, str]:
         """
         The only deterministic exclusions left, and the only ones that should be.
@@ -1863,6 +1971,10 @@ class PipelineOrchestrator:
         # Staleness window.
         if evidence.hours_since_latest > float(self.config.article_max_age_hours):
             return False, f"stale by {evidence.hours_since_latest:.0f}h"
+
+        # Already in the reader's hands, with nothing reported since.
+        if self._repeats_previous_edition(candidate):
+            return False, "published in the previous edition, nothing new since"
 
         return True, ""
 
@@ -2012,16 +2124,55 @@ def default_config(
         "false",
         "no",
     }
+    def _env_is_set(name: str) -> bool:
+        return bool((os.getenv(name) or "").strip())
+
+    def _low_cost_ceiling(name: str, value: int, ceiling: int) -> int:
+        """Apply a low-cost ceiling to a *default*, never to an explicit request.
+
+        This used to be a bare `min()`, and it silently discarded configuration
+        an operator had deliberately written. The scheduled workflow set
+        SAAF_MAX_ARTICLES_PER_SOURCE=40 next to SAAF_LOW_COST_MODE=1 and got
+        25, with nothing in the log to say so. The consequences ran the whole
+        length of the pipeline: 200 articles instead of ~320, 171 clusters
+        instead of the ~320 the selection thresholds were measured against, and
+        - because the candidate shortlist was clamped the same silent way - an
+        editor that saw 24 candidates, exhausted all 24 by its second attempt
+        and had nothing deeper to retry against. Three consecutive live briefs
+        shipped at 4, 4 and 5 cards against a floor of 6, filled out from the
+        weak tail. Explicit beats implicit, and either way it is logged.
+        """
+        if value <= ceiling:
+            return value
+        if _env_is_set(name):
+            logger.info(
+                "Low-cost mode: keeping explicit %s=%d (would otherwise cap at %d)",
+                name,
+                value,
+                ceiling,
+            )
+            return value
+        logger.info("Low-cost mode: %s lowered from %d to %d", name, value, ceiling)
+        return ceiling
+
     low_cost_mode = os.getenv("SAAF_LOW_COST_MODE", "0").strip().lower() in {"1", "true", "yes"}
     max_articles_per_source = _env_int("SAAF_MAX_ARTICLES_PER_SOURCE", 40)
     embedding_backfill_limit = _env_int("SAAF_EMBEDDING_BACKFILL_LIMIT", 100)
     editorial_candidate_limit = _env_int("SAAF_EDITORIAL_CANDIDATE_LIMIT", 30)
     editorial_max_stories = _env_int("SAAF_EDITORIAL_MAX_STORIES", 12)
     if low_cost_mode:
-        max_articles_per_source = min(max_articles_per_source, 25)
-        embedding_backfill_limit = min(embedding_backfill_limit, 50)
-        editorial_candidate_limit = min(editorial_candidate_limit, 24)
-        editorial_max_stories = min(editorial_max_stories, 12)
+        max_articles_per_source = _low_cost_ceiling(
+            "SAAF_MAX_ARTICLES_PER_SOURCE", max_articles_per_source, 25
+        )
+        embedding_backfill_limit = _low_cost_ceiling(
+            "SAAF_EMBEDDING_BACKFILL_LIMIT", embedding_backfill_limit, 50
+        )
+        editorial_candidate_limit = _low_cost_ceiling(
+            "SAAF_EDITORIAL_CANDIDATE_LIMIT", editorial_candidate_limit, 24
+        )
+        editorial_max_stories = _low_cost_ceiling(
+            "SAAF_EDITORIAL_MAX_STORIES", editorial_max_stories, 12
+        )
 
     return PipelineConfig(
         sources_yaml=Path(sources_yaml),
