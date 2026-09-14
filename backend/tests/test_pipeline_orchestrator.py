@@ -2548,6 +2548,28 @@ class TestPreviousEditionRepeats:
         assert orch._repeats_previous_edition(self._candidate("nation", "Older story", self.BEFORE)) is False
         assert orch._repeats_previous_edition(self._candidate("dawn", "Newest edition story", self.BEFORE)) is True
 
+    def test_a_rerun_of_the_same_morning_suppresses_nothing(self):
+        # A re-run is not a new edition to the reader. On 2026-09-14 a manual
+        # run 22 minutes after the scheduled one suppressed two cards for
+        # carrying no reporting filed "since" - in 22 minutes there was none -
+        # and shipped four where it had six. The comparison has to be to the
+        # last brief the reader could actually have read.
+        now = datetime.now(timezone.utc)
+        minutes_ago = (now - timedelta(minutes=22)).isoformat()
+        orch = self._orchestrator([self._row("nation", "Same story", minutes_ago)])
+        candidate = self._candidate("nation", "Same story", now - timedelta(hours=3))
+
+        assert orch._repeats_previous_edition(candidate) is False
+
+    def test_yesterdays_edition_still_suppresses(self):
+        # The case the gate exists for is untouched.
+        now = datetime.now(timezone.utc)
+        yesterday = (now - timedelta(days=1)).isoformat()
+        orch = self._orchestrator([self._row("nation", "Same story", yesterday)])
+        candidate = self._candidate("nation", "Same story", now - timedelta(days=1, hours=2))
+
+        assert orch._repeats_previous_edition(candidate) is True
+
     def test_no_previous_edition_suppresses_nothing(self):
         orch = self._orchestrator([])
 
