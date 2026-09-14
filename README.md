@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/brand.svg" alt="Saaf Baat" width="136" height="136" />
+  <img src="assets/brand.svg" alt="Saaf Baat" width="136" height="136" />
 </p>
 
 <h1 align="center">Saaf Baat</h1>
@@ -20,28 +20,32 @@
   <img src="https://img.shields.io/badge/Gemini-Editorial-C2703D?style=flat-square&logo=googlegemini&logoColor=white" alt="Gemini" />
 </p>
 
-<!-- Demo film: replace this comment with
-     <p align="center"><video src="GITHUB_USER_ATTACHMENTS_URL" width="1200" controls muted playsinline></video></p>
-     using the URL GitHub returns when the .mp4 is dropped into an issue. -->
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/04695013-06b1-4023-8ce5-41dd2c79da52" width="1200" controls muted playsinline></video>
+</p>
 
 <p align="center">
-  <a href="docs/deployment.md">Deploy your own</a> ·
+  <sub><a href="https://github.com/user-attachments/assets/04695013-06b1-4023-8ce5-41dd2c79da52">Watch the demo</a> if the player does not load.</sub>
+</p>
+
+<p align="center">
+  <strong><a href="https://saaf-baat.vercel.app">Read today's brief</a></strong> ·
   <a href="#run-it-locally">Run it locally</a> ·
-  <a href="docs/status.md">Project status</a>
+  <a href="#make-it-yours">Make it yours</a>
 </p>
 
 ## Know enough to carry on
 
 Open the brief and get straight to the day. Saaf Baat aims for **6–12 meaningful stories**, and fewer on a quiet day rather than filler to reach a number. No endless feed, no filters to configure before you can start reading, and a clear stopping point at the end.
 
-![The morning brief in light mode, with everyday impact and a finite story index](docs/images/morning-brief.png)
+![The morning brief in light mode, with everyday impact and a finite story index](assets/morning-brief.png)
 
 ## Understand why it matters
 
 Prices, public services, decisions and developments worth your attention. Each card puts the impact up front. Open a story for a short explanation, the question the reporting leaves open, and the original publisher links.
 
 <p align="center">
-  <img src="docs/images/story-brief.png" alt="A story brief with everyday impact, analysis, an open question and original reporting" width="820" />
+  <img src="assets/story-brief.png" alt="A story brief with everyday impact, analysis, an open question and original reporting" width="820" />
 </p>
 
 <sub>Real interface captures · Sample edition: 10 September 2026. Headlines are examples from that edition, not a claim of current news.</sub>
@@ -93,17 +97,13 @@ The hosted setup uses **Vercel** for the website, **Render** for the read-only A
 
 The repository includes the blueprint and workflow; provider accounts and secrets are still yours to add.
 
-[Follow the deployment guide →](docs/deployment.md)
-
 ## Go deeper
 
-- [Deployment guide](docs/deployment.md) — Supabase, Vercel, Render and the daily workflow
-- [Project status](docs/status.md) — what is verified, and what is still open
 - [Product decisions](AGENTS.md) — what this is, and what it deliberately is not
 - [Working guide](CLAUDE.md) — architecture, thresholds, and why each one is what it is
 
 <p align="center">
-  <img src="docs/images/brand.svg" alt="Saaf Baat mark" width="44" height="44" />
+  <img src="assets/brand.svg" alt="Saaf Baat mark" width="44" height="44" />
 </p>
 
 <p align="center">
