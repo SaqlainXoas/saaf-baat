@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import yaml
@@ -69,6 +70,8 @@ from src.utils.urls import canonicalize_url_for_dedup, host_allowed_for_base
 from src.utils.validators import validate_sources_config
 
 logger = logging.getLogger(__name__)
+
+_PAKISTAN_TZ = ZoneInfo("Asia/Karachi")
 
 _SINGLE_SOURCE_ALLOWED_CATEGORIES = {
     "security",
@@ -1933,6 +1936,17 @@ class PipelineOrchestrator:
         """
         published, ran_at = self._previous_edition()
         if not published or ran_at is None:
+            return False
+
+        # Only a *previous day's* brief can make a story old news. A re-run of
+        # the same morning is not a new edition to the reader, and treating it
+        # as one inverts the gate: on 2026-09-14 a manual run 22 minutes after
+        # the scheduled one suppressed two cards for having no fresh reporting
+        # since - in 22 minutes, of course there was none - and published four
+        # where it had six to offer. The reader sees one brief a day; the
+        # comparison has to be to the last one they could actually have read.
+        now = datetime.now(timezone.utc)
+        if ran_at.astimezone(_PAKISTAN_TZ).date() == now.astimezone(_PAKISTAN_TZ).date():
             return False
 
         key = self._representative_key(
