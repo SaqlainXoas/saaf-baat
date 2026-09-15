@@ -1,6 +1,9 @@
 "use client";
 
-export default function Error({ reset }: { error: Error; reset: () => void }) {
+// Pages throw when the backend fetch fails so the error is never cached. A
+// `reset()` only re-renders on the client and would show this screen again;
+// a full reload asks the server, which by then may have a good render.
+export default function Error() {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center p-8"
@@ -14,7 +17,7 @@ export default function Error({ reset }: { error: Error; reset: () => void }) {
       </p>
       <button
         type="button"
-        onClick={reset}
+        onClick={() => window.location.reload()}
         className="mt-4 px-5 py-2 rounded-xl text-sm font-bold text-white sb-focusable"
         style={{ background: "var(--teal)" }}
       >

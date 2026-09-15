@@ -33,8 +33,17 @@ export default async function StoryDetail({
   const { cluster_id } = await params;
   const { story, status, message, generatedAt, isFresh } = await fetchStoryWithMeta(cluster_id);
 
+  // A failed backend fetch must throw, not render. This page is force-static,
+  // so a rendered "unavailable" state is cached like a real story: one
+  // transient 503 from a waking Render kept the brief's lead story on an error
+  // page for every reader until the next revalidation. A throw is never cached
+  // - Vercel keeps serving the last good render, and a first render falls
+  // through to error.tsx and is retried on the next request.
+  if (status === "error-live-required") {
+    throw new Error(message || "The live story could not be loaded right now.");
+  }
+
   if (!story) {
-    const isLiveModeError = status === "error-live-required";
     return (
       <div
         className="min-h-screen flex items-center justify-center"
@@ -42,12 +51,10 @@ export default async function StoryDetail({
       >
         <div className="text-center p-8 max-w-sm">
           <p className="text-lg font-bold" style={{ color: "var(--ink)" }}>
-            {isLiveModeError ? "Live story unavailable" : "Story unavailable"}
+            Story unavailable
           </p>
           <p className="text-sm mt-2" style={{ color: "var(--ink-muted)" }}>
-            {isLiveModeError
-              ? (message || "The live story could not be loaded right now.")
-              : "This story may have moved, expired, or not be available anymore."}
+            This story may have moved, expired, or not be available anymore.
           </p>
           <Link
             href="/"

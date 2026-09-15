@@ -217,6 +217,18 @@ describe("Story detail page", () => {
     expect(screen.getByRole("link", { name: /back to brief/i })).toBeDefined();
   });
 
+  it("throws on a live fetch failure so the static cache never stores the error", async () => {
+    (fetchStoryWithMeta as jest.Mock).mockResolvedValue({
+      story: null,
+      status: "error-live-required",
+      message: "Unable to load brief. Please try again shortly. (HTTP 503)",
+    });
+
+    await expect(
+      StoryDetail({ params: Promise.resolve({ cluster_id: "lead-story" }) }),
+    ).rejects.toThrow(/HTTP 503/);
+  });
+
   it("keeps the unavailable-story recovery link keyboard focusable", async () => {
     (fetchStoryWithMeta as jest.Mock).mockResolvedValue({
       story: null,

@@ -1,3 +1,4 @@
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import { fetchFeedWithMeta } from "@/data/api";
 import { MAX_STORIES } from "@/data/briefSize";
 import BrandHeader from "@/components/BrandHeader";
@@ -10,12 +11,24 @@ import SkipLink from "@/components/SkipLink";
 
 export default async function Home() {
   const feedResult = await fetchFeedWithMeta();
+  const hasLiveDataError = feedResult.status === "error-live-required";
+  // At request time a failed backend fetch must throw, not render. The home
+  // page is cached, so a rendered "Unable to load brief" would be served to
+  // every reader until the next revalidation; a throw is never cached - Vercel
+  // keeps the last good edition and retries on the next request.
+  //
+  // Not during `next build`, where this page is prerendered: there a throw
+  // fails the whole build, and CI builds with no backend while a Vercel deploy
+  // can land on a sleeping Render. The build renders the error state instead,
+  // and the first successful revalidation replaces it.
+  if (hasLiveDataError && process.env.NEXT_PHASE !== PHASE_PRODUCTION_BUILD) {
+    throw new Error(feedResult.message || "Unable to load brief.");
+  }
   // No render-time filter: the API guarantees why_it_matters on every card
   // (see backend test_api_feed_route). A client-side filter over a backend
   // contract gap silently shrinks the brief instead of failing loudly (I-7).
   const stories = feedResult.stories.slice(0, MAX_STORIES);
   const generatedAt = feedResult.generatedAt;
-  const hasLiveDataError = feedResult.status === "error-live-required";
 
   return (
     <div className="min-h-screen" style={{ background: "var(--paper)" }}>

@@ -70,7 +70,21 @@ describe("Home page", () => {
     expect(screen.getByText("Deck")).toBeDefined();
   });
 
-  it("shows the live failure message when the API request fails", async () => {
+  it("throws on a live fetch failure so the static cache never stores the error", async () => {
+    (fetchFeedWithMeta as jest.Mock).mockResolvedValue({
+      stories: [],
+      status: "error-live-required",
+      message: "Unable to load brief. Please try again shortly. (HTTP 503)",
+      generatedAt: undefined,
+      isFresh: false,
+    });
+
+    await expect(Home()).rejects.toThrow(/HTTP 503/);
+  });
+
+  it("renders the failure state during next build instead of failing the build", async () => {
+    // The home page is prerendered at build time. CI builds with no backend and
+    // a Vercel deploy can land on a sleeping Render; neither may fail the build.
     (fetchFeedWithMeta as jest.Mock).mockResolvedValue({
       stories: [],
       status: "error-live-required",
@@ -78,8 +92,12 @@ describe("Home page", () => {
       generatedAt: undefined,
       isFresh: false,
     });
-
-    render(await Home());
+    process.env.NEXT_PHASE = "phase-production-build";
+    try {
+      render(await Home());
+    } finally {
+      delete process.env.NEXT_PHASE;
+    }
 
     expect(screen.getAllByText("Unable to load brief")).toHaveLength(2);
     expect(screen.getAllByText("Unable to load brief. Please try again shortly.")).toHaveLength(2);

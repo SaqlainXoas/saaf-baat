@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import sys
@@ -99,8 +100,78 @@ def notify_frontend() -> None:
         print(f"Warning: could not revalidate the frontend cache: {exc}")
 
 
-def warm_frontend_cache() -> None:
-    """Rebuild the cached page now, while the backend is still awake.
+def published_stories(db, token: str) -> list[dict]:
+    """The cards this run just promoted, for the warm step to check against.
+
+    Best effort: without them the warm still rebuilds the home page, it just
+    cannot prove the new edition is what Vercel serves.
+    """
+    try:
+        rows = (
+            db.client.table("analyzed_feed")
+            .select("cluster_id, headline")
+            .eq("metadata->>publication_token", token)
+            .eq("is_published", True)
+            .execute()
+            .data
+        )
+    except Exception as exc:  # noqa: BLE001 - the edition is already committed
+        print(f"::warning::Could not list the published stories to warm: {exc}")
+        return []
+    return [
+        {"id": str(row["cluster_id"]), "headline": str(row.get("headline") or "")}
+        for row in rows or []
+        if row.get("cluster_id")
+    ]
+
+
+# Revalidating serves the old page once more while Vercel rebuilds it in the
+# background, so the first request after the ping is expected to be stale.
+# Six tries fifteen seconds apart outlast a rebuild that has to wake Render.
+WARM_ATTEMPTS = 6
+WARM_RETRY_SECONDS = 15
+WARM_REQUEST_TIMEOUT = 90
+# The whole warm - home page and every story page - must end inside this.
+# Unbounded, 13 pages x 6 attempts x (90s + 15s) is over two hours; the daily
+# workflow is killed at 45 minutes and its slowest recent run took 22. A job
+# killed here would also run "Record failed run" and mark an edition that is
+# already published as failed. So the warm stops and warns instead.
+WARM_BUDGET_SECONDS = 480
+
+
+def _get_page(url: str, timeout: float) -> tuple[int, str]:
+    request = urllib.request.Request(url, headers={"User-Agent": "saaf-baat-pipeline/cache-warm"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.status, html.unescape(response.read().decode("utf-8", "replace"))
+
+
+def _warm_until(url: str, label: str, is_current, deadline: float) -> bool:
+    reason = "no attempt made"
+    for attempt in range(1, WARM_ATTEMPTS + 1):
+        remaining = deadline - time.monotonic()
+        if remaining <= 1:
+            print(f"::warning::could not warm {label}: warm budget of {WARM_BUDGET_SECONDS}s spent ({reason})")
+            return False
+        started = time.monotonic()
+        try:
+            status, body = _get_page(url, min(WARM_REQUEST_TIMEOUT, remaining))
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            reason = str(exc)
+        else:
+            if status == 200 and is_current(body):
+                elapsed = time.monotonic() - started
+                print(f"Warmed {label} (attempt {attempt}, {elapsed:.1f}s)")
+                return True
+            reason = f"HTTP {status} but still the previous content"
+        if attempt < WARM_ATTEMPTS:
+            print(f"{label} not current yet (attempt {attempt}): {reason}; retrying")
+            time.sleep(max(0.0, min(WARM_RETRY_SECONDS, deadline - time.monotonic())))
+    print(f"::warning::could not warm {label} after {WARM_ATTEMPTS} attempts: {reason}")
+    return False
+
+
+def warm_frontend_cache(stories: list[dict] | None = None) -> bool:
+    """Rebuild the cached pages now, and check they serve the new edition.
 
     Revalidating empties Vercel's cache; it does not refill it. Overnight that
     leaves nothing to serve: the run finishes around 06:20, Render idles back to
@@ -113,29 +184,51 @@ def warm_frontend_cache() -> None:
     while everything is still up. The page is rebuilt and cached, and the
     morning's first reader gets it in a fraction of a second like everyone else.
 
-    Best effort, like the ping before it: a warm cache is an optimisation, and
-    the edition is already published either way.
+    One request was not enough. Right after a revalidation Vercel serves the
+    old home page once more while it rebuilds, so a single 200 proved nothing;
+    and story pages were never warmed at all, so the lead story - the one every
+    reader opens first - was built by a reader. On 2026-09-15 that build hit a
+    transient 503 and the lead story sat on an error page. So the home page is
+    retried until it links every published story, and each story page until it
+    carries its own headline - all inside `WARM_BUDGET_SECONDS`.
+
+    Best effort, like the ping before it: the edition is already published, so
+    a failed warm is a visible warning in the run, never a failed run.
     """
     revalidate_url = os.getenv("SAAF_REVALIDATE_URL", "").strip()
     if not revalidate_url:
         print("No site URL to warm; the first reader will rebuild the page")
-        return
+        return False
     parsed = urllib.parse.urlsplit(revalidate_url)
     if not parsed.scheme or not parsed.netloc:
         print("Could not read a site origin from SAAF_REVALIDATE_URL; skipping warm")
-        return
+        return False
     origin = f"{parsed.scheme}://{parsed.netloc}/"
+    stories = stories or []
+    deadline = time.monotonic() + WARM_BUDGET_SECONDS
 
-    started = time.monotonic()
-    request = urllib.request.Request(origin, headers={"User-Agent": "saaf-baat-pipeline/cache-warm"})
-    try:
-        # Generous: this request is the one that may have to wake Render, and
-        # paying 60s here is the entire point of paying it instead of a reader.
-        with urllib.request.urlopen(request, timeout=90) as response:
-            elapsed = time.monotonic() - started
-            print(f"Warmed the cached edition (HTTP {response.status}, {elapsed:.1f}s)")
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        print(f"Warning: could not warm the cached edition: {exc}")
+    ok = _warm_until(
+        origin,
+        "the home page",
+        lambda body: all(f"/stories/{story['id']}" in body for story in stories),
+        deadline,
+    )
+    for index, story in enumerate(stories):
+        if deadline - time.monotonic() <= 1:
+            skipped = len(stories) - index
+            print(
+                f"::warning::warm budget of {WARM_BUDGET_SECONDS}s spent; "
+                f"{skipped} story page(s) left for readers to build"
+            )
+            return False
+        headline = story["headline"]
+        ok = _warm_until(
+            f"{origin}stories/{story['id']}",
+            f"story {story['id']}",
+            lambda body, headline=headline: headline in body,
+            deadline,
+        ) and ok
+    return ok
 
 
 def main() -> None:
@@ -154,11 +247,13 @@ def main() -> None:
         db.client.table("pipeline_state").upsert({"id": "daily", "payload": heartbeat}).execute()
         print("Recorded failed run; previous edition retained")
     else:
-        count = publish(db, os.environ["SAAF_PUBLICATION_TOKEN"], heartbeat)
+        token = os.environ["SAAF_PUBLICATION_TOKEN"]
+        count = publish(db, token, heartbeat)
         print(f"Published {count} cards atomically")
+        stories = published_stories(db, token)
         wake_backend()
         notify_frontend()
-        warm_frontend_cache()
+        warm_frontend_cache(stories)
 
 
 if __name__ == "__main__":
