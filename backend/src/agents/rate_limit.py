@@ -10,7 +10,9 @@ the same error shape.
 
 from __future__ import annotations
 
+import random
 import re
+from typing import Callable
 
 # The API is not consistent about casing or wording, and a miss here costs a
 # whole run's worth of work, so the match is deliberately broad.
@@ -58,6 +60,35 @@ def is_retryable_message(message: str) -> bool:
     return is_rate_limit_message(message) or is_transient_message(message)
 
 
+# A busy server needs longer than a quota window. On 2026-09-19 triage got two
+# 503s at 06:03-06:04 and the same model answered 200 by 06:04:53, so the
+# schedule has to span about a minute - 2s/4s/8s gives up before it recovers.
+_RATE_LIMIT_BACKOFF = (2.0, 4.0, 8.0, 16.0)
+_TRANSIENT_BACKOFF = (5.0, 15.0, 30.0, 60.0)
+
+
+def retry_delay_seconds(
+    message: str,
+    attempt: int,
+    jitter: Callable[[float, float], float] = random.uniform,
+) -> float:
+    """How long to wait before retry number `attempt` (0-based).
+
+    The server's own hint wins. Otherwise a quota refusal backs off briefly and
+    anything else backs off on the longer transient schedule. Jitter keeps
+    batches that failed together from all retrying in the same second.
+    """
+    hint = retry_after_seconds(message)
+    if hint is not None:
+        return hint
+    if is_rate_limit_message(message):
+        schedule, spread = _RATE_LIMIT_BACKOFF, 2.0
+    else:
+        schedule, spread = _TRANSIENT_BACKOFF, 3.0
+    base = schedule[min(max(0, attempt), len(schedule) - 1)]
+    return base + jitter(0.0, spread)
+
+
 def retry_after_seconds(message: str) -> float | None:
     """Pull the server's own retry hint out of a rate-limit message."""
     match = re.search(r"[Pp]lease retry in ([0-9.]+)s", message or "")
@@ -76,4 +107,5 @@ __all__ = [
     "is_retryable_message",
     "is_transient_message",
     "retry_after_seconds",
+    "retry_delay_seconds",
 ]

@@ -865,3 +865,28 @@ class TestRetryableMessages:
     )
     def test_real_failures_are_not_retried(self, message):
         assert is_retryable_message(message) is False
+
+
+class TestRetryDelay:
+    def test_a_busy_server_waits_longer_than_a_quota_refusal(self):
+        from src.agents.rate_limit import retry_delay_seconds
+
+        def no_jitter(_lo, _hi):
+            return 0.0
+
+        busy = [retry_delay_seconds("503 UNAVAILABLE", n, jitter=no_jitter) for n in range(4)]
+        quota = [retry_delay_seconds("429 RESOURCE_EXHAUSTED", n, jitter=no_jitter) for n in range(4)]
+
+        assert busy == [5.0, 15.0, 30.0, 60.0]
+        assert quota == [2.0, 4.0, 8.0, 16.0]
+
+    def test_the_servers_own_hint_wins(self):
+        from src.agents.rate_limit import retry_delay_seconds
+
+        assert retry_delay_seconds("429 quota. Please retry in 12.5s", 0) == 12.5
+
+    def test_jitter_stays_inside_its_spread(self):
+        from src.agents.rate_limit import retry_delay_seconds
+
+        for _ in range(50):
+            assert 5.0 <= retry_delay_seconds("503 UNAVAILABLE", 0) <= 8.0

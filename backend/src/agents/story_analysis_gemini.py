@@ -7,7 +7,7 @@ import time
 from typing import Any, Optional
 
 from src.agents.editorial_gemini import _sanitize_schema_dict
-from src.agents.rate_limit import is_rate_limit_message, retry_after_seconds
+from src.agents.rate_limit import is_retryable_message, retry_delay_seconds
 from src.agents.story_analysis import (
     StoryAnalysisError,
     StoryAnalysisInput,
@@ -67,8 +67,10 @@ class GeminiStoryAnalysisService:
                 last_error = exc
                 if attempt == self.max_attempts - 1:
                     break
-                delay = retry_after_seconds(str(exc)) if is_rate_limit_message(str(exc)) else None
-                if delay is None:
+                message = str(exc)
+                if is_retryable_message(message):
+                    delay = retry_delay_seconds(message, attempt)
+                else:
                     delay = 2.0 * (2**attempt)
                 logger.warning(
                     "Story analysis attempt %d/%d failed; waiting %.1fs: %s",

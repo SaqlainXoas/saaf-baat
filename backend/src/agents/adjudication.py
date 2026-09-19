@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.agents.rate_limit import is_rate_limit_message, retry_after_seconds
+from src.agents.rate_limit import is_retryable_message, retry_delay_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -183,14 +183,16 @@ class GeminiAdjudicationService:
                 return self._adjudicate_batch(batch)
             except AdjudicationError as exc:
                 last_error = exc
-                if not is_rate_limit_message(str(exc)) or attempt == self.max_retries - 1:
+                message = str(exc)
+                if not is_retryable_message(message) or attempt == self.max_retries - 1:
                     break
-                delay = retry_after_seconds(str(exc)) or 2.0 * (2**attempt)
+                delay = retry_delay_seconds(message, attempt)
                 logger.warning(
-                    "Adjudication rate limited (attempt %d/%d); waiting %.1fs",
+                    "Adjudication request failed (attempt %d/%d); retrying in %.1fs: %s",
                     attempt + 1,
                     self.max_retries,
                     delay,
+                    message,
                 )
                 self._sleep(max(1.0, delay))
         raise last_error if last_error else AdjudicationError("Adjudication failed")

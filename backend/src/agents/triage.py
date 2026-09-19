@@ -15,19 +15,26 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.agents.editorial import VALID_CATEGORIES, VALID_IMPACT_LABELS
-from src.agents.rate_limit import is_rate_limit_message, retry_after_seconds
+from src.agents.rate_limit import is_retryable_message, retry_delay_seconds
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TRIAGE_BATCH_SIZE = 50
 DEFAULT_TRIAGE_MAX_RETRIES = 4
+# Pacing. Batches used to go out back to back; a short, jittered gap keeps the
+# run off the per-minute quota. The final pass waits long enough for a "high
+# demand" 503 spike to clear - on 2026-09-19 that took under a minute.
+DEFAULT_TRIAGE_BATCH_PAUSE_SECONDS = 3.0
+DEFAULT_TRIAGE_FINAL_PASS_DELAY_SECONDS = 60.0
+FINAL_PASS_MAX_RETRIES = 2
 
 # What kind of piece this is. `story_type` is the part that actually replaces
 # _SOFT_FEATURE_HEADLINE_PATTERNS: substring-matching "festival" and "spring"
@@ -199,12 +206,16 @@ class GeminiTriageService:
         batch_size: int = DEFAULT_TRIAGE_BATCH_SIZE,
         max_retries: int = DEFAULT_TRIAGE_MAX_RETRIES,
         sleep: Any = time.sleep,
+        batch_pause_seconds: float = DEFAULT_TRIAGE_BATCH_PAUSE_SECONDS,
+        final_pass_delay_seconds: float = DEFAULT_TRIAGE_FINAL_PASS_DELAY_SECONDS,
     ):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         self.model = (model or os.getenv("SAAF_TRIAGE_MODEL") or self.DEFAULT_MODEL).strip()
         self.batch_size = max(1, int(batch_size))
         self.max_retries = max(1, int(max_retries))
         self._sleep = sleep
+        self.batch_pause_seconds = max(0.0, float(batch_pause_seconds))
+        self.final_pass_delay_seconds = max(0.0, float(final_pass_delay_seconds))
         self._genai_types = None
 
         if client is not None:
@@ -227,65 +238,113 @@ class GeminiTriageService:
 
     def triage(self, items: Sequence[TriageItem]) -> TriageResult:
         """
-        Triage every item, batched.
+        Triage every item, batched and paced.
 
         A batch that fails after its retries is recorded rather than raised:
-        one bad batch should cost its own articles, not the whole run.
+        one bad batch should cost its own articles, not the whole run. A batch
+        that failed because the provider was busy gets one more chance in a
+        final pass, after the spike has had time to clear.
         """
         result = TriageResult(verdicts={}, calls=0, failures=0, missing_keys=[])
         if not items:
             return result
 
-        for start in range(0, len(items), self.batch_size):
-            batch = list(items[start : start + self.batch_size])
+        batches = [
+            (start, list(items[start : start + self.batch_size]))
+            for start in range(0, len(items), self.batch_size)
+        ]
+        failed: List[Tuple[int, List[TriageItem], TriageError]] = []
+        for index, (start, batch) in enumerate(batches):
+            if index > 0:
+                self._pause_between_batches()
             try:
                 verdicts = self._triage_batch_with_retry(batch)
-                result.calls += 1
             except TriageError as exc:
                 result.calls += 1
-                result.failures += len(batch)
-                result.missing_keys.extend(item.key for item in batch)
-                logger.warning(
-                    "Triage failed for %d/%d items (offset %d): %s",
-                    len(batch),
-                    len(items),
-                    start,
-                    exc,
-                )
+                failed.append((start, batch, exc))
                 continue
+            result.calls += 1
+            self._record(result, batch, verdicts)
 
-            allowed = {item.key for item in batch}
-            for verdict in verdicts:
-                if verdict.key not in allowed:
-                    logger.warning("Ignoring triage verdict for unknown key=%s", verdict.key)
+        retryable = [entry for entry in failed if is_retryable_message(str(entry[2]))]
+        if retryable:
+            failed = [entry for entry in failed if entry not in retryable]
+            logger.warning(
+                "Triage provider busy for %d batch(es); retrying them in %.0fs",
+                len(retryable),
+                self.final_pass_delay_seconds,
+            )
+            self._sleep(self.final_pass_delay_seconds)
+            for index, (start, batch, _first_error) in enumerate(retryable):
+                if index > 0:
+                    self._pause_between_batches()
+                try:
+                    verdicts = self._triage_batch_with_retry(
+                        batch, max_retries=FINAL_PASS_MAX_RETRIES
+                    )
+                except TriageError as exc:
+                    result.calls += 1
+                    failed.append((start, batch, exc))
                     continue
-                result.verdicts[verdict.key] = verdict
+                result.calls += 1
+                self._record(result, batch, verdicts)
+                logger.info("Triage final pass recovered %d items (offset %d)", len(batch), start)
 
-            uncovered = [item.key for item in batch if item.key not in result.verdicts]
-            if uncovered:
-                result.failures += len(uncovered)
-                result.missing_keys.extend(uncovered)
-                logger.warning("Triage returned no verdict for %d items", len(uncovered))
+        for start, batch, exc in failed:
+            result.failures += len(batch)
+            result.missing_keys.extend(item.key for item in batch)
+            logger.warning(
+                "Triage failed for %d/%d items (offset %d): %s",
+                len(batch),
+                len(items),
+                start,
+                exc,
+            )
 
         return result
 
-    def _triage_batch_with_retry(self, batch: Sequence[TriageItem]) -> List[TriageVerdict]:
+    def _record(
+        self, result: TriageResult, batch: Sequence[TriageItem], verdicts: List[TriageVerdict]
+    ) -> None:
+        allowed = {item.key for item in batch}
+        for verdict in verdicts:
+            if verdict.key not in allowed:
+                logger.warning("Ignoring triage verdict for unknown key=%s", verdict.key)
+                continue
+            result.verdicts[verdict.key] = verdict
+
+        uncovered = [item.key for item in batch if item.key not in result.verdicts]
+        if uncovered:
+            result.failures += len(uncovered)
+            result.missing_keys.extend(uncovered)
+            logger.warning("Triage returned no verdict for %d items", len(uncovered))
+
+    def _pause_between_batches(self) -> None:
+        if self.batch_pause_seconds > 0:
+            self._sleep(self.batch_pause_seconds + random.uniform(0.0, 2.0))
+
+    def _triage_batch_with_retry(
+        self, batch: Sequence[TriageItem], max_retries: Optional[int] = None
+    ) -> List[TriageVerdict]:
+        attempts = self.max_retries if max_retries is None else max(1, int(max_retries))
         last_error: Optional[Exception] = None
-        for attempt in range(self.max_retries):
+        for attempt in range(attempts):
             try:
                 return self._triage_batch(batch)
             except TriageError as exc:
                 last_error = exc
-                if not is_rate_limit_message(str(exc)) or attempt == self.max_retries - 1:
+                message = str(exc)
+                # A 503 "high demand" is as temporary as a 429. Retrying only
+                # quota errors failed the 2026-09-17 and 2026-09-19 runs.
+                if not is_retryable_message(message) or attempt == attempts - 1:
                     break
-                delay = retry_after_seconds(str(exc))
-                if delay is None:
-                    delay = 2.0 * (2**attempt)
+                delay = retry_delay_seconds(message, attempt)
                 logger.warning(
-                    "Triage rate limited (attempt %d/%d); waiting %.1fs",
+                    "Triage request failed (attempt %d/%d); retrying in %.1fs: %s",
                     attempt + 1,
-                    self.max_retries,
+                    attempts,
                     delay,
+                    message,
                 )
                 self._sleep(max(1.0, delay))
         raise last_error if last_error else TriageError("Triage failed")

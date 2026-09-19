@@ -48,6 +48,10 @@ class FakeGenaiClient:
         )
 
 
+def _no_sleep(_seconds):
+    return None
+
+
 def _items(count):
     return [
         TriageItem(key=f"uuid-{i}", source="dawn", headline=f"Headline {i}", url=f"https://x/{i}")
@@ -85,7 +89,7 @@ def _triaged(article, **verdict):
 class TestBatching:
     def test_batches_are_capped_and_every_item_is_covered(self):
         client = FakeGenaiClient()
-        service = GeminiTriageService(client=client, batch_size=50)
+        service = GeminiTriageService(client=client, batch_size=50, sleep=_no_sleep)
         result = service.triage(_items(120))
 
         assert result.calls == 3, "120 items at 50 per call is three requests"
@@ -96,7 +100,7 @@ class TestBatching:
         # A 70-character URL echoed back per item burns tokens and invites
         # near-miss mismatches; the caller key is restored on the way out.
         client = FakeGenaiClient()
-        service = GeminiTriageService(client=client, batch_size=50)
+        service = GeminiTriageService(client=client, batch_size=50, sleep=_no_sleep)
         items = _items(3)
         result = service.triage(items)
 
@@ -125,12 +129,107 @@ class TestBatching:
         assert len(result.verdicts) == 2
         assert len(slept) == 2, "each 429 waits before retrying"
 
+
+BUSY = (
+    "Triage request failed: 503 UNAVAILABLE. {'error': {'code': 503, 'message': "
+    "'This model is currently experiencing high demand. Spikes in demand are usually "
+    "temporary. Please try again later.', 'status': 'UNAVAILABLE'}}"
+)
+
+
+class ScriptedClient(FakeGenaiClient):
+    """Fails the calls whose 1-based numbers are listed, answers the rest."""
+
+    def __init__(self, fail_calls, error=BUSY):
+        super().__init__()
+        self.fail_calls = set(fail_calls)
+        self.error = error
+        self.call_number = 0
+
+    def generate_content(self, *, model, contents, config):
+        self.call_number += 1
+        if self.call_number in self.fail_calls:
+            self.prompts.append(contents)
+            raise RuntimeError(self.error)
+        return super().generate_content(model=model, contents=contents, config=config)
+
+
+class TestProviderBusy:
+    """The 2026-09-17 and 2026-09-19 runs: a 503 dropped whole batches unretried."""
+
+    def test_a_503_is_retried_instead_of_dropping_the_batch(self):
+        client = FakeGenaiClient(fail_times=1, error=BUSY)
+        slept = []
+        service = GeminiTriageService(client=client, batch_size=50, sleep=slept.append)
+        result = service.triage(_items(50))
+
+        assert result.failures == 0
+        assert len(result.verdicts) == 50
+        assert len(client.prompts) == 2
+        assert len(slept) == 1 and slept[0] >= 5.0, "a busy server gets a real wait"
+
+    def test_the_busy_backoff_grows_to_cover_a_minute_long_spike(self):
+        client = FakeGenaiClient(fail_times=3, error=BUSY)
+        slept = []
+        service = GeminiTriageService(
+            client=client, batch_size=50, max_retries=4, sleep=slept.append
+        )
+        result = service.triage(_items(3))
+
+        assert result.failures == 0
+        assert slept == sorted(slept)
+        assert sum(slept) >= 50.0
+
+    def test_batches_are_paced_rather_than_fired_back_to_back(self):
+        slept = []
+        service = GeminiTriageService(
+            client=FakeGenaiClient(), batch_size=10, sleep=slept.append
+        )
+        result = service.triage(_items(30))
+
+        assert result.failures == 0
+        assert len(slept) == 2, "a gap before every batch but the first"
+        assert all(3.0 <= s <= 5.0 for s in slept)
+
+    def test_a_final_pass_recovers_a_batch_that_outlasted_its_retries(self):
+        # Batch 2 (calls 2-5) exhausts all four attempts; the spike then clears.
+        client = ScriptedClient(fail_calls={2, 3, 4, 5})
+        slept = []
+        service = GeminiTriageService(
+            client=client, batch_size=2, max_retries=4, sleep=slept.append
+        )
+        result = service.triage(_items(6))
+
+        assert result.failures == 0
+        assert result.missing_keys == []
+        assert len(result.verdicts) == 6
+        assert 60.0 in slept, "the final pass waits for the spike to clear"
+
+    def test_a_real_outage_still_fails_honestly(self):
+        client = FakeGenaiClient(fail_times=10_000, error=BUSY)
+        service = GeminiTriageService(client=client, batch_size=2, sleep=_no_sleep)
+        result = service.triage(_items(4))
+
+        assert result.failures == 4
+        assert sorted(result.missing_keys) == ["uuid-0", "uuid-1", "uuid-2", "uuid-3"]
+        assert len(client.prompts) == 2 * 4 + 2 * 2, "four tries each, then two in the final pass"
+
+    def test_a_non_retryable_error_gets_no_final_pass(self):
+        client = FakeGenaiClient(fail_times=1, error="401 invalid api key")
+        slept = []
+        service = GeminiTriageService(client=client, batch_size=2, sleep=slept.append)
+        result = service.triage(_items(4))
+
+        assert result.failures == 2
+        assert len(client.prompts) == 2
+        assert 60.0 not in slept
+
     def test_verdicts_for_unknown_keys_are_ignored(self):
         class Liar(FakeGenaiClient):
             def generate_content(self, *, model, contents, config):
                 return FakeResponse({"verdicts": [dict(self.answer, key="not-a-real-key")]})
 
-        service = GeminiTriageService(client=Liar(), batch_size=50)
+        service = GeminiTriageService(client=Liar(), batch_size=50, sleep=_no_sleep)
         result = service.triage(_items(2))
 
         assert result.verdicts == {}

@@ -188,3 +188,35 @@ class TestService:
             ]
         )
         assert "left-story" not in client.prompts[0]
+
+
+def test_a_busy_provider_is_retried_rather_than_skipping_adjudication():
+    class BusyOnce(FakeGenaiClient):
+        calls = 0
+
+        def generate_content(self, *, model, contents, config):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("503 UNAVAILABLE. This model is currently experiencing high demand.")
+            return super().generate_content(model=model, contents=contents, config=config)
+
+    slept = []
+    service = GeminiAdjudicationService(client=BusyOnce(), batch_size=8, sleep=slept.append)
+    result = service.adjudicate(
+        [
+            AdjudicationPair(
+                left_index=0,
+                right_index=1,
+                left_source="dawn",
+                left_headline="A",
+                right_source="geo",
+                right_headline="B",
+                similarity=0.9,
+                headline_overlap=0.2,
+                entity_overlap=0.1,
+            )
+        ]
+    )
+
+    assert result.verdicts[(0, 1)] is True
+    assert len(slept) == 1 and slept[0] >= 5.0

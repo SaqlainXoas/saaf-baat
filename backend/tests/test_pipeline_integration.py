@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -83,6 +83,7 @@ class _SelectAllEditorialService:
     model = "integration-editorial"
 
     def review_clusters(self, candidates, *, max_stories: int = 9):
+        watch_day = datetime.now(timezone.utc) + timedelta(days=3)
         selected = {}
         for priority, candidate in enumerate(candidates, start=1):
             selected[candidate.cluster_id] = EditorialStory(
@@ -96,9 +97,11 @@ class _SelectAllEditorialService:
                 # update or policy response." is exactly the subjectless
                 # filler `_derive_what_to_watch` now drops, so asserting it
                 # survived would have asserted the guard was broken.
+                # Relative, because a fixed "September 16" became a past date
+                # the what-to-watch guard rightly drops, failing every run after.
                 what_to_watch=(
                     f"The National Assembly reviews the {candidate.base_feed.headline} "
-                    "decision on September 16."
+                    f"decision on {watch_day:%B} {watch_day.day}."
                 ),
                 public_impact="high",
                 story_tags=["pakistan", "brief"],
