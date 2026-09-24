@@ -27,6 +27,8 @@ docs/
 .mcp.json
 backend/.pipeline_heartbeat.json
 frontend/public/_demo-stage.html
+supabase/.temp/
+supabase/.branches/
 
 # Data and noise
 *.db

@@ -26,7 +26,29 @@ from src.scrapers.feeds import (
     FeedIngestor,
     SourceSpec,
     clean_article_body,
+    default_fetcher,
 )
+
+
+def test_endpoint_fetch_retries_503_but_not_a_permanent_404(monkeypatch):
+    from types import SimpleNamespace
+
+    responses = iter([
+        SimpleNamespace(status_code=503, content=b"busy"),
+        SimpleNamespace(status_code=200, content=b"fresh"),
+    ])
+    calls = []
+    monkeypatch.setattr("src.scrapers.feeds.requests.get", lambda *a, **k: (calls.append(a), next(responses))[1])
+    monkeypatch.setattr("src.scrapers.feeds.time.sleep", lambda *_: None)
+    assert default_fetcher("https://example.com/feed") == (200, b"fresh")
+    assert len(calls) == 2
+
+    calls.clear()
+    monkeypatch.setattr("src.scrapers.feeds.requests.get", lambda *a, **k: (
+        calls.append(a), SimpleNamespace(status_code=404, content=b"missing")
+    )[1])
+    assert default_fetcher("https://example.com/feed") == (404, b"missing")
+    assert len(calls) == 1
 
 NOW = datetime(2026, 8, 24, 9, 0, tzinfo=timezone.utc)
 LONG_BODY = "Pakistan economic policy detail. " * 40  # ~1300 chars

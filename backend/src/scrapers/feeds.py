@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import html as html_mod
 import logging
+import random
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -196,13 +198,22 @@ def entry_date(entry: Any) -> Optional[datetime]:
 
 
 def default_fetcher(url: str, timeout: float = DEFAULT_TIMEOUT) -> FetchResult:
-    """Plain GET with a real User-Agent. Never raises."""
-    try:
-        response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
-    except Exception as exc:
-        logger.warning("Endpoint fetch failed for %s: %s", url, exc)
-        return 0, b""
-    return int(response.status_code), response.content
+    """Retry only transient endpoint failures; one source stays isolated."""
+    for attempt in range(3):
+        try:
+            response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            if attempt == 2:
+                logger.warning("Endpoint fetch failed for %s: %s", url, exc)
+                return 0, b""
+        except Exception as exc:
+            logger.warning("Endpoint fetch failed for %s: %s", url, exc)
+            return 0, b""
+        else:
+            if response.status_code not in (429, 500, 502, 503, 504) or attempt == 2:
+                return int(response.status_code), response.content
+        time.sleep(min(2.0 ** attempt + random.uniform(0, 0.5), 3.0))
+    return 0, b""
 
 
 @dataclass(frozen=True)

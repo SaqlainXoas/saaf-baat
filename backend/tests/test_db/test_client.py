@@ -397,7 +397,7 @@ class TestClusterOperations:
             for _ in range(3)
         ]
 
-        mock_supabase_client.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = Mock(data=mock_data)
+        mock_supabase_client.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value = Mock(data=mock_data)
 
         result = db_client.get_all_clusters()
 
@@ -594,3 +594,17 @@ class TestCleanup:
 
             # Should not have called delete
             mock_supabase_client.table.return_value.delete.assert_not_called()
+
+
+def test_batch_embedding_write_retries_transient_503_without_duplicate_rows(db_client, mock_supabase_client):
+    article_id = uuid4()
+    result = Mock(data=1)
+    mock_supabase_client.rpc.return_value.execute.side_effect = [
+        RuntimeError("503 Service Unavailable"), result,
+    ]
+    with patch("src.db.client.time.sleep") as sleep:
+        db_client.update_article_embeddings_batch([(article_id, [0.0] * 768)])
+
+    assert mock_supabase_client.rpc.call_count == 2
+    assert mock_supabase_client.rpc.call_args.args[0] == "persist_embeddings"
+    sleep.assert_called_once()

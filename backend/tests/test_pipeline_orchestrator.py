@@ -2379,6 +2379,91 @@ def test_a_missing_embedding_key_degrades_loudly_instead_of_crashing(tmp_path, m
     assert stats.embed_failures == 1
 
 
+def test_recovered_triage_is_healthy_even_after_failed_first_batch(tmp_path):
+    """September 24: 50 failed attempts were recovered, but validation stayed red."""
+    from src.agents.triage import TriageResult
+
+    class RecoveringTriage(FakeTriageService):
+        def triage(self, items):
+            self.calls += 1
+            if self.calls == 1:
+                return TriageResult(verdicts={}, calls=1, failures=len(items), missing_keys=[item.key for item in items])
+            self.calls -= 1
+            return super().triage(items)
+
+    source = tmp_path / "sources.yaml"
+    source.write_text("sources: {}\n", encoding="utf-8")
+    db = FakeDB()
+    article = RawArticle(
+        source="dawn", url="https://www.dawn.com/news/triage-recovery",
+        headline="Budget decision affects Pakistan", main_text="A budget decision was announced.",
+        publish_date=datetime.now(timezone.utc), embedding=[1.0, 0.0],
+    )
+    db.insert_article(article)
+    service = RecoveringTriage()
+    runner = PipelineOrchestrator(config=PipelineConfig(sources_yaml=source), db=db, triage_service=service)
+    stats = PipelineStats()
+
+    runner.triage_articles([article], stats)
+    runner.triage_backfill(stats)
+
+    assert stats.triage_failures == 1  # Keep the attempt history.
+    assert stats.triage_status == "ok"
+    assert db.get_articles_by_ids([article.id])[0].metadata["triage"]["category"] == "economy"
+
+
+def test_triage_write_failure_remains_unhealthy(tmp_path):
+    from copy import deepcopy
+
+    class FailingWriteDB(FakeDB):
+        def update_article_metadata(self, article_id, metadata):
+            raise OSError("temporary database failure")
+
+        def get_articles_since(self, since, limit=2000):
+            return deepcopy(super().get_articles_since(since, limit))
+
+        def get_articles_with_embeddings_since(self, since, limit=None):
+            return deepcopy(super().get_articles_with_embeddings_since(since, limit))
+
+    source = tmp_path / "sources.yaml"
+    source.write_text("sources: {}\n", encoding="utf-8")
+    db = FailingWriteDB()
+    article = RawArticle(
+        source="dawn", url="https://www.dawn.com/news/triage-write",
+        headline="Budget decision affects Pakistan", main_text="A budget decision was announced.",
+        publish_date=datetime.now(timezone.utc), embedding=[1.0, 0.0],
+    )
+    db.insert_article(article)
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(sources_yaml=source), db=db, triage_service=FakeTriageService()
+    )
+    stats = PipelineStats()
+    runner.triage_articles(deepcopy([article]), stats)
+    runner.triage_backfill(stats)
+
+    assert stats.triage_status == "degraded"
+    assert stats.triage_unresolved == 1
+    assert stats.triage_persist_failures == 2
+
+
+def test_partial_embedding_failure_is_unhealthy_after_backfill(tmp_path):
+    source = tmp_path / "sources.yaml"
+    source.write_text("sources: {}\n", encoding="utf-8")
+    db = FakeDB()
+    article = RawArticle(
+        source="dawn", url="https://www.dawn.com/news/embed-write",
+        headline="Budget decision affects Pakistan", main_text="A budget decision was announced.",
+        publish_date=datetime.now(timezone.utc),
+    )
+    db.insert_article(article)
+    runner = PipelineOrchestrator(config=PipelineConfig(sources_yaml=source), db=db)
+    stats = PipelineStats()
+    runner.reconcile_processing_health(stats)
+
+    assert stats.embedding_status == "degraded"
+    assert stats.embedding_unresolved == 1
+
+
 class TestLowCostModeConfig:
     """Low-cost mode lowers defaults; it must never discard explicit config.
 

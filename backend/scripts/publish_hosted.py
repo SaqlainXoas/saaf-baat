@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -18,21 +19,54 @@ from check_run_health import heartbeat_path  # noqa: E402
 from src.db.factory import create_db_client  # noqa: E402
 
 
+def _execute(db, build):
+    retry = getattr(db, "_execute_retryable", None)
+    return retry(build) if callable(retry) else build().execute()
+
+
 def publish(db, token: str, heartbeat: dict) -> int:
     stats = heartbeat.get("stats", {})
     if not token or os.getenv("SAAF_STAGE_PUBLICATION") != "1":
         raise ValueError("Hosted publication requires staged mode and a run token")
     if any(stats.get(key) != "ok" for key in ("embedding_status", "triage_status", "editorial_status")):
         raise ValueError("Required pipeline stages did not succeed")
-    if stats.get("analyze_failures", 0):
-        raise ValueError("An edition with failed card writes cannot be published")
+    if stats.get("analyze_failures", 0) or stats.get("cluster_failures", 0):
+        raise ValueError("An edition with failed cluster or card writes cannot be published")
     count = int(stats.get("feeds_inserted", 0))
     if not 1 <= count <= 12:
         raise ValueError("Edition must contain 1–12 grounded cards")
-    heartbeat = {**heartbeat, "stats": {**stats, "publication_status": "ok"}}
-    return db.client.rpc("publish_brief", {
+    published_at = datetime.now(timezone.utc).isoformat()
+    heartbeat = {
+        **heartbeat,
+        "last_successful_run_at": published_at,
+        "stats": {**stats, "publication_status": "ok"},
+    }
+    return _execute(db, lambda: db.client.rpc("publish_brief", {
         "publication_token": token, "expected_cards": count, "heartbeat": heartbeat,
-    }).execute().data
+    })).data
+
+
+def publication_drafts(db, token: str) -> list[dict]:
+    """Only drafts belonging to this exact attempt may be resumed."""
+    rows = _execute(db, lambda: db.client.table("analyzed_feed")
+            .select("id,cluster_id,created_at,metadata,is_published")
+            .eq("metadata->>publication_token", token)
+            ).data
+    return list(rows or [])
+
+
+def record_failed_run(db, heartbeat: dict) -> None:
+    previous = _execute(db, lambda: db.client.table("pipeline_state")
+                        .select("payload").eq("id", "daily").limit(1)).data
+    standing = previous[0]["payload"] if previous else {}
+    # A warm/cache failure after the RPC must never mark a published edition failed.
+    if (standing.get("publication_token") == heartbeat.get("publication_token")
+            and (standing.get("stats") or {}).get("publication_status") == "ok"):
+        return
+    heartbeat["last_successful_run_at"] = standing.get("last_successful_run_at")
+    heartbeat.setdefault("stats", {})["publication_status"] = "failed"
+    _execute(db, lambda: db.client.table("pipeline_state")
+             .upsert({"id": "daily", "payload": heartbeat}))
 
 
 def wake_backend() -> None:
@@ -240,11 +274,7 @@ def main() -> None:
     db = create_db_client()
     heartbeat = json.loads(heartbeat_path().read_text())
     if args.failure:
-        # A failed job must not advance the last successful publication time.
-        previous = db.client.table("pipeline_state").select("payload").eq("id", "daily").limit(1).execute().data
-        heartbeat["last_successful_run_at"] = previous[0]["payload"].get("last_successful_run_at") if previous else None
-        heartbeat.setdefault("stats", {})["publication_status"] = "failed"
-        db.client.table("pipeline_state").upsert({"id": "daily", "payload": heartbeat}).execute()
+        record_failed_run(db, heartbeat)
         print("Recorded failed run; previous edition retained")
     else:
         token = os.environ["SAAF_PUBLICATION_TOKEN"]

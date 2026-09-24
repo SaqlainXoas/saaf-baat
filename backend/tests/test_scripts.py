@@ -14,7 +14,7 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
 class TestRunSchemaPathResolution:
-    """Regression: run_schema.py must resolve schema.sql relative to its own location."""
+    """Hosted changes use versioned SQL files; the old printer is retired."""
 
     def test_scripts_directory_exists(self):
         """scripts/ must exist at backend root."""
@@ -30,27 +30,16 @@ class TestRunSchemaPathResolution:
         assert (_BACKEND_DIR / "scripts" / "postgres" / "create_schema.py").is_file()
         assert not (_BACKEND_DIR / "scripts" / "run_schema.py").exists()
 
-    def test_schema_sql_reachable_via_run_schema_path_logic(self):
-        """Replicate the exact path logic from run_schema.py and verify the target exists.
-
-        run_schema.py computes:
-            _backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__))))
-            schema_path  = os.path.join(_backend_dir, 'src', 'db', 'schema.sql')
-
-        We simulate __file__ as the real script path and assert the result is a file.
-        """
-        run_schema_file = str(_BACKEND_DIR / "scripts" / "postgres" / "run_schema.py")
-
-        # Mirror the three os.path.dirname calls that run_schema.py executes
-        _backend_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(run_schema_file)))
-        )
-        schema_path = os.path.join(_backend_dir, "src", "db", "schema.sql")
-
-        assert os.path.isfile(schema_path), (
-            f"run_schema.py path logic resolves to {schema_path}, but the file does not exist"
-        )
+    def test_versioned_migrations_cover_baseline_and_reliability(self):
+        migrations = _BACKEND_DIR.parent / "supabase" / "migrations"
+        baseline = migrations / "20260910173949_saaf_baat_initial_schema.sql"
+        reliability = migrations / "20260924000000_reliable_daily_brief.sql"
+        assert "CREATE TABLE IF NOT EXISTS raw_articles" in baseline.read_text()
+        assert len(list(migrations.glob("2026091*.sql"))) == 4
+        sql = reliability.read_text()
+        for name in ("publish_brief", "persist_embeddings", "persist_triage_metadata",
+                     "replace_recent_clusters"):
+            assert f"CREATE OR REPLACE FUNCTION {name}" in sql
 
     def test_create_schema_script_exists(self):
         """create_schema.py moved with it."""

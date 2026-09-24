@@ -472,6 +472,34 @@ class SqliteClient:
         except Exception as exc:
             raise DatabaseError(f"Failed to update article metadata: {exc}") from exc
 
+    def update_article_embeddings_batch(self, updates: List[tuple[Any, List[float]]]) -> None:
+        try:
+            with self._connect() as conn:
+                for article_id, embedding in updates:
+                    changed = conn.execute(
+                        f"UPDATE {self.TABLE_RAW_ARTICLES} SET embedding = ? WHERE id = ?",
+                        (_dumps(embedding), str(article_id)),
+                    ).rowcount
+                    if changed != 1:
+                        raise ValueError("Missing embedding article")
+        except Exception as exc:
+            raise DatabaseError(f"Failed persisting embedding batch: {exc}") from exc
+
+    def update_article_metadata_batch(self, updates: List[tuple[Any, Dict[str, Any]]]) -> None:
+        try:
+            with self._connect() as conn:
+                for article_id, metadata in updates:
+                    if not isinstance(metadata.get("triage"), dict):
+                        raise ValueError("Missing triage verdict")
+                    changed = conn.execute(
+                        f"UPDATE {self.TABLE_RAW_ARTICLES} SET metadata = ? WHERE id = ?",
+                        (_dumps(metadata), str(article_id)),
+                    ).rowcount
+                    if changed != 1:
+                        raise ValueError("Missing triage article")
+        except Exception as exc:
+            raise DatabaseError(f"Failed persisting triage batch: {exc}") from exc
+
     def assign_to_cluster(self, article_id: Any, cluster_id: Any) -> None:
         """Assign article to a cluster."""
         try:
@@ -525,6 +553,56 @@ class SqliteClient:
         "id, created_at, updated_at, article_ids, centroid_embedding, "
         "representative_article_id, cluster_size, avg_similarity, algorithm_used, metadata"
     )
+
+    def replace_recent_clusters(self, since: datetime, groups: List[Dict[str, Any]]) -> dict:
+        """Swap the lookback graph in one SQLite transaction."""
+        seen: set[str] = set()
+        try:
+            with self._connect() as conn:
+                old_rows = conn.execute(
+                    f"SELECT DISTINCT cluster_id FROM {self.TABLE_RAW_ARTICLES} "
+                    "WHERE scraped_at >= ? AND cluster_id IS NOT NULL", (_iso(since),)
+                ).fetchall()
+                old_ids = [row[0] for row in old_rows]
+                cleared = 0
+                if old_ids:
+                    marks = ",".join("?" for _ in old_ids)
+                    cleared = conn.execute(
+                        f"UPDATE {self.TABLE_RAW_ARTICLES} SET cluster_id = NULL "
+                        f"WHERE cluster_id IN ({marks})", old_ids,
+                    ).rowcount
+                    conn.execute(f"DELETE FROM {self.TABLE_CLUSTERS} WHERE id IN ({marks})", old_ids)
+                now = _iso(datetime.now(timezone.utc))
+                for group in groups:
+                    members = [str(UUID(str(aid))) for aid in group["article_ids"]]
+                    if not members or len(members) != len(set(members)) or seen.intersection(members):
+                        raise ValueError("Invalid or duplicate cluster membership")
+                    seen.update(members)
+                    marks = ",".join("?" for _ in members)
+                    eligible = conn.execute(
+                        f"SELECT count(*) FROM {self.TABLE_RAW_ARTICLES} "
+                        f"WHERE id IN ({marks}) AND scraped_at >= ? AND embedding IS NOT NULL",
+                        (*members, _iso(since)),
+                    ).fetchone()[0]
+                    if eligible != len(members):
+                        raise ValueError("Cluster contains an ineligible article")
+                    cluster_id = str(UUID(str(group["id"])))
+                    conn.execute(
+                        f"INSERT INTO {self.TABLE_CLUSTERS} ({self._CLUSTER_COLUMNS}) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (cluster_id, now, now, _dumps(members),
+                         _dumps(group["centroid_embedding"]), None, len(members), None,
+                         group["algorithm_used"], "{}"),
+                    )
+                    assigned = conn.execute(
+                        f"UPDATE {self.TABLE_RAW_ARTICLES} SET cluster_id = ? "
+                        f"WHERE id IN ({marks})", (cluster_id, *members),
+                    ).rowcount
+                    if assigned != len(members):
+                        raise ValueError("Incomplete cluster assignment")
+            return {"removed": len(old_ids), "cleared": cleared}
+        except Exception as exc:
+            raise DatabaseError(f"Failed replacing recent clusters: {exc}") from exc
 
     def create_cluster(
         self,

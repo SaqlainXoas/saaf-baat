@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.agents.editorial import VALID_CATEGORIES, VALID_IMPACT_LABELS
-from src.agents.rate_limit import is_retryable_message, retry_delay_seconds
+from src.agents.rate_limit import is_daily_quota_message, is_retryable_message, retry_delay_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -266,7 +266,8 @@ class GeminiTriageService:
             result.calls += 1
             self._record(result, batch, verdicts)
 
-        retryable = [entry for entry in failed if is_retryable_message(str(entry[2]))]
+        retryable = [entry for entry in failed if is_retryable_message(str(entry[2]))
+                     and not is_daily_quota_message(str(entry[2]))]
         if retryable:
             failed = [entry for entry in failed if entry not in retryable]
             logger.warning(
@@ -336,7 +337,8 @@ class GeminiTriageService:
                 message = str(exc)
                 # A 503 "high demand" is as temporary as a 429. Retrying only
                 # quota errors failed the 2026-09-17 and 2026-09-19 runs.
-                if not is_retryable_message(message) or attempt == attempts - 1:
+                if (not is_retryable_message(message) or is_daily_quota_message(message)
+                        or attempt == attempts - 1):
                     break
                 delay = retry_delay_seconds(message, attempt)
                 logger.warning(

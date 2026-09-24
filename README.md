@@ -101,6 +101,16 @@ The hosted setup uses **Vercel** for the website, **Render** for the read-only A
 
 The repository includes the blueprint and workflow; provider accounts and secrets are still yours to add.
 
+Hosted database changes are tracked in `supabase/migrations/`. With the
+[Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started)
+installed, link this repository to your project once with `supabase login` and
+`supabase link --project-ref ayjimcicmtjwenvldmvm`. Before releasing a code
+change that needs new database functions, run `supabase db push --dry-run`,
+review the pending versions, then run `supabase db push`. The CLI records each
+applied version, so subsequent releases apply only new migrations. Database
+deployment is a separate release step; the morning news workflow never changes
+the schema.
+
 ## Go deeper
 
 - [Product decisions](AGENTS.md) — what this is, and what it deliberately is not

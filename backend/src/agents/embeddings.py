@@ -15,6 +15,8 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from src.agents.rate_limit import is_daily_quota_message, is_retryable_message, retry_delay_seconds
+
 try:
     from google import genai
     from google.genai import types
@@ -124,6 +126,7 @@ class GeminiEmbeddingProvider:
             else _env_int("SAAF_EMBEDDING_RPM", self.DEFAULT_REQUESTS_PER_MINUTE)
         )
         self.max_retries = max(1, int(max_retries or self.DEFAULT_MAX_RETRIES))
+        self._last_batch_size = 0
 
         self._client = genai.Client(api_key=self.api_key)
 
@@ -200,14 +203,13 @@ class GeminiEmbeddingProvider:
 
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
-            result = self._embed_with_retry(batch)
-            all_embeddings.append(result.embeddings)
-
-            if i + batch_size < len(texts):
-                delay = max(self.rate_limit_delay, self._pace_seconds(len(batch)))
+            if self._last_batch_size:
+                delay = max(self.rate_limit_delay, self._pace_seconds(self._last_batch_size))
                 if delay > 0:
                     time.sleep(delay)
-
+            result = self._embed_with_retry(batch)
+            all_embeddings.append(result.embeddings)
+            self._last_batch_size = len(batch)
         combined = np.vstack(all_embeddings)
         return EmbeddingResult(
             embeddings=combined,
@@ -227,15 +229,20 @@ class GeminiEmbeddingProvider:
         for attempt in range(self.max_retries):
             try:
                 return self.embed(batch)
-            except RateLimitError as exc:
+            except (RateLimitError, EmbeddingError) as exc:
                 last_error = exc
-                if attempt == self.max_retries - 1:
+                message = str(exc)
+                if (attempt == self.max_retries - 1 or is_daily_quota_message(message)
+                        or not is_retryable_message(message)):
                     break
-                delay = _retry_after_seconds(str(exc))
-                if delay is None:
-                    delay = self._pace_seconds(len(batch)) * (2 ** attempt)
+                delay = retry_delay_seconds(message, attempt)
+                if _retry_after_seconds(message) is not None:
+                    delay += 1.0
+                if isinstance(exc, RateLimitError):
+                    delay = max(delay, self._pace_seconds(len(batch)))
+                delay = min(delay, 120.0)
                 logger.warning(
-                    "Embedding rate limited (attempt %d/%d); waiting %.1fs",
+                    "Embedding temporarily unavailable (attempt %d/%d); waiting %.1fs",
                     attempt + 1,
                     self.max_retries,
                     delay,

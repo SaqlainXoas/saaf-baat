@@ -48,8 +48,9 @@ Local development defaults to SQLite. The hosted setup uses Supabase for shared 
 
 - Backend selection: `SAAF_DB_BACKEND` — `sqlite` (default) or `supabase`.
 - File location: `SAAF_SQLITE_PATH`, default `backend/data/saafbaat.db`.
-- Schema: `backend/src/db/schema_sqlite.sql` (Postgres original kept at
-  `backend/src/db/schema.sql` for the hosted setup).
+- Schema: `backend/src/db/schema_sqlite.sql` for local SQLite. Hosted Postgres
+  changes are versioned in `supabase/migrations/`; `backend/src/db/schema.sql`
+  remains a readable schema snapshot, not the production migration command.
 - Init/inspect: `python scripts/init_db.py` (`--reset` wipes local data).
 
 **Always build clients via `src.db.factory.create_db_client()`.** Do not import
@@ -393,7 +394,11 @@ Frontend (from `frontend/`): `npm test`, `npm run dev`, `npm run build`.
   `ok`. That workflow runs on a temporary GitHub
   runner against Supabase. Draft rows stay unpublished until validation and an
   atomic `publish_brief` RPC succeed; shared `pipeline_state` reaches Render.
-  Scheduling requires `ENABLE_DAILY_PIPELINE=true` after the first hosted test.
+  The backup can reuse validated drafts without new editorial calls. Embedding
+  and triage health is reconciled against persisted rows after backfill, and
+  recent cluster replacement and processing writes use transactions. Install
+  the current Supabase schema before releasing the workflow. Scheduling still
+  requires `ENABLE_DAILY_PIPELINE=true` after the first hosted test.
 - **`degraded_sources` means "yielded nothing usable", not "nothing new".** It
   used to test inserted rows, so a second run in the same hour marked all eight
   sources degraded. `source_discovered_counts` records the usable count next to

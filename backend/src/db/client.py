@@ -13,6 +13,7 @@ import base64
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -35,6 +36,19 @@ from .errors import (
 from .models import AnalyzedFeed, ArticleList, Cluster, ClusterList, FeedList, RawArticle
 
 logger = logging.getLogger(__name__)
+
+
+def _retryable_database_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status in (429, 500, 502, 503, 504):
+        return True
+    return bool(re.search(r"\b(?:429|500|502|503|504)\b", message)) or any(
+        marker in message for marker in (
+            "timed out", "timeout", "connection reset", "connection refused",
+            "service unavailable",
+        )
+    )
 
 
 def _key_role(key: str) -> Optional[str]:
@@ -100,6 +114,36 @@ class SupabaseClient:
     TABLE_RAW_ARTICLES = "raw_articles"
     TABLE_CLUSTERS = "clusters"
     TABLE_ANALYZED_FEED = "analyzed_feed"
+
+    def _all_rows(self, query: Any, limit: Optional[int] = None) -> List[dict]:
+        """Page through PostgREST's default 1000-row cap."""
+        rows: List[dict] = []
+        while True:
+            page_size = min(500, limit - len(rows)) if limit is not None else 500
+            if page_size <= 0:
+                break
+            start = len(rows)
+            end = start + page_size - 1
+            page = list(self._execute_retryable(
+                lambda start=start, end=end: query.range(start, end)
+            ).data or [])
+            rows.extend(page)
+            if len(page) < page_size:
+                break
+        return rows
+
+    def _execute_retryable(self, request: Any) -> Any:
+        """Retry idempotent PostgREST writes after transient transport errors."""
+        for attempt in range(3):
+            try:
+                return request().execute()
+            except Exception as exc:
+                if attempt == 2 or not _retryable_database_error(exc):
+                    raise
+                delay = min(2.0 ** attempt, 4.0)
+                logger.warning("Transient Supabase request failure; retrying in %.1fs: %s", delay, exc)
+                time.sleep(delay)
+        raise AssertionError("unreachable")
 
     @staticmethod
     def _parse_embedding(data: dict) -> dict:
@@ -300,12 +344,11 @@ class SupabaseClient:
 
         try:
             str_ids = [str(aid) for aid in article_ids]
-            response = (
+            response = self._execute_retryable(lambda: (
                 self.client.table(self.TABLE_RAW_ARTICLES)
                 .select("*")
                 .in_("id", str_ids)
-                .execute()
-            )
+            ))
 
             return [RawArticle(**self._parse_embedding(item)) for item in response.data]
 
@@ -407,10 +450,7 @@ class SupabaseClient:
                 .gte("scraped_at", since.isoformat())
                 .order("scraped_at", desc=True)
             )
-            if limit is not None:
-                query = query.limit(limit)
-            response = query.execute()
-            return [RawArticle(**self._parse_embedding(item)) for item in response.data]
+            return [RawArticle(**self._parse_embedding(item)) for item in self._all_rows(query, limit)]
         except Exception as e:
             raise DatabaseError(f"Failed to get recent unclustered articles: {e}") from e
 
@@ -428,10 +468,7 @@ class SupabaseClient:
                 .gte("scraped_at", since.isoformat())
                 .order("scraped_at", desc=True)
             )
-            if limit is not None:
-                query = query.limit(limit)
-            response = query.execute()
-            return [RawArticle(**self._parse_embedding(item)) for item in response.data]
+            return [RawArticle(**self._parse_embedding(item)) for item in self._all_rows(query, limit)]
         except Exception as e:
             raise DatabaseError(f"Failed to get recent embedded articles: {e}") from e
 
@@ -456,15 +493,13 @@ class SupabaseClient:
         try:
             if since.tzinfo is None:
                 since = since.replace(tzinfo=timezone.utc)
-            response = (
+            query = (
                 self.client.table(self.TABLE_RAW_ARTICLES)
                 .select("*")
                 .gte("scraped_at", since.isoformat())
                 .order("scraped_at", desc=True)
-                .limit(limit)
-                .execute()
             )
-            return [RawArticle(**self._parse_embedding(item)) for item in response.data]
+            return [RawArticle(**self._parse_embedding(item)) for item in self._all_rows(query, limit)]
         except Exception as e:
             raise DatabaseError(f"Failed to get articles since {since}: {e}") from e
 
@@ -475,9 +510,9 @@ class SupabaseClient:
     ) -> None:
         """Update article's embedding vector."""
         try:
-            self.client.table(self.TABLE_RAW_ARTICLES).update(
+            self._execute_retryable(lambda: self.client.table(self.TABLE_RAW_ARTICLES).update(
                 {"embedding": embedding}
-            ).eq("id", str(article_id)).execute()
+            ).eq("id", str(article_id)))
 
         except Exception as e:
             raise DatabaseError(f"Failed to update article embedding: {e}") from e
@@ -505,12 +540,38 @@ class SupabaseClient:
     def update_article_metadata(self, article_id: Any, metadata: Dict[str, Any]) -> None:
         """Replace an article's metadata blob (used to persist triage verdicts)."""
         try:
-            self.client.table(self.TABLE_RAW_ARTICLES).update(
+            self._execute_retryable(lambda: self.client.table(self.TABLE_RAW_ARTICLES).update(
                 {"metadata": dict(metadata)}
-            ).eq("id", str(article_id)).execute()
+            ).eq("id", str(article_id)))
 
         except Exception as e:
             raise DatabaseError(f"Failed to update article metadata: {e}") from e
+
+    def update_article_embeddings_batch(self, updates: List[tuple[Any, List[float]]]) -> None:
+        if not updates:
+            return
+        payload = [{"id": str(article_id), "embedding": embedding} for article_id, embedding in updates]
+        try:
+            result = self._execute_retryable(
+                lambda: self.client.rpc("persist_embeddings", {"updates": payload})
+            )
+            if int(result.data) != len(updates):
+                raise DatabaseError("Embedding batch updated too few rows")
+        except Exception as exc:
+            raise DatabaseError(f"Failed persisting embedding batch: {exc}") from exc
+
+    def update_article_metadata_batch(self, updates: List[tuple[Any, Dict[str, Any]]]) -> None:
+        if not updates:
+            return
+        payload = [{"id": str(article_id), "metadata": metadata} for article_id, metadata in updates]
+        try:
+            result = self._execute_retryable(
+                lambda: self.client.rpc("persist_triage_metadata", {"updates": payload})
+            )
+            if int(result.data) != len(updates):
+                raise DatabaseError("Triage batch updated too few rows")
+        except Exception as exc:
+            raise DatabaseError(f"Failed persisting triage batch: {exc}") from exc
 
     def assign_to_cluster(self, article_id: Any, cluster_id: Any) -> None:
         """Assign article to a cluster."""
@@ -565,6 +626,17 @@ class SupabaseClient:
     # ==========================================
     # Cluster Operations
     # ==========================================
+
+    def replace_recent_clusters(self, since: datetime, groups: List[Dict[str, Any]]) -> dict:
+        """Atomically swap a complete event graph through the hosted RPC."""
+        try:
+            response = self.client.rpc(
+                "replace_recent_clusters",
+                {"since_at": since.isoformat(), "new_groups": groups},
+            ).execute()
+            return dict(response.data or {})
+        except Exception as exc:
+            raise DatabaseError(f"Failed replacing recent clusters: {exc}") from exc
 
     def create_cluster(
         self,
@@ -657,12 +729,8 @@ class SupabaseClient:
             if order == "size":
                 query = query.order("cluster_size", desc=True)
             query = query.order("created_at", desc=True)
-            if limit is not None:
-                query = query.limit(limit)
-            response = query.execute()
-
             clusters = []
-            for item in response.data:
+            for item in self._all_rows(query, limit):
                 if item.get("article_ids"):
                     item["article_ids"] = [UUID(aid) for aid in item["article_ids"]]
                 # Parse centroid_embedding from PostgreSQL VECTOR string format

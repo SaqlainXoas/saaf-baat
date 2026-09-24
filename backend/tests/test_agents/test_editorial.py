@@ -885,6 +885,14 @@ class TestRetryDelay:
 
         assert retry_delay_seconds("429 quota. Please retry in 12.5s", 0) == 12.5
 
+    def test_daily_quota_is_not_treated_as_a_short_retry_window(self):
+        from src.agents.rate_limit import is_daily_quota_message
+
+        assert is_daily_quota_message(
+            "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+        )
+        assert not is_daily_quota_message("429 RESOURCE_EXHAUSTED Please retry in 30s")
+
     def test_jitter_stays_inside_its_spread(self):
         from src.agents.rate_limit import retry_delay_seconds
 

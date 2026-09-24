@@ -10,6 +10,7 @@ import urllib.request
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -50,10 +51,13 @@ def _write_pipeline_heartbeat(backend_dir: Path, stats: object) -> None:
             existing_payload = {}
 
     last_successful = existing_payload.get("last_successful_run_at")
-    if getattr(stats, "feeds_inserted", 0) > 0:
+    if getattr(stats, "feeds_inserted", 0) > 0 and os.getenv("SAAF_STAGE_PUBLICATION") != "1":
         last_successful = now_utc.isoformat().replace("+00:00", "Z")
 
     payload = {
+        "publication_token": (os.getenv("SAAF_PUBLICATION_TOKEN") or "").strip(),
+        "edition_date": now_utc.astimezone(ZoneInfo("Asia/Karachi")).date().isoformat(),
+        "run_started_at": getattr(stats, "run_started_at", now_utc).isoformat(),
         "last_run_at": now_utc.isoformat().replace("+00:00", "Z"),
         "last_successful_run_at": last_successful,
         "source_article_counts": dict(getattr(stats, "source_article_counts", {}) or {}),

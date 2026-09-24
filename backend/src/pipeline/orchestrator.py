@@ -282,6 +282,7 @@ class PipelineConfig:
 
 @dataclass
 class PipelineStats:
+    run_started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     scraped: int = 0
     inserted: int = 0
     duplicates: int = 0
@@ -299,6 +300,11 @@ class PipelineStats:
     feeds_skipped_existing: int = 0
     feeds_replaced: int = 0
     feeds_rejected_editorial: int = 0
+    candidates_analyzed: int = 0
+    candidates_publishable: int = 0
+    editorial_selected: int = 0
+    short_brief_reason: str = ""
+    stage_seconds: Dict[str, float] = field(default_factory=dict)
     analyze_failures: int = 0
     pruned_articles: int = 0
     pruned_clusters: int = 0
@@ -319,6 +325,9 @@ class PipelineStats:
     triage_articles: int = 0
     triage_calls: int = 0
     triage_failures: int = 0
+    triage_unresolved: int = 0
+    embedding_unresolved: int = 0
+    triage_persist_failures: int = 0
     triage_status: str = "disabled"
     embedding_status: str = "ok"
     adjudicated_pairs: int = 0
@@ -335,6 +344,7 @@ class PipelineStats:
 
     def as_dict(self) -> dict[str, object]:
         return {
+            "run_started_at": self.run_started_at.isoformat(),
             "scraped": self.scraped,
             "inserted": self.inserted,
             "duplicates": self.duplicates,
@@ -352,6 +362,11 @@ class PipelineStats:
             "feeds_skipped_existing": self.feeds_skipped_existing,
             "feeds_replaced": self.feeds_replaced,
             "feeds_rejected_editorial": self.feeds_rejected_editorial,
+            "candidates_analyzed": self.candidates_analyzed,
+            "candidates_publishable": self.candidates_publishable,
+            "editorial_selected": self.editorial_selected,
+            "short_brief_reason": self.short_brief_reason,
+            "stage_seconds": dict(self.stage_seconds),
             "analyze_failures": self.analyze_failures,
             "pruned_articles": self.pruned_articles,
             "pruned_clusters": self.pruned_clusters,
@@ -368,6 +383,9 @@ class PipelineStats:
             "triage_articles": self.triage_articles,
             "triage_calls": self.triage_calls,
             "triage_failures": self.triage_failures,
+            "triage_unresolved": self.triage_unresolved,
+            "embedding_unresolved": self.embedding_unresolved,
+            "triage_persist_failures": self.triage_persist_failures,
             "triage_status": self.triage_status,
             "embedding_status": self.embedding_status,
             "adjudicated_pairs": self.adjudicated_pairs,
@@ -759,6 +777,7 @@ class PipelineOrchestrator:
         stats.triage_failures += int(result.failures)
 
         by_id = {str(article.id): article for article in pending}
+        updates: List[tuple[UUID, Dict[str, Any]]] = []
         for key, verdict in result.verdicts.items():
             article = by_id.get(key)
             if article is None:
@@ -767,15 +786,27 @@ class PipelineOrchestrator:
             metadata["triage"] = verdict.as_dict()
             article.metadata = metadata
             stats.triage_articles += 1
-            try:
-                self.db.update_article_metadata(article.id, metadata)
-            except Exception as e:
-                # The in-memory verdict still serves this run.
-                logger.warning("Failed persisting triage verdict for %s: %s", article.id, e)
+            updates.append((article.id, metadata))
+
+        for offset in range(0, len(updates), 50):
+            batch = updates[offset : offset + 50]
+            bulk = getattr(self.db, "update_article_metadata_batch", None)
+            if callable(bulk):
+                try:
+                    bulk(batch)
+                    continue
+                except Exception as exc:
+                    logger.warning("Triage batch write failed; retrying rows: %s", exc)
+            for article_id, metadata in batch:
+                try:
+                    self.db.update_article_metadata(article_id, metadata)
+                except Exception as exc:
+                    stats.triage_persist_failures += 1
+                    logger.warning("Failed persisting triage verdict for %s: %s", article_id, exc)
 
         if stats.triage_articles <= 0:
             stats.triage_status = "unavailable"
-        elif stats.triage_failures > 0:
+        elif len(result.verdicts) < len(pending):
             stats.triage_status = "degraded"
         else:
             stats.triage_status = "ok"
@@ -784,15 +815,41 @@ class PipelineOrchestrator:
         """Triage articles from earlier runs that never got a verdict."""
         since = datetime.now(timezone.utc) - timedelta(hours=self.config.cluster_lookback_hours)
         try:
-            recent = self.db.get_articles_with_embeddings_since(
-                since=since, limit=self.config.recluster_limit
-            )
+            recent = self.db.get_articles_with_embeddings_since(since=since, limit=None)
         except Exception as e:
             logger.warning("Triage backfill fetch failed: %s", e)
+            self.reconcile_processing_health(stats)
             return
         pending = [a for a in recent if article_triage(a) is None]
         if pending:
             self.triage_articles(pending, stats)
+        self.reconcile_processing_health(stats)
+
+    def reconcile_processing_health(self, stats: PipelineStats) -> None:
+        """Judge the final persisted window, not failures from recovered attempts."""
+        since = datetime.now(timezone.utc) - timedelta(hours=self.config.cluster_lookback_hours)
+        try:
+            articles = self.db.get_articles_since(since=since, limit=2000)
+        except Exception as exc:
+            stats.embedding_status = "unavailable"
+            stats.triage_status = "unavailable"
+            logger.warning("Cannot verify persisted processing state: %s", exc)
+            return
+        if len(articles) >= 2000:
+            # A capped query cannot prove that earlier rows were processed.
+            stats.embedding_status = "degraded"
+            stats.triage_status = "degraded"
+            logger.warning("Processing health window reached its 2000 article verification cap")
+            return
+        stats.embedding_unresolved = sum(article.embedding is None for article in articles)
+        embedded = [article for article in articles if article.embedding is not None]
+        stats.triage_unresolved = sum(article_triage(article) is None for article in embedded)
+        stats.triage_articles = sum(article_triage(article) is not None for article in embedded)
+        stats.embedding_status = "ok" if stats.embedding_unresolved == 0 else "degraded"
+        if not embedded and articles:
+            stats.triage_status = "unavailable"
+        else:
+            stats.triage_status = "ok" if stats.triage_unresolved == 0 else "degraded"
 
     def embed_articles(self, articles: Sequence[RawArticle], stats: PipelineStats) -> None:
         to_embed = [a for a in articles if a.embedding is None]
@@ -821,6 +878,8 @@ class PipelineOrchestrator:
             texts = [f"{a.headline}. {a.main_text[:500]}" for a in chunk]
             try:
                 result = embedder.embed_batch(texts, batch_size=batch_size)
+                if len(result.embeddings) != len(chunk):
+                    raise ValueError("Embedding provider returned an incomplete chunk")
             except Exception as e:
                 stats.embed_failures += len(chunk)
                 logger.warning(
@@ -832,15 +891,26 @@ class PipelineOrchestrator:
                 )
                 continue
 
+            updates = []
             for idx, article in enumerate(chunk):
                 emb = result.embeddings[idx].tolist()
                 article.embedding = emb
+                updates.append((article.id, emb))
+            bulk = getattr(self.db, "update_article_embeddings_batch", None)
+            if callable(bulk):
                 try:
-                    self.db.update_article_embedding(article.id, emb)
+                    bulk(updates)
+                    stats.embedded += len(updates)
+                    continue
+                except Exception as exc:
+                    logger.warning("Embedding batch write failed; retrying rows: %s", exc)
+            for article_id, emb in updates:
+                try:
+                    self.db.update_article_embedding(article_id, emb)
                     stats.embedded += 1
-                except Exception as e:
+                except Exception as exc:
                     stats.embed_failures += 1
-                    logger.warning("Failed updating embedding for %s: %s", article.id, e)
+                    logger.warning("Failed updating embedding for %s: %s", article_id, exc)
 
     def embed_backfill(self, stats: PipelineStats) -> None:
         """Resume embeddings for articles that were inserted in previous runs."""
@@ -899,7 +969,13 @@ class PipelineOrchestrator:
             List of created cluster UUIDs (noise excluded).
         """
         since = datetime.now(timezone.utc) - timedelta(hours=self.config.cluster_lookback_hours)
-        candidates = self.db.get_articles_without_clusters_since(since=since, limit=limit)
+        atomic_replace = self.config.recluster_recent_window and callable(
+            getattr(self.db, "replace_recent_clusters", None)
+        )
+        candidates = (
+            self.db.get_articles_with_embeddings_since(since=since, limit=limit)
+            if atomic_replace else self.db.get_articles_without_clusters_since(since=since, limit=limit)
+        )
         candidates = [a for a in candidates if a.embedding is not None]
         if len(candidates) < max(1, self.config.min_cluster_size):
             return []
@@ -913,6 +989,7 @@ class PipelineOrchestrator:
         self._record_adjudication_stats(grouping_service, stats)
 
         created_cluster_ids: List[UUID] = []
+        planned_clusters: List[Dict[str, Any]] = []
         stats.clustered_articles += len(candidates)
 
         for indices in grouped_indices:
@@ -960,6 +1037,16 @@ class PipelineOrchestrator:
             centroid = calculate_centroid(kept_embeddings).tolist()
             kept_articles = [cluster_articles_all[i] for i in kept_local]
 
+            if atomic_replace:
+                planned_clusters.append({
+                    "id": str(cluster_id),
+                    "article_ids": [str(article.id) for article in kept_articles],
+                    "centroid_embedding": centroid,
+                    "algorithm_used": algorithm_used,
+                })
+                created_cluster_ids.append(cluster_id)
+                continue
+
             try:
                 self.db.create_cluster(
                     cluster_id=cluster_id,
@@ -978,6 +1065,7 @@ class PipelineOrchestrator:
                 try:
                     self.db.assign_to_cluster(article.id, cluster_id)
                 except Exception as e:
+                    stats.cluster_failures += 1
                     logger.warning("Failed assigning %s to %s: %s", article.id, cluster_id, e)
 
             # Persist similarity for observability without schema changes.
@@ -991,6 +1079,13 @@ class PipelineOrchestrator:
                 algorithm_used,
             )
 
+        if atomic_replace:
+            # One database transaction replaces the complete lookback graph.
+            # A failed RPC leaves the former assignments intact for recovery.
+            result = self.db.replace_recent_clusters(since, planned_clusters)
+            stats.clusters_removed_for_recluster += int(result.get("removed", 0))
+            stats.cluster_assignments_cleared += int(result.get("cleared", 0))
+            stats.clusters_created += len(planned_clusters)
         return created_cluster_ids
 
     @staticmethod
@@ -1022,6 +1117,8 @@ class PipelineOrchestrator:
         """
         if not self.config.recluster_recent_window:
             return
+        if callable(getattr(self.db, "replace_recent_clusters", None)):
+            return  # The next grouping pass performs replacement atomically.
 
         since = datetime.now(timezone.utc) - timedelta(hours=self.config.cluster_lookback_hours)
         try:
@@ -1088,6 +1185,18 @@ class PipelineOrchestrator:
                 "if this persists.",
                 limit,
             )
+        # One bounded read replaces one Supabase round-trip per cluster. If a
+        # batch fails, fall back to the per-cluster path so one bad read cannot
+        # discard the whole editorial candidate set.
+        articles_by_id: Dict[UUID, RawArticle] = {}
+        article_ids = list(dict.fromkeys(aid for cluster in clusters for aid in cluster.article_ids))
+        try:
+            for offset in range(0, len(article_ids), 200):
+                for article in self.db.get_articles_by_ids(article_ids[offset : offset + 200]):
+                    articles_by_id[article.id] = article
+        except Exception as exc:
+            articles_by_id = {}
+            logger.warning("Bulk cluster article read failed; using isolated reads: %s", exc)
         inserted_feed_ids: List[UUID] = []
         candidates: List[ClusterEditorialCandidate] = []
         rejected_by_publish_gate = 0
@@ -1111,7 +1220,9 @@ class PipelineOrchestrator:
 
             has_existing_feed = False
             try:
-                has_existing_feed = self.db.analyzed_feed_exists(cluster.id)
+                has_existing_feed = (
+                    self.db.analyzed_feed_exists(cluster.id) if cluster_ids is None else False
+                )
             except Exception as e:
                 logger.warning("Feed-exists check failed for %s: %s", cluster.id, e)
             if has_existing_feed:
@@ -1125,7 +1236,9 @@ class PipelineOrchestrator:
                     logger.warning("Failed deleting existing feed rows for %s: %s", cluster.id, e)
 
             try:
-                articles = self.db.get_articles_by_ids(cluster.article_ids)
+                articles = [articles_by_id[aid] for aid in cluster.article_ids] if all(
+                    aid in articles_by_id for aid in cluster.article_ids
+                ) else self.db.get_articles_by_ids(cluster.article_ids)
                 feed = analyzer.analyze_cluster(cluster.id, articles)
                 editorial_articles = self._select_editorial_articles(articles)
                 candidates.append(
@@ -1144,6 +1257,7 @@ class PipelineOrchestrator:
                 logger.exception("Failed analyzing cluster %s: %s", cluster.id, e)
 
         publishable_candidates: List[ClusterEditorialCandidate] = []
+        stats.candidates_analyzed = len(candidates)
         for candidate in candidates:
             evidence = self._candidate_evidence(candidate)
             prominence = self._candidate_publisher_topline(candidate)
@@ -1170,6 +1284,7 @@ class PipelineOrchestrator:
                 )
                 continue
             publishable_candidates.append(candidate)
+        stats.candidates_publishable = len(publishable_candidates)
 
         if rejected_by_publish_gate:
             logger.info(
@@ -1200,6 +1315,7 @@ class PipelineOrchestrator:
                     max_stories=self.config.editorial_max_stories,
                 )
                 stats.editorial_status = "ok" if editorial_result else "degraded"
+                stats.editorial_selected = len(editorial_result or {})
             except EditorialError as exc:
                 # No silent mixing of template copy into the brief: the run
                 # records that the editor was unreachable and /health says so.
@@ -1409,6 +1525,12 @@ class PipelineOrchestrator:
                     stats.story_analysis_status = "partial"
                 else:
                     stats.story_analysis_status = "ok"
+            if stats.feeds_inserted < 6:
+                stats.short_brief_reason = (
+                    "fewer_than_six_eligible_candidates" if stats.candidates_publishable < 6
+                    else "editorial_selected_fewer_than_six" if stats.editorial_selected < 6
+                    else "post_editorial_filter_or_write"
+                )
             return inserted_feed_ids
 
         # Reached with no editor. What happens next depends on *why*.
@@ -2015,6 +2137,7 @@ class PipelineOrchestrator:
     # ---------------------------------------------------------------------
 
     def run(self) -> PipelineStats:
+        stage_started = time.perf_counter()
         logger.info(
             "Pipeline run started "
             "(max_articles_per_source=%d, embedding_backfill_limit=%d, cluster_lookback_hours=%d)",
@@ -2023,6 +2146,9 @@ class PipelineOrchestrator:
             self.config.cluster_lookback_hours,
         )
         stats, inserted_articles = self.scrape_and_insert()
+        stats.run_started_at = self.run_started_at
+        stats.stage_seconds["ingest"] = round(time.perf_counter() - stage_started, 2)
+        stage_started = time.perf_counter()
         logger.info(
             "Ingest+insert complete: discovered=%d inserted=%d duplicates=%d near_duplicates=%d failures=%d",
             stats.scraped,
@@ -2036,6 +2162,8 @@ class PipelineOrchestrator:
         self.embed_articles(inserted_articles, stats)
         # Resume embeddings that failed in prior runs.
         self.embed_backfill(stats)
+        stats.stage_seconds["embedding"] = round(time.perf_counter() - stage_started, 2)
+        stage_started = time.perf_counter()
         logger.info(
             "Embedding complete: embedded=%d embed_failures=%d",
             stats.embedded,
@@ -2046,6 +2174,8 @@ class PipelineOrchestrator:
         # to the publish gates and the editor alike.
         self.triage_articles(inserted_articles, stats)
         self.triage_backfill(stats)
+        stats.stage_seconds["triage"] = round(time.perf_counter() - stage_started, 2)
+        stage_started = time.perf_counter()
         logger.info(
             "Triage complete: articles=%d calls=%d failures=%d status=%s",
             stats.triage_articles,
@@ -2058,6 +2188,8 @@ class PipelineOrchestrator:
         self.remediate_recent_clusters(stats)
         # Clustering uses DB state so it can resume after partial failures.
         created_cluster_ids = self.cluster_unclustered_articles(stats)
+        stats.stage_seconds["grouping"] = round(time.perf_counter() - stage_started, 2)
+        stage_started = time.perf_counter()
         logger.info(
             "Clustering complete: clustered_articles=%d clusters_created=%d cluster_failures=%d "
             "rejected_low_similarity=%d adjudicated=%d merged=%d",
@@ -2074,6 +2206,7 @@ class PipelineOrchestrator:
             stats,
             cluster_ids=created_cluster_ids or None,
         )
+        stats.stage_seconds["editorial_and_cards"] = round(time.perf_counter() - stage_started, 2)
         logger.info(
             "Analysis complete: feeds_inserted=%d feeds_replaced=%d feeds_rejected_editorial=%d "
             "analyze_failures=%d editorial_status=%s story_analysis_status=%s",

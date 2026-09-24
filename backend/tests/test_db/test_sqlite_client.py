@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.db.errors import DuplicateArticleError, NotFoundError
+from src.db.errors import DatabaseError, DuplicateArticleError, NotFoundError
 from src.db.factory import configured_backend, create_db_client
 from src.db.models import AnalyzedFeed, Category, ExtractedEntity, ImpactLabel, RawArticle
 from src.db.sqlite_client import SqliteClient, default_sqlite_path
@@ -67,6 +67,64 @@ class TestSchemaAndConnection:
         article_id = client.insert_article(make_article())
         assert client.get_article_by_id(article_id).source == "dawn"
         client.close()
+
+
+def test_atomic_cluster_replacement_rolls_back_on_invalid_member(db):
+    article = make_article(embedding=[1.0, 0.0])
+    db.insert_article(article)
+    original_id = db.create_cluster(article_ids=[article.id], centroid_embedding=[1.0, 0.0])
+    db.assign_to_cluster(article.id, original_id)
+    since = article.scraped_at - timedelta(minutes=1)
+
+    with pytest.raises(DatabaseError):
+        db.replace_recent_clusters(since, [{
+            "id": str(uuid4()), "article_ids": [str(article.id), str(article.id)],
+            "centroid_embedding": [1.0, 0.0], "algorithm_used": "event_graph",
+        }])
+
+    assert db.get_article_by_id(article.id).cluster_id == original_id
+    assert db.get_cluster_by_id(original_id).id == original_id
+
+
+def test_pipeline_regrouping_uses_atomic_replacement(db, tmp_path):
+    import numpy as np
+
+    from src.agents.clustering import ClusteringResult
+    from src.pipeline.orchestrator import PipelineConfig, PipelineOrchestrator, PipelineStats
+
+    class SameEvent:
+        def cluster(self, embeddings):
+            return ClusteringResult.from_labels(np.zeros(len(embeddings), dtype=int), "event_graph")
+
+    now = datetime.now(timezone.utc)
+    articles = [
+        make_article(
+            source=source, headline=f"Decision reported by {source}",
+            main_text=f"{source} reported a new decision in Pakistan.",
+            scraped_at=now, publish_date=now, embedding=[1.0, 0.0],
+        )
+        for source in ("dawn", "tribune")
+    ]
+    for article in articles:
+        db.insert_article(article)
+    old_id = db.create_cluster(article_ids=[article.id for article in articles], centroid_embedding=[1.0, 0.0])
+    for article in articles:
+        db.assign_to_cluster(article.id, old_id)
+    source_file = tmp_path / "sources.yaml"
+    source_file.write_text("sources: {}\n", encoding="utf-8")
+    runner = PipelineOrchestrator(
+        config=PipelineConfig(sources_yaml=source_file), db=db, clusterer=SameEvent()
+    )
+    stats = PipelineStats()
+
+    runner.remediate_recent_clusters(stats)
+    assert db.get_cluster_by_id(old_id).id == old_id
+    created = runner.cluster_unclustered_articles(stats)
+
+    assert len(created) == 1
+    assert stats.clusters_removed_for_recluster == 1
+    assert stats.clusters_created == 1
+    assert {db.get_article_by_id(article.id).cluster_id for article in articles} == set(created)
 
 
 class TestArticleRoundTrip:

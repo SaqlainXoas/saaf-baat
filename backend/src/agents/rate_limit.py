@@ -60,6 +60,17 @@ def is_retryable_message(message: str) -> bool:
     return is_rate_limit_message(message) or is_transient_message(message)
 
 
+def is_daily_quota_message(message: str) -> bool:
+    """A minute-scale wait cannot replenish an explicitly exhausted daily cap."""
+    lowered = (message or "").lower()
+    return is_rate_limit_message(lowered) and any(
+        marker in lowered for marker in (
+            "per day", "per_day", "perday", "requests/day", "requests per day",
+            "daily quota", "daily limit", "rpd",
+        )
+    )
+
+
 # A busy server needs longer than a quota window. On 2026-09-19 triage got two
 # 503s at 06:03-06:04 and the same model answered 200 by 06:04:53, so the
 # schedule has to span about a minute - 2s/4s/8s gives up before it recovers.
@@ -105,6 +116,7 @@ def retry_after_seconds(message: str) -> float | None:
 __all__ = [
     "is_rate_limit_message",
     "is_retryable_message",
+    "is_daily_quota_message",
     "is_transient_message",
     "retry_after_seconds",
     "retry_delay_seconds",

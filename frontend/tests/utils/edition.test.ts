@@ -115,6 +115,7 @@ describe("edition identity", () => {
     const now = new Date("2026-08-28T05:00:00Z"); // 10:00 PKT
     expect(isMorningEditionFresh("2026-08-27T19:25:00Z", now)).toBe(false);
     expect(isMorningEditionFresh("2026-08-28T02:05:00Z", now)).toBe(true);
+    expect(isMorningEditionFresh("2026-08-28T01:05:00Z", now)).toBe(true);
   });
 
   it("stops claiming 'today' once the brief is a day old", () => {

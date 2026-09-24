@@ -157,6 +157,8 @@ def health(db=Depends(get_db)) -> dict[str, object]:
 
     if not db_connected:
         pipeline_status_reason = "Database unavailable; pipeline freshness cannot be confirmed."
+    elif publication_status == "failed":
+        pipeline_status_reason = "The last hosted edition could not be published; the previous edition remains available."
     elif editorial_status == "unavailable":
         pipeline_status_reason = (
             "No editorial provider was reachable on the last run, so it published "
@@ -169,12 +171,10 @@ def health(db=Depends(get_db)) -> dict[str, object]:
             "The factual cards remain available, but one or more detail pages "
             "fell back to their short snippets."
         )
-    elif publication_status == "failed":
-        pipeline_status_reason = "The last hosted edition could not be published; the previous edition remains available."
-    elif embedding_status == "unavailable":
+    elif embedding_status in {"unavailable", "degraded"}:
         pipeline_status_reason = (
-            "No embedding provider was reachable on the last run; nothing new "
-            "could be clustered, so the brief did not change."
+            f"Embedding was {embedding_status} on the last run; some new reports "
+            "could not be grouped into stories."
         )
     elif triage_status in {"unavailable", "degraded"}:
         # An article triage never saw is not publishable, so a bad triage run
@@ -211,7 +211,7 @@ def health(db=Depends(get_db)) -> dict[str, object]:
         or editorial_status in {"unavailable", "degraded"}
         or story_analysis_status in {"partial", "unavailable"}
         or triage_status in {"unavailable", "degraded"}
-        or embedding_status == "unavailable"
+        or embedding_status in {"unavailable", "degraded"}
     )
 
     return {
@@ -219,6 +219,8 @@ def health(db=Depends(get_db)) -> dict[str, object]:
         "database": "connected" if db_connected else "disconnected",
         "latest_feed_created_at": latest_feed_created_at,
         "last_run_at": last_run_at,
+        "run_started_at": _heartbeat_timestamp(heartbeat, "run_started_at"),
+        "edition_date": heartbeat.get("edition_date"),
         "last_successful_run_at": last_successful_pipeline_run_at,
         "last_successful_run_source": last_successful_run_source,
         "degraded_sources": degraded_sources,
@@ -235,4 +237,16 @@ def health(db=Depends(get_db)) -> dict[str, object]:
         "triage_status": triage_status,
         "embedding_status": embedding_status,
         "llm_calls": llm_calls,
+        "processing_unresolved": {
+            "embeddings": int(stats.get("embedding_unresolved") or 0),
+            "triage": int(stats.get("triage_unresolved") or 0),
+        },
+        "candidate_counts": {
+            "analyzed": int(stats.get("candidates_analyzed") or 0),
+            "eligible": int(stats.get("candidates_publishable") or 0),
+            "selected": int(stats.get("editorial_selected") or 0),
+            "cards": int(stats.get("feeds_inserted") or 0),
+        },
+        "short_brief_reason": stats.get("short_brief_reason") or None,
+        "stage_seconds": dict(stats.get("stage_seconds") or {}),
     }

@@ -18,7 +18,7 @@ from src.agents.editorial import (
     build_editorial_user_prompt,
     review_with_short_pass_retries,
 )
-from src.agents.rate_limit import is_retryable_message, retry_after_seconds
+from src.agents.rate_limit import is_daily_quota_message, is_retryable_message, retry_delay_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +126,10 @@ class GeminiMorningBriefService:
             except Exception as exc:  # noqa: BLE001 - the provider raises bare types
                 last_exc = exc
                 message = str(exc)
-                if not is_retryable_message(message) or attempt == _PROVIDER_ATTEMPTS:
+                if (not is_retryable_message(message) or is_daily_quota_message(message)
+                        or attempt == _PROVIDER_ATTEMPTS):
                     raise EditorialError(f"Gemini editorial request failed: {exc}") from exc
-                delay = retry_after_seconds(message) or min(2.0 ** attempt, _PROVIDER_MAX_BACKOFF)
+                delay = min(retry_delay_seconds(message, attempt - 1), 120.0)
                 logger.warning(
                     "Editorial request failed (attempt %d/%d); retrying in %.1fs: %s",
                     attempt,

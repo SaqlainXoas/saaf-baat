@@ -215,6 +215,16 @@ class TestQuotaPacing:
         # One gap between the two batches, sized to the per-minute quota.
         assert sleeps == [30.0]
 
+    def test_separate_orchestrator_chunks_share_the_same_pacing(self, sleeps):
+        provider = GeminiEmbeddingProvider(api_key="test_key", requests_per_minute=100)
+        provider._embed_with_retry = lambda batch: EmbeddingResult(
+            embeddings=np.ones((len(batch), 768), dtype=np.float32),
+            model="fake", texts_count=len(batch),
+        )
+        provider.embed_batch(["a"] * 50, batch_size=50)
+        provider.embed_batch(["b"] * 50, batch_size=50)
+        assert sleeps == [30.0]
+
     def test_a_rate_limited_batch_is_retried_not_abandoned(self, sleeps):
         calls = {"n": 0}
 

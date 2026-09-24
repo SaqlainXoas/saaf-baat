@@ -7,7 +7,7 @@ import time
 from typing import Any, Optional
 
 from src.agents.editorial_gemini import _sanitize_schema_dict
-from src.agents.rate_limit import is_retryable_message, retry_delay_seconds
+from src.agents.rate_limit import is_daily_quota_message, is_retryable_message, retry_delay_seconds
 from src.agents.story_analysis import (
     StoryAnalysisError,
     StoryAnalysisInput,
@@ -68,6 +68,8 @@ class GeminiStoryAnalysisService:
                 if attempt == self.max_attempts - 1:
                     break
                 message = str(exc)
+                if is_daily_quota_message(message):
+                    break
                 if is_retryable_message(message):
                     delay = retry_delay_seconds(message, attempt)
                 else:

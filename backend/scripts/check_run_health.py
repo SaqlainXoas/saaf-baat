@@ -70,6 +70,21 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{'ok  ' if cards >= args.min_cards else 'FAIL'}  cards published = {cards}")
     if cards < args.min_cards:
         failures.append(f"published {cards} cards, expected at least {args.min_cards}")
+    if cards and cards < 6:
+        print(f"note  short brief reason = {stats.get('short_brief_reason') or 'not recorded'}")
+    cluster_failures = int(stats.get("cluster_failures") or 0)
+    if cluster_failures:
+        failures.append(f"{cluster_failures} cluster write or assignment failures")
+    print(
+        "note  processing unresolved: embeddings=%d triage=%d; "
+        "candidates=%d eligible=%d selected=%d" % (
+            int(stats.get("embedding_unresolved") or 0),
+            int(stats.get("triage_unresolved") or 0),
+            int(stats.get("candidates_analyzed") or 0),
+            int(stats.get("candidates_publishable") or 0),
+            int(stats.get("editorial_selected") or 0),
+        )
+    )
 
     # Reported either way: a quarantined endpoint is normal on some days and a
     # real outage on others, and the difference is not mechanical.

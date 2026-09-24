@@ -451,6 +451,40 @@ def test_health_is_degraded_when_triage_failed(tmp_path, monkeypatch):
     assert "Triage was unavailable" in payload["pipeline_status_reason"]
 
 
+def test_health_reports_partial_embedding_and_short_brief_funnel(tmp_path, monkeypatch):
+    class HealthyDB:
+        def is_connected(self):
+            return True
+
+        def get_analyzed_feed(self, limit=1, published_only=False):
+            return []
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: HealthyDB()
+    heartbeat = tmp_path / "heartbeat.json"
+    heartbeat.write_text(json.dumps({
+        "last_run_at": datetime.now(timezone.utc).isoformat(),
+        "last_successful_run_at": datetime.now(timezone.utc).isoformat(),
+        "edition_date": "2026-09-24",
+        "stats": {
+            "publication_status": "ok", "editorial_status": "ok",
+            "story_analysis_status": "ok", "triage_status": "ok",
+            "embedding_status": "degraded", "embedding_unresolved": 3,
+            "candidates_analyzed": 40, "candidates_publishable": 5,
+            "editorial_selected": 4, "feeds_inserted": 4,
+            "short_brief_reason": "fewer_than_six_eligible_candidates",
+        },
+    }), encoding="utf-8")
+    monkeypatch.setenv("SAAF_PIPELINE_HEARTBEAT_FILE", str(heartbeat))
+
+    payload = TestClient(app).get("/health").json()
+
+    assert payload["status"] == "degraded"
+    assert payload["processing_unresolved"]["embeddings"] == 3
+    assert payload["candidate_counts"] == {"analyzed": 40, "eligible": 5, "selected": 4, "cards": 4}
+    assert payload["short_brief_reason"] == "fewer_than_six_eligible_candidates"
+
+
 def test_health_is_degraded_when_story_analysis_is_partial(tmp_path, monkeypatch):
     class _FakeHealthyDB:
         def is_connected(self) -> bool:

@@ -13,7 +13,7 @@ from src.db.errors import DatabaseError
 router = APIRouter()
 _FRESH_BRIEF_WINDOW = timedelta(hours=20)
 _PAKISTAN_TZ = ZoneInfo("Asia/Karachi")
-_MORNING_EDITION_HOUR = 7
+_MORNING_EDITION_HOUR = 5
 
 
 # Every card must carry a why-it-matters line. This is the API contract the

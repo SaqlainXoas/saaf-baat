@@ -57,7 +57,7 @@ function toPakistanHour(date: Date) {
 export function isMorningEditionFresh(
   generatedAt?: string | null,
   now = new Date(),
-  editionHour = 7,
+  editionHour = 5,
 ) {
   if (!generatedAt) return false;
   const generated = new Date(generatedAt);

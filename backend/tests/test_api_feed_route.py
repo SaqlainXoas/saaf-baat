@@ -41,6 +41,9 @@ def test_freshness_requires_the_completed_morning_edition():
     assert _is_fresh(
         datetime(2026, 8, 28, 2, 5, tzinfo=timezone.utc), now=now
     ) is True  # 07:05 PKT today
+    assert _is_fresh(
+        datetime(2026, 8, 28, 1, 5, tzinfo=timezone.utc), now=now
+    ) is True  # 06:05 PKT, completed before the 7am target
 
 
 def test_feed_route_returns_items():
