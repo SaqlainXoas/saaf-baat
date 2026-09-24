@@ -117,7 +117,7 @@ class AdjudicationResult:
 class GeminiAdjudicationService:
     """Split/merge adjudication over the Gemini structured-output API."""
 
-    DEFAULT_MODEL = "gemini-3.1-flash-lite"
+    DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
     def __init__(
         self,

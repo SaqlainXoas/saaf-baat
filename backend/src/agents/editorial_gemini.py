@@ -64,7 +64,7 @@ class GeminiMorningBriefService:
     - response_schema = Pydantic model / JSON schema
     """
 
-    DEFAULT_MODEL = "gemini-3.1-flash-lite"
+    DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
     def __init__(
         self,

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiStoryAnalysisService:
-    DEFAULT_MODEL = "gemini-3.1-flash-lite"
+    DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
     def __init__(
         self,

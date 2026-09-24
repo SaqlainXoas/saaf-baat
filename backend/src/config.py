@@ -33,12 +33,12 @@ def load_editorial_model_config() -> EditorialModelConfig:
 
     return EditorialModelConfig(
         gemini_api_key=_env("GEMINI_API_KEY"),
-        gemini_model=_env("SAAF_EDITORIAL_GEMINI_MODEL") or "gemini-3.1-flash-lite",
+        gemini_model=_env("SAAF_EDITORIAL_GEMINI_MODEL") or "gemini-3.5-flash-lite",
     )
 
 
 def load_story_analysis_model_config() -> StoryAnalysisModelConfig:
     return StoryAnalysisModelConfig(
         gemini_api_key=_env("GEMINI_API_KEY"),
-        gemini_model=_env("SAAF_STORY_ANALYSIS_MODEL") or "gemini-3.1-flash-lite",
+        gemini_model=_env("SAAF_STORY_ANALYSIS_MODEL") or "gemini-3.5-flash-lite",
     )
