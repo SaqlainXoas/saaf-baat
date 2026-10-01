@@ -867,6 +867,64 @@ def test_a_question_naming_concrete_policy_mechanisms_is_specific():
     )
 
 
+def test_publisher_self_attribution_is_not_an_unsupported_name():
+    # Live rejection, 2026-09-24: a question over the Kohat Police Lines mosque
+    # bombing (22 dead) opened "The Tribune reports..." - exactly the
+    # attribution the prompt requires - and was dropped as
+    # `unsupported_named_subject_in_question` because a publisher's own name
+    # never appears inside its article body.
+    question = (
+        "The Tribune reports that the attack was a 'well-coordinated' operation "
+        "involving multiple terrorists who infiltrated a police facility, while "
+        "the KP Inspector General of Police said officers stood firm. What "
+        "specific security protocols failed to prevent the infiltration of the "
+        "Police Lines, and what independent assessment exists to evaluate "
+        "current counter-terrorism measures?"
+    )
+    assert "tribune" not in _question_phrases(question)
+    support = (
+        "A well-coordinated attack on the Police Lines mosque killed 22 people. "
+        "The Inspector General of Police said officers stood firm."
+    )
+    assert _proper_phrases_supported(question, support)
+    assert _question_is_specific(
+        question, QuestionBasis.RESOURCES_VS_OUTCOME, support, core_anchors={"kohat"}
+    )
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # Live rejection: KP Police Act 2026 - a real institutional-control
+        # dispute, dropped as `generic_question` because none of its words
+        # ("oversight", "safeguards", "insulated", "command structure") were on
+        # the old term list.
+        "The KP government says the new Act increases accountability, while the "
+        "federal government warns it will dismantle the command structure. What "
+        "specific independent oversight or legal safeguards exist to keep "
+        "operational decisions insulated from the political control the "
+        "minister alleges?",
+        # Live rejection: competitive power market - "protect" was dropped
+        # because the old list only matched the exact inflection "protected".
+        "The government says this market will let consumers choose cheaper "
+        "suppliers. What specific safeguards are planned to protect ordinary "
+        "users from potential market fluctuations?",
+        # Live rejection: DRAP medicine serialisation - a specific, sourced
+        # regulatory gap that used none of the old term list's vocabulary.
+        "The mandate excludes several categories of therapeutic products. What "
+        "is the regulatory justification for omitting these categories from "
+        "the traceability framework?",
+    ],
+)
+def test_institutional_accountability_vocabulary_is_recognised_as_specific(question):
+    assert _question_is_specific(
+        question,
+        QuestionBasis.MISSING_PUBLIC_INFORMATION,
+        question,
+        core_anchors=set(),
+    )
+
+
 def test_the_modal_verb_may_is_not_read_as_the_month():
     # "may" is the one month name that is also an everyday English word, and
     # treating it as a date discarded a live analysis over "the party may

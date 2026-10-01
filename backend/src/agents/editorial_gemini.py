@@ -15,6 +15,8 @@ from src.agents.editorial import (
     EditorialError,
     EditorialResponse,
     EditorialStory,
+    EditorialStoryRepair,
+    build_editorial_repair_user_prompt,
     build_editorial_user_prompt,
     review_with_short_pass_retries,
 )
@@ -104,6 +106,7 @@ class GeminiMorningBriefService:
             lambda window: self._review_once(window, max_stories=max_stories),
             candidates,
             max_stories=max_stories,
+            repair_story=self._repair_rejected_story,
         )
 
     def _generate_with_retry(self, user_prompt: str, config: Any) -> Any:
@@ -173,7 +176,16 @@ class GeminiMorningBriefService:
             return parsed
         if isinstance(parsed, dict):
             normalized = _normalize_editorial_payload(parsed, candidate_lookup)
-            return EditorialResponse.model_validate(normalized)
+            # This used to be an unguarded model_validate: a live run on
+            # 2026-09-24 got an impact_line one character over the 220-char
+            # limit on the third retry attempt, and the resulting
+            # ValidationError escaped uncaught, killing the whole pipeline
+            # run instead of being treated like any other malformed
+            # attempt the retry loop already knows how to move past.
+            try:
+                return EditorialResponse.model_validate(normalized)
+            except Exception as exc:
+                raise EditorialError(f"Gemini editorial response failed validation: {exc}") from exc
 
         text = getattr(response, "text", None)
         if not text or not str(text).strip():
@@ -189,9 +201,83 @@ class GeminiMorningBriefService:
             except Exception:
                 raise EditorialError(f"Gemini editorial response parsing failed: {exc}") from exc
             normalized = _normalize_editorial_payload(payload, candidate_lookup)
-            parsed_response = EditorialResponse.model_validate(normalized)
+            try:
+                parsed_response = EditorialResponse.model_validate(normalized)
+            except Exception as validate_exc:
+                raise EditorialError(
+                    f"Gemini editorial response failed validation: {validate_exc}"
+                ) from validate_exc
 
         return parsed_response
+
+    def _repair_rejected_story(
+        self,
+        story: EditorialStory,
+        candidate: ClusterEditorialCandidate,
+        cause: str,
+        token: str,
+    ) -> Optional[EditorialStory]:
+        """One targeted rewrite of a story the grounding check rejected.
+
+        Only headline/impact_line/what_to_watch are ever accepted back from
+        this call - category, priority, impact_labels, story_tags, confidence
+        and selection_reason are always taken from the original selection, so
+        a repair can only fix wording, never smuggle in a different story or
+        a different editorial judgement.
+        """
+        user_prompt = build_editorial_repair_user_prompt(story, candidate, cause, token)
+        config: Any = {
+            "system_instruction": EDITORIAL_SYSTEM_PROMPT,
+            "temperature": 0,
+            "response_mime_type": "application/json",
+            "response_schema": _gemini_response_schema(EditorialStoryRepair),
+        }
+        if self._genai_types is not None:
+            config = self._genai_types.GenerateContentConfig(**config)
+
+        try:
+            response = self._generate_with_retry(user_prompt, config)
+        except EditorialError as exc:
+            logger.warning("Grounding repair request failed for cluster_id=%s: %s", story.cluster_id, exc)
+            return None
+
+        payload = self._extract_repair_payload(response)
+        if payload is None:
+            logger.warning("Grounding repair response was unusable for cluster_id=%s", story.cluster_id)
+            return None
+
+        try:
+            repair = EditorialStoryRepair.model_validate(payload)
+        except Exception as exc:
+            logger.warning("Grounding repair response failed validation for cluster_id=%s: %s", story.cluster_id, exc)
+            return None
+
+        # Only the three repaired fields cross over; everything else is the
+        # original editorial judgement, untouched by the repair call.
+        return story.model_copy(
+            update={
+                "headline": repair.headline,
+                "impact_line": repair.impact_line,
+                "what_to_watch": repair.what_to_watch,
+            }
+        )
+
+    @staticmethod
+    def _extract_repair_payload(response: Any) -> Optional[Dict[str, Any]]:
+        parsed = getattr(response, "parsed", None)
+        if isinstance(parsed, EditorialStoryRepair):
+            return parsed.model_dump()
+        if isinstance(parsed, dict):
+            return parsed
+
+        text = getattr(response, "text", None)
+        if not text or not str(text).strip():
+            return None
+        try:
+            payload = json.loads(str(text))
+        except Exception:
+            return None
+        return payload if isinstance(payload, dict) else None
 
 
 def _normalize_editorial_payload(payload: Dict[str, Any], candidate_lookup: Dict[str, ClusterEditorialCandidate]) -> Dict[str, Any]:
@@ -202,7 +288,7 @@ def _normalize_editorial_payload(payload: Dict[str, Any], candidate_lookup: Dict
     return _normalize(payload, candidate_lookup)
 
 
-def _gemini_response_schema(model: type[EditorialResponse]) -> Dict[str, Any]:
+def _gemini_response_schema(model: type) -> Dict[str, Any]:
     return _sanitize_schema_dict(model.model_json_schema())
 
 

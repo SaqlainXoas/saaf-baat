@@ -345,6 +345,9 @@ def review_with_short_pass_retries(
     candidates: Sequence[ClusterEditorialCandidate],
     *,
     max_stories: int,
+    repair_story: Optional[
+        Callable[[EditorialStory, ClusterEditorialCandidate, str, str], Optional[EditorialStory]]
+    ] = None,
 ) -> Dict[UUID, EditorialStory]:
     """
     Ask the editor for the brief, retrying a pass below the honest six-card floor.
@@ -356,6 +359,17 @@ def review_with_short_pass_retries(
     padding mechanism, pushing the editor into the weak tail until the number
     was hit. After the attempts are spent the caller ships what the editor
     produced; deeper review never inserts template cards or bypasses grounding.
+
+    A story the grounding check rejects gets exactly one repair attempt, not a
+    silent drop, when `repair_story` is supplied: a live run on 2026-09-24
+    proposed the day's biggest story (5 sources) but wrote a hedge word into
+    its impact_line, the guard correctly rejected it, and the story was gone
+    for the rest of the run - the top of the ranked pool, discarded over a
+    wording defect rather than a truth defect. `repair_story` is told exactly
+    what was wrong and gets one try to fix the wording using only the supplied
+    reporting; if the rewrite still fails grounding, the cluster is blocked
+    exactly as before. This never changes which cluster was selected or its
+    category/priority/impact_labels - only whether its wording survives.
     """
     if not candidates:
         return {}
@@ -366,7 +380,8 @@ def review_with_short_pass_retries(
     # A cluster that already failed the grounding check does not get more
     # credible by being shown again - re-offering it just spends a retry
     # attempt on the same rejection instead of a candidate the editor hasn't
-    # judged yet.
+    # judged yet. A repaired cluster is added here too: one repair attempt is
+    # the budget, win or lose, not a standing invitation on every later pass.
     blocked_cluster_ids: Set[UUID] = set()
 
     for attempt, window in enumerate(
@@ -394,7 +409,30 @@ def review_with_short_pass_retries(
             continue
 
         by_cluster, grounding_rejected = _stories_by_cluster_id(parsed, prompt_candidates)
-        blocked_cluster_ids |= grounding_rejected
+        if grounding_rejected and repair_story is not None:
+            candidate_by_id = {c.cluster_id: c for c in prompt_candidates}
+            for cluster_id, (story, cause, token) in grounding_rejected.items():
+                candidate = candidate_by_id.get(cluster_id)
+                if candidate is None:
+                    continue
+                repaired = repair_story(story, candidate, cause, token)
+                if repaired is not None:
+                    repaired = repaired.model_copy(update={"cluster_id": story.cluster_id})
+                # One repair attempt is the whole budget, win or lose: the
+                # cluster never goes back to the editor after this, whether
+                # the rewrite was accepted or failed grounding again. Without
+                # this, a cluster the editor keeps re-proposing in deeper
+                # windows could spend a fresh repair call on every attempt.
+                blocked_cluster_ids.add(cluster_id)
+                if repaired is not None and _editorial_story_is_grounded(repaired, candidate):
+                    logger.info(
+                        "Repaired editorial story for cluster_id=%s after %s rejection",
+                        cluster_id,
+                        cause,
+                    )
+                    by_cluster[cluster_id] = repaired
+        else:
+            blocked_cluster_ids |= set(grounding_rejected)
         _log_corroborated_omissions(parsed, prompt_candidates, by_cluster)
         _log_thin_admissions(prompt_candidates, by_cluster)
         # Keep one coherent editorial judgement. Combining selections from
@@ -530,17 +568,17 @@ def _log_corroborated_omissions(
 def _stories_by_cluster_id(
     parsed: EditorialResponse,
     candidates: Sequence[ClusterEditorialCandidate],
-) -> Tuple[Dict[UUID, EditorialStory], Set[UUID]]:
+) -> Tuple[Dict[UUID, EditorialStory], Dict[UUID, Tuple[EditorialStory, str, str]]]:
     """Map a parsed response onto the clusters it was actually allowed to pick.
 
-    Returns the accepted stories and, separately, the cluster_ids rejected
-    specifically for failing the grounding check - not for an invalid or
-    unknown cluster_id, or a duplicate. A retry loop needs that second set to
-    stop re-offering a cluster the editor already tried and failed to
-    substantiate.
+    Returns the accepted stories and, separately, the grounding failures keyed
+    by cluster_id - not stories rejected for an invalid or unknown cluster_id,
+    or a duplicate. A retry loop needs that second set to stop re-offering a
+    cluster the editor already tried and failed to substantiate, or to attempt
+    one targeted repair before giving up on it.
     """
     by_cluster: Dict[UUID, EditorialStory] = {}
-    grounding_rejected: Set[UUID] = set()
+    grounding_rejected: Dict[UUID, Tuple[EditorialStory, str, str]] = {}
     candidate_by_id = {candidate.cluster_id: candidate for candidate in candidates}
     allowed_ids = set(candidate_by_id)
     for story in parsed.stories:
@@ -569,7 +607,7 @@ def _stories_by_cluster_id(
                 token,
                 story.headline[:80],
             )
-            grounding_rejected.add(cluster_id)
+            grounding_rejected[cluster_id] = (story, cause, token)
             continue
         by_cluster[cluster_id] = story
     return by_cluster, grounding_rejected
@@ -681,6 +719,83 @@ def _editorial_story_is_grounded(
 ) -> bool:
     """Reject card-level consequences that the supplied reporting never states."""
     return _editorial_grounding_failure(story, candidate) is None
+
+
+class EditorialStoryRepair(BaseModel):
+    """One rewritten card, for the single grounding-repair retry.
+
+    Deliberately narrower than EditorialStory: category, priority,
+    impact_labels and the rest were never the problem a grounding rejection
+    reports, so the repair call cannot touch them - only the three fields the
+    guard actually inspects. The descriptions are copied from EditorialStory
+    rather than restated, so the repair prompt carries the same load-bearing
+    rules the first pass did.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cluster_id: str
+    headline: str = Field(
+        min_length=8,
+        max_length=180,
+        description=EditorialStory.model_fields["headline"].description,
+    )
+    impact_line: str = Field(
+        min_length=16,
+        max_length=220,
+        description=EditorialStory.model_fields["impact_line"].description,
+    )
+    what_to_watch: Optional[str] = Field(
+        default=None,
+        max_length=180,
+        description=EditorialStory.model_fields["what_to_watch"].description,
+    )
+
+
+_GROUNDING_FAILURE_EXPLANATIONS = {
+    "hedge_or_mood": (
+        "Your impact_line used a hedge or mood word ({token!r}) instead of naming a "
+        "concrete fact - it describes an atmosphere, not a thing that changed."
+    ),
+    "unsupported_number": (
+        "Your copy stated a number ({token!r}) that does not appear anywhere in the "
+        "reporting below. Never reuse a number from a prompt example; use only a "
+        "number that is actually present in the reporting, or drop it."
+    ),
+    "unsupported_consequence": (
+        "Your copy stated a consequence ({token!r}) the reporting never says happened."
+    ),
+    "proposal_reported_as_action": (
+        "Your copy wrote a proposal ({token!r}) as if it were already decided or "
+        "implemented, but the reporting only describes a proposal."
+    ),
+}
+
+
+def build_editorial_repair_user_prompt(
+    story: EditorialStory, candidate: ClusterEditorialCandidate, cause: str, token: str
+) -> str:
+    """The single-story rewrite prompt for a story that failed grounding."""
+    explanation = _GROUNDING_FAILURE_EXPLANATIONS.get(
+        cause, f"Your copy failed the {cause} check on {token!r}."
+    ).format(token=token)
+    return json.dumps(
+        {
+            "task": (
+                "Rewrite ONLY this one story's headline, impact_line and what_to_watch "
+                "using exclusively facts stated in the reporting below. Do not change "
+                "the story's meaning or subject - fix the specific defect named in "
+                "rejection_reason. Return the same cluster_id unchanged."
+            ),
+            "cluster_id": story.cluster_id,
+            "rejection_reason": explanation,
+            "original_headline": story.headline,
+            "original_impact_line": story.impact_line,
+            "original_what_to_watch": story.what_to_watch,
+            "reporting": _truncate(_candidate_reporting(candidate), 4000),
+        },
+        ensure_ascii=False,
+    )
 
 
 _TERMINAL_NUMBER_RE = re.compile(r"(?P<number>\d[\d,.]*)\s*$")
@@ -1100,6 +1215,8 @@ __all__ = [
     "EditorialError",
     "EditorialResponse",
     "EditorialStory",
+    "EditorialStoryRepair",
+    "build_editorial_repair_user_prompt",
     "build_editorial_user_prompt",
     "candidate_windows",
     "merge_editorial_story",

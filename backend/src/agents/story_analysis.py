@@ -168,6 +168,19 @@ _KNOWN_PUBLISHERS = {
     "thenews": ("the news", "thenews"),
     "tribune": ("tribune", "express tribune"),
 }
+# A question that attributes correctly - "The Tribune reports..." - names a
+# publisher, not a claim from the evidence, so it must not be checked against
+# the article body text the way an invented person or institution is. Before
+# this exemption, a live question over the Kohat Police Lines mosque bombing
+# (22 dead) was dropped as `unsupported_named_subject_in_question` for the
+# word "Tribune", because a publisher's own name is never written inside its
+# article body. Derived from `_KNOWN_PUBLISHERS` so the two lists cannot drift.
+_PUBLISHER_NAME_WORDS = {
+    word.lower()
+    for aliases in _KNOWN_PUBLISHERS.values()
+    for alias in aliases
+    for word in alias.split()
+}
 _PUBLISHER_CUE = (
     r"(?:reports?|reported|reporting|says?|said|writes?|wrote|notes?|noted|"
     r"carry|carries|carried|adds?|added|quotes?|quoted|describes?|described|"
@@ -200,13 +213,14 @@ _QUESTION_SPECIFIC_TERMS = {
     "audit",
     "budget",
     "closed",
+    "closure",
     "delay",
     "exempt",
-    "funding",
+    "fund",
     "independent",
-    "inspection",
-    "protected",
-    "obstruction",
+    "inspect",
+    "protect",
+    "obstruct",
     "previous",
     # Added after a live rejection: "What specific metrics or income thresholds
     # will define these vulnerable segments?" carried no figure and no name
@@ -214,17 +228,43 @@ _QUESTION_SPECIFIC_TERMS = {
     # still required, and the canonical BAD question contains none of them.
     "criteria",
     "deadline",
-    "eligibility",
+    "eligib",
     "metric",
-    "metrics",
     "threshold",
-    "thresholds",
     "timeline",
     "tariff",
-    "verification",
-    "violations",
-    "warning",
-    "warnings",
+    "verif",
+    "violat",
+    "warn",
+    # Added 2026-09-24 after a live replay of 4 rejected production questions
+    # found the term list itself was the failure, not the question: each one
+    # named a concrete institutional-accountability gap ("what independent
+    # oversight exists to keep operational decisions insulated from political
+    # control", "what regulatory justification exists for excluding these
+    # categories from the traceability framework") in vocabulary this list had
+    # no way to recognise. Terms are stems, not exact words - `_QUESTION_SPECIFIC_TERMS`
+    # is checked by substring, so "protect" also matches "protected" and
+    # "protection"; the old exact-inflection entries (e.g. "protected",
+    # "funding", "violations") silently missed a question that used a
+    # different inflection of the same word.
+    "oversight",
+    "safeguard",
+    "insulat",
+    "mechanism",
+    "mandat",
+    "enforc",
+    "complian",
+    "jurisdiction",
+    "loophole",
+    "accountab",
+    "framework",
+    "protocol",
+    "assess",
+    "transparen",
+    "justif",
+    "regulat",
+    "exclud",
+    "omit",
 }
 
 
@@ -963,7 +1003,9 @@ def _question_phrases(text: str) -> set[str]:
     return {
         phrase
         for phrase in phrases
-        if phrase not in _QUESTION_IGNORED_PHRASES and phrase not in _GENERIC_ANCHORS
+        if phrase not in _QUESTION_IGNORED_PHRASES
+        and phrase not in _GENERIC_ANCHORS
+        and phrase not in _PUBLISHER_NAME_WORDS
     }
 
 

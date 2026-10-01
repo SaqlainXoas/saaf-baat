@@ -8,15 +8,18 @@ import pytest
 from pydantic import ValidationError
 
 from src.agents.editorial import (
+    EDITORIAL_SYSTEM_PROMPT,
     MAX_SHORT_PASS_ATTEMPTS,
     ClusterEditorialCandidate,
     EditorialError,
     EditorialResponse,
     EditorialStory,
+    EditorialStoryRepair,
     _derive_what_to_watch,
     _log_thin_admissions,
     _normalize_editorial_payload,
     _stories_by_cluster_id,
+    build_editorial_repair_user_prompt,
     build_editorial_user_prompt,
     merge_editorial_story,
     review_with_short_pass_retries,
@@ -121,7 +124,7 @@ def test_editorial_gate_rejects_unsupported_consequences(evidence, headline, imp
         EditorialResponse(stories=[story]), [candidate]
     )
     assert accepted == {}
-    assert rejected == {candidate.cluster_id}
+    assert set(rejected) == {candidate.cluster_id}
 
 
 def test_merge_repairs_truncated_unit_and_derives_concrete_watch_date():
@@ -362,6 +365,189 @@ def test_gemini_editorial_service_uses_parsed_response_when_available():
     result = service.review_clusters([candidate], max_stories=5)
 
     assert result[candidate.cluster_id].headline == "Parsed editorial headline"
+
+
+def test_gemini_service_repairs_a_grounding_rejected_story_end_to_end():
+    """The scenario behind the fix: the editor's pick used a hedge word, the
+    guard correctly rejected it, and one targeted repair call - not a full
+    retry - recovers the story with grounded wording."""
+    candidate = _build_candidate()
+    candidate.representative_article.headline = "Fuel subsidy fight moves back to centre-stage"
+    candidate.representative_article.main_text = (
+        "Pakistan cuts fuel subsidy by 12 rupees per litre starting Monday, the "
+        "finance ministry said."
+    )
+    candidate.base_feed.headline = candidate.representative_article.headline
+
+    main_response_payload = {
+        "stories": [
+            {
+                "cluster_id": str(candidate.cluster_id),
+                "priority": 90,
+                "headline": "Fuel subsidy fight moves back to centre-stage",
+                "impact_line": "Officials say this may affect prices at the pump.",
+                "category": "economy",
+                "impact_labels": ["💳 WALLET"],
+                "what_to_watch": None,
+                "public_impact": "high",
+                "story_tags": ["fuel"],
+                "confidence": 0.8,
+                "selection_reason": "Direct cost-of-living impact.",
+            }
+        ],
+        "omitted_cluster_ids": [],
+    }
+    repair_response_payload = {
+        "cluster_id": str(candidate.cluster_id),
+        "headline": "Fuel subsidy fight moves back to centre-stage",
+        "impact_line": "Drivers pay 12 rupees more per litre of fuel from Monday.",
+        "what_to_watch": None,
+    }
+
+    class _FakeResponse:
+        def __init__(self, payload):
+            self.text = json.dumps(payload)
+            self.parsed = None
+
+    class _FakeModels:
+        def __init__(self):
+            self.calls = []
+
+        def generate_content(self, *, model, contents, config):
+            self.calls.append(config)
+            if len(self.calls) == 1:
+                return _FakeResponse(main_response_payload)
+            return _FakeResponse(repair_response_payload)
+
+    class _FakeClient:
+        def __init__(self):
+            self.models = _FakeModels()
+
+    fake_client = _FakeClient()
+    service = GeminiMorningBriefService(api_key="test-key", client=fake_client)
+    result = service.review_clusters([candidate], max_stories=1)
+
+    assert len(fake_client.models.calls) == 2, "one main call, one repair call - never more"
+    assert candidate.cluster_id in result
+    story = result[candidate.cluster_id]
+    assert story.impact_line == "Drivers pay 12 rupees more per litre of fuel from Monday."
+    # The repair call must be structurally unable to touch these - the schema
+    # sent on the second call does not even contain these fields.
+    repair_schema = fake_client.models.calls[1]["response_schema"]
+    assert set(repair_schema["properties"]) == {
+        "cluster_id",
+        "headline",
+        "impact_line",
+        "what_to_watch",
+    }
+    assert story.priority == 90
+    assert story.category == "economy"
+    assert story.public_impact == "high"
+    assert story.story_tags == ["fuel"]
+    assert story.confidence == 0.8
+    assert story.selection_reason == "Direct cost-of-living impact."
+
+
+def test_gemini_service_drops_the_story_when_repair_still_fails_grounding():
+    candidate = _build_candidate()
+    candidate.representative_article.main_text = "Pakistan cuts fuel subsidy, the finance ministry said."
+    candidate.base_feed.headline = candidate.representative_article.headline
+
+    main_response_payload = {
+        "stories": [
+            {
+                "cluster_id": str(candidate.cluster_id),
+                "priority": 90,
+                "headline": "Fuel subsidy fight moves back to centre-stage",
+                "impact_line": "Officials say this may affect prices at the pump.",
+                "category": "economy",
+                "impact_labels": ["💳 WALLET"],
+                "what_to_watch": None,
+                "public_impact": "high",
+                "story_tags": ["fuel"],
+                "confidence": 0.8,
+                "selection_reason": "Direct cost-of-living impact.",
+            }
+        ],
+        "omitted_cluster_ids": [],
+    }
+    # The rewrite invents a number the reporting never states - still bad.
+    repair_response_payload = {
+        "cluster_id": str(candidate.cluster_id),
+        "headline": "Fuel subsidy fight moves back to centre-stage",
+        "impact_line": "Drivers pay 483,036 rupees more from Monday.",
+        "what_to_watch": None,
+    }
+
+    class _FakeResponse:
+        def __init__(self, payload):
+            self.text = json.dumps(payload)
+            self.parsed = None
+
+    class _FakeModels:
+        def __init__(self):
+            self.calls = []
+
+        def generate_content(self, *, model, contents, config):
+            self.calls.append(config)
+            if len(self.calls) == 1:
+                return _FakeResponse(main_response_payload)
+            return _FakeResponse(repair_response_payload)
+
+    class _FakeClient:
+        def __init__(self):
+            self.models = _FakeModels()
+
+    fake_client = _FakeClient()
+    service = GeminiMorningBriefService(api_key="test-key", client=fake_client)
+    result = service.review_clusters([candidate], max_stories=1)
+
+    assert len(fake_client.models.calls) == 2, "the repair is attempted exactly once, then given up on"
+    assert candidate.cluster_id not in result
+    assert len(result) == 0
+
+
+def test_a_malformed_structured_response_does_not_crash_the_whole_run():
+    """Regression, found while live-testing the repair fix: response.parsed
+    coming back as a dict with a field over its length limit (a real
+    2026-09-24 impact_line one character past 220) raised an uncaught
+    pydantic ValidationError straight out of _review_once. That escaped the
+    `except EditorialError` in the retry loop entirely and killed the whole
+    pipeline run instead of being treated like any other failed attempt."""
+    candidates = [_build_candidate() for _ in range(30)]
+
+    class _FakeResponse:
+        def __init__(self, parsed):
+            self.parsed = parsed
+            self.text = ""
+
+    class _FakeModels:
+        def __init__(self):
+            self.calls = 0
+
+        def generate_content(self, *, model, contents, config):
+            self.calls += 1
+            if self.calls == 1:
+                bad_payload = _story_payload(
+                    str(candidates[0].cluster_id), impact_line="x" * 300
+                )
+                return _FakeResponse({"stories": [bad_payload], "omitted_cluster_ids": []})
+            good_payload = _story_payload(str(candidates[0].cluster_id))
+            return _FakeResponse(
+                EditorialResponse.model_validate({"stories": [good_payload], "omitted_cluster_ids": []})
+            )
+
+    class _FakeClient:
+        def __init__(self):
+            self.models = _FakeModels()
+
+    fake_client = _FakeClient()
+    service = GeminiMorningBriefService(api_key="test-key", client=fake_client)
+
+    result = service.review_clusters(candidates, max_stories=1)  # must not raise
+
+    assert candidates[0].cluster_id in result
+    assert fake_client.models.calls >= 2, "a malformed attempt must not stop the retry loop"
 
 
 def test_gemini_response_schema_strips_additional_properties_for_sdk_compatibility():
@@ -608,6 +794,87 @@ def test_a_grounding_rejected_cluster_is_not_re_offered_on_retry():
     assert set(result.keys()) == {candidates[17].cluster_id}
 
 
+def test_a_grounding_rejected_story_is_repaired_and_included_without_a_full_retry():
+    """A repaired story reaches the floor in the same attempt - no deeper window needed."""
+    candidates = [_build_candidate() for _ in range(30)]
+    bad_id = candidates[0].cluster_id
+    repair_calls = []
+
+    def review_once(prompt_candidates):
+        return EditorialResponse.model_validate(
+            {
+                "stories": [
+                    _story_payload(
+                        str(bad_id),
+                        priority=99,
+                        impact_line="Officials say this may affect prices.",
+                    ),
+                    _story_payload(str(prompt_candidates[1].cluster_id), priority=50),
+                ],
+                "omitted_cluster_ids": [],
+            }
+        )
+
+    def repair_story(story, candidate, cause, token):
+        repair_calls.append((story.cluster_id, cause, token))
+        return EditorialStory.model_validate(_story_payload(story.cluster_id, priority=story.priority))
+
+    result = review_with_short_pass_retries(
+        review_once, candidates, max_stories=2, repair_story=repair_story
+    )
+
+    assert len(repair_calls) == 1, "one repair attempt, not one per window"
+    assert repair_calls[0] == (str(bad_id), "hedge_or_mood", "may")
+    assert bad_id in result
+    assert len(result) == 2, "the repair replaces the rejected card - it never adds a second one"
+    assert result[bad_id].impact_line == "Drivers pay a newly notified toll on the Swat Expressway from today."
+
+
+def test_a_failed_repair_still_permanently_blocks_the_cluster():
+    """The repair budget is one attempt, win or lose - a story that fails
+    repair too must not be re-offered to a deeper window, and must not spend
+    a second repair call there either."""
+    candidates = [_build_candidate() for _ in range(30)]
+    bad_id = candidates[0].cluster_id
+    seen_candidate_ids = []
+    repair_calls = []
+
+    def review_once(prompt_candidates):
+        seen_candidate_ids.append([c.cluster_id for c in prompt_candidates])
+        stories = []
+        if any(c.cluster_id == bad_id for c in prompt_candidates):
+            stories.append(
+                _story_payload(
+                    str(bad_id), priority=99, impact_line="Officials say this may affect prices."
+                )
+            )
+        deepest = prompt_candidates[-1]
+        stories.append(_story_payload(str(deepest.cluster_id), priority=50))
+        return EditorialResponse.model_validate({"stories": stories, "omitted_cluster_ids": []})
+
+    def repair_story(story, candidate, cause, token):
+        repair_calls.append(story.cluster_id)
+        # The rewrite is still ungrounded - repair does not always succeed.
+        return EditorialStory.model_validate(
+            _story_payload(
+                story.cluster_id,
+                priority=story.priority,
+                impact_line="Officials say this may affect prices.",
+            )
+        )
+
+    result = review_with_short_pass_retries(
+        review_once, candidates, max_stories=12, repair_story=repair_story
+    )
+
+    assert len(repair_calls) == 1, "a failed repair must not be retried on every later window"
+    assert len(seen_candidate_ids) == MAX_SHORT_PASS_ATTEMPTS
+    assert bad_id in seen_candidate_ids[0]
+    assert bad_id not in seen_candidate_ids[1]
+    assert bad_id not in seen_candidate_ids[2]
+    assert bad_id not in result
+
+
 def test_a_full_brief_on_the_first_pass_costs_one_call():
     candidates = [_build_candidate() for _ in range(30)]
     review_once, windows = _editor_returning([12])
@@ -762,6 +1029,79 @@ def test_month_may_is_not_rejected_as_hedging(impact):
     accepted, rejected = _stories_by_cluster_id(EditorialResponse(stories=[story]), [candidate])
     assert candidate.cluster_id in accepted
     assert not rejected
+
+
+def test_editorial_prompt_warns_against_reusing_example_numbers():
+    """Regression: the prompt's own gold-price example (483,036) and a real
+    rejected output (448,336, same digits scrambled) were close enough that
+    the model plausibly echoed its own example instead of the real figure."""
+    assert "illustrative placeholders" in EDITORIAL_SYSTEM_PROMPT
+    assert "Never reuse a number from this prompt's own examples" in EDITORIAL_SYSTEM_PROMPT
+
+
+def test_repair_prompt_explains_a_hedge_rejection():
+    candidate = _build_candidate()
+    story = EditorialStory.model_validate(
+        _story_payload(str(candidate.cluster_id), impact_line="Officials say this may affect prices.")
+    )
+
+    prompt = build_editorial_repair_user_prompt(story, candidate, "hedge_or_mood", "may")
+    payload = json.loads(prompt)
+
+    assert payload["cluster_id"] == str(candidate.cluster_id)
+    assert "hedge" in payload["rejection_reason"].lower()
+    assert "'may'" in payload["rejection_reason"]
+    assert payload["original_impact_line"] == "Officials say this may affect prices."
+    assert candidate.representative_article.main_text[:50] in payload["reporting"]
+
+
+def test_repair_prompt_explains_an_unsupported_number_and_warns_against_example_reuse():
+    candidate = _build_candidate()
+    story = EditorialStory.model_validate(_story_payload(str(candidate.cluster_id)))
+
+    prompt = build_editorial_repair_user_prompt(story, candidate, "unsupported_number", "448336")
+    payload = json.loads(prompt)
+
+    assert "448336" in payload["rejection_reason"]
+    assert "reuse a number from a prompt example" in payload["rejection_reason"]
+
+
+def test_editorial_story_repair_schema_only_carries_the_repairable_fields():
+    """The narrowness is the safety mechanism: a provider literally cannot
+    return category, priority or impact_labels from a repair call."""
+    schema = EditorialStoryRepair.model_json_schema()
+    assert set(schema["properties"]) == {"cluster_id", "headline", "impact_line", "what_to_watch"}
+
+
+@pytest.mark.parametrize(
+    "cause",
+    ["hedge_or_mood", "unsupported_number", "unsupported_consequence", "proposal_reported_as_action"],
+)
+def test_repair_prompt_handles_every_known_grounding_cause(cause):
+    """All four checks in _editorial_grounding_failure must produce a usable,
+    non-crashing repair prompt - not just the two causes seen in production."""
+    candidate = _build_candidate()
+    story = EditorialStory.model_validate(_story_payload(str(candidate.cluster_id)))
+
+    prompt = build_editorial_repair_user_prompt(story, candidate, cause, "example-token")
+    payload = json.loads(prompt)
+
+    assert payload["rejection_reason"], "every known cause must produce a non-empty explanation"
+    assert "example-token" in payload["rejection_reason"]
+
+
+def test_repair_prompt_falls_back_gracefully_for_an_unknown_cause():
+    """Defensive: if a new grounding check is ever added upstream without an
+    explanation entry here, the repair prompt must still be buildable rather
+    than raising a KeyError mid-run."""
+    candidate = _build_candidate()
+    story = EditorialStory.model_validate(_story_payload(str(candidate.cluster_id)))
+
+    prompt = build_editorial_repair_user_prompt(story, candidate, "some_future_check", "xyz")
+    payload = json.loads(prompt)
+
+    assert "some_future_check" in payload["rejection_reason"]
+    assert "xyz" in payload["rejection_reason"]
 
 
 class TestTransientProviderFailures:

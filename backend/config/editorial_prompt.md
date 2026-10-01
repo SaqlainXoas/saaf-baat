@@ -63,6 +63,8 @@ These pass, because you can point at the people and at what changed:
 "Parents in Lahore need uniforms and vans ready tonight — 12 million children are back in class from tomorrow."
 "Anyone renewing a passport in Sindh this week faces the offices being shut on Thursday."
 
+The figures above are illustrative placeholders, not real data. Never reuse a number from this prompt's own examples — every number in your output must come from the reporting supplied for that specific story, not from an example you have seen before.
+
 Never "may", "could", "might", "potential", "potentially", "helps", "highlights", "underscores". Never restate the headline.
 
 Part two must be a fact, not a mood. "A critical safety crisis", "heightened scrutiny", "continued market scrutiny", "growing concerns", "renewed attention" and "an uncertain outlook" are moods — they describe an atmosphere, not a thing that changed. Ask whether a reader could pay it, miss it, queue for it, be turned away by it or read it on a bill. If not, it is a mood.

@@ -26,6 +26,22 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 STATUS_FIELDS = ("embedding_status", "triage_status", "editorial_status")
 
 
+def degraded_source_names(entries: list[object]) -> set[str]:
+    """Return unique publisher names from endpoint and source degradation rows.
+
+    The heartbeat intentionally records both detailed endpoint failures, such
+    as ``app:rss:unreachable``, and its source-level roll-up, ``app``.  A
+    health gate must count publishers, not those diagnostic rows: otherwise a
+    single publisher with several feeds can make an otherwise usable edition
+    fail publication as though several independent sources were unavailable.
+    """
+    return {
+        name
+        for entry in entries
+        if (name := str(entry).split(":", 1)[0].strip())
+    }
+
+
 def heartbeat_path() -> Path:
     env_path = (os.getenv("SAAF_PIPELINE_HEARTBEAT_FILE") or "").strip()
     if not env_path:
@@ -90,9 +106,14 @@ def main(argv: list[str] | None = None) -> int:
     # real outage on others, and the difference is not mechanical.
     degraded = [str(s) for s in list(heartbeat.get("degraded_sources") or [])]
     if degraded:
-        print(f"note  degraded sources: {', '.join(degraded)}")
-        if not args.allow_degraded_sources and len(degraded) >= 4:
-            failures.append(f"{len(degraded)} sources quarantined: {', '.join(degraded)}")
+        source_names = degraded_source_names(degraded)
+        print(
+            f"note  degraded sources ({len(source_names)}): {', '.join(degraded)}"
+        )
+        if not args.allow_degraded_sources and len(source_names) >= 4:
+            failures.append(
+                f"{len(source_names)} sources quarantined: {', '.join(sorted(source_names))}"
+            )
 
     if failures:
         print("\nRun degraded:")

@@ -7,10 +7,14 @@ files regardless of the current working directory at runtime.
 from __future__ import annotations
 
 import os
+import sys
+from importlib import import_module
 from pathlib import Path
 
 # backend/ root, derived the same way conftest.py does it
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_BACKEND_DIR / "scripts"))
+check_run_health = import_module("check_run_health")
 
 
 class TestRunSchemaPathResolution:
@@ -69,3 +73,58 @@ class TestE2EPipelinePathResolution:
         # presence of .env — that file is gitignored and never exists in CI.
         assert env_path == str(_BACKEND_DIR / ".env"), f"Resolved .env to {env_path}"
         assert os.path.isdir(src_path), f"Expected src/ at {src_path}"
+
+
+def test_health_check_counts_unique_degraded_publishers(tmp_path, monkeypatch, capsys):
+    """Endpoint detail must not turn two source outages into five outages.
+
+    Regression for the 2026-10-01 hosted run: Nation produced two
+    future-clock endpoint diagnostics and APP one unreachable endpoint
+    diagnostic, followed by one roll-up for each source. The pipeline created
+    five grounded cards, but publication was blocked because the old gate
+    treated the five diagnostics as five publishers.
+    """
+    heartbeat = tmp_path / "heartbeat.json"
+    heartbeat.write_text(
+        """{
+  \"stats\": {
+    \"embedding_status\": \"ok\",
+    \"triage_status\": \"ok\",
+    \"editorial_status\": \"ok\",
+    \"feeds_inserted\": 5
+  },
+  \"degraded_sources\": [
+    \"nation:rss:future-clock\",
+    \"nation:sitemap:future-clock\",
+    \"app:rss:unreachable\",
+    \"nation\",
+    \"app\"
+  ]
+}
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SAAF_PIPELINE_HEARTBEAT_FILE", str(heartbeat))
+
+    assert check_run_health.main(["--min-cards", "1"]) == 0
+    assert "degraded sources (2)" in capsys.readouterr().out
+
+
+def test_health_check_rejects_four_unique_degraded_publishers(tmp_path, monkeypatch):
+    heartbeat = tmp_path / "heartbeat.json"
+    heartbeat.write_text(
+        """{
+  \"stats\": {
+    \"embedding_status\": \"ok\",
+    \"triage_status\": \"ok\",
+    \"editorial_status\": \"ok\",
+    \"feeds_inserted\": 6
+  },
+  \"degraded_sources\": [\"dawn:rss:unreachable\", \"tribune\", \"geo\", \"ary\"]
+}
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SAAF_PIPELINE_HEARTBEAT_FILE", str(heartbeat))
+
+    assert check_run_health.main(["--min-cards", "1"]) == 1
