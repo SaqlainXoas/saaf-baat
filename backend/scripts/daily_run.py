@@ -148,6 +148,22 @@ def run_daily(mode: str, token: str) -> int:
         return 0
     if mode != "manual" and not before_noon():
         LOG.error("Scheduled edition started after the noon PKT freshness cutoff")
+        heartbeat = {
+            "edition_date": today,
+            "publication_token": token,
+            "last_run_at": datetime.now(timezone.utc).isoformat(),
+            "stats": {
+                "publication_status": "failed",
+                "failure_reason": "scheduled_after_noon_cutoff",
+            },
+        }
+        # Keep the cutoff failure visible in both the Actions artifact and the
+        # persistent health state. The previous published edition is retained.
+        write_heartbeat(heartbeat)
+        try:
+            record_failed_run(db, heartbeat)
+        except Exception:
+            LOG.exception("Could not persist late-schedule failure diagnostics")
         return 1
 
     heartbeat: dict = {}
