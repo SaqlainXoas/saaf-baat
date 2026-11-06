@@ -12,6 +12,64 @@ import daily_run  # noqa: E402
 import run_pipeline  # noqa: E402
 
 
+def test_failure_artifact_survives_hosted_recording_outage(monkeypatch, tmp_path):
+    import json
+
+    path = tmp_path / "heartbeat.json"
+    monkeypatch.setenv("SAAF_PIPELINE_HEARTBEAT_FILE", str(path))
+    monkeypatch.setattr(daily_run, "record_failed_run", lambda *_: (_ for _ in ()).throw(RuntimeError("offline")))
+    payload = {"stats": {"publication_status": "failed"}}
+    daily_run.record_failure(object(), payload)
+    assert json.loads(path.read_text()) == payload
+
+
+def test_late_schedule_records_failure_and_never_generates(monkeypatch, tmp_path):
+    import json
+
+    monkeypatch.setattr(daily_run, "create_db_client", lambda: object())
+    stamp = "2026-11-05T08:35:04+00:00"
+    monkeypatch.setattr(daily_run, "saved_state", lambda _: {"last_successful_run_at": stamp})
+    monkeypatch.setattr(daily_run, "published_today", lambda _: False)
+    monkeypatch.setattr(daily_run, "before_noon", lambda: False)
+    monkeypatch.setattr(daily_run.run_pipeline, "main", lambda *_: (_ for _ in ()).throw(AssertionError("generated")))
+    monkeypatch.setattr(daily_run, "publish", lambda *_: (_ for _ in ()).throw(AssertionError("published")))
+    path = tmp_path / "heartbeat.json"
+    monkeypatch.setenv("SAAF_PIPELINE_HEARTBEAT_FILE", str(path))
+    recorded = []
+    monkeypatch.setattr(daily_run, "record_failed_run", lambda db, h: recorded.append(h))
+    assert daily_run.run_daily("backup", "new-attempt") == 1
+    payload = json.loads(path.read_text())
+    assert payload["stats"]["failure_reason"] == "scheduled_after_noon_cutoff"
+    assert payload["last_successful_run_at"] == stamp
+    assert recorded == [payload]
+
+
+def test_noon_crossing_blocks_scheduled_promotion_but_allows_explicit_manual(monkeypatch):
+    db = object()
+    monkeypatch.setattr(daily_run, "create_db_client", lambda: db)
+    monkeypatch.setattr(daily_run, "saved_state", lambda _: {})
+    monkeypatch.setattr(daily_run, "published_today", lambda _: False)
+    monkeypatch.setattr(daily_run, "check_health", lambda *_: 0)
+    monkeypatch.setattr(daily_run, "published_stories", lambda *_: [])
+    monkeypatch.setattr(daily_run, "wake_backend", lambda: None)
+    monkeypatch.setattr(daily_run, "notify_frontend", lambda: None)
+    monkeypatch.setattr(daily_run, "warm_frontend_cache", lambda *_: None)
+    monkeypatch.setattr(daily_run, "heartbeat_path", lambda: SimpleNamespace(read_text=lambda **_: '{"stats":{"feeds_inserted":6}}'))
+    monkeypatch.setattr(daily_run, "write_heartbeat", lambda _: None)
+    recorded = []
+    monkeypatch.setattr(daily_run, "record_failed_run", lambda db, h: recorded.append(h))
+    published = []
+    monkeypatch.setattr(daily_run, "publish", lambda *args: (published.append(args), 6)[1])
+    checks = iter([True, False])
+    monkeypatch.setattr(daily_run, "before_noon", lambda: next(checks))
+    monkeypatch.setattr(daily_run.run_pipeline, "main", lambda *_: None)
+    assert daily_run.run_daily("backup", "scheduled") == 1
+    assert published == []
+    assert recorded[0]["stats"]["failure_reason"] == "generation_crossed_noon_cutoff"
+    assert daily_run.run_daily("manual", "explicit") == 0
+    assert len(published) == 1
+
+
 def test_september_24_drafts_recover_without_editor_or_full_pipeline(monkeypatch):
     token = "35995811518-1"
     now = datetime.now(timezone.utc).isoformat()

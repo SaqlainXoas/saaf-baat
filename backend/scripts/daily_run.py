@@ -93,6 +93,15 @@ def write_heartbeat(payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def record_failure(db, heartbeat: dict) -> None:
+    try:
+        record_failed_run(db, heartbeat)
+    except Exception:
+        LOG.exception("Could not persist failed-run diagnostics")
+    finally:
+        write_heartbeat(heartbeat)
+
+
 def recover_processing(db, heartbeat: dict, token: str) -> dict | None:
     """Use persisted drafts, embeddings and triage; never call the editor again."""
     drafts = valid_drafts(db, token)
@@ -152,6 +161,7 @@ def run_daily(mode: str, token: str) -> int:
             "edition_date": today,
             "publication_token": token,
             "last_run_at": datetime.now(timezone.utc).isoformat(),
+            "last_successful_run_at": standing.get("last_successful_run_at"),
             "stats": {
                 "publication_status": "failed",
                 "failure_reason": "scheduled_after_noon_cutoff",
@@ -159,11 +169,7 @@ def run_daily(mode: str, token: str) -> int:
         }
         # Keep the cutoff failure visible in both the Actions artifact and the
         # persistent health state. The previous published edition is retained.
-        write_heartbeat(heartbeat)
-        try:
-            record_failed_run(db, heartbeat)
-        except Exception:
-            LOG.exception("Could not persist late-schedule failure diagnostics")
+        record_failure(db, heartbeat)
         return 1
 
     heartbeat: dict = {}
@@ -197,6 +203,9 @@ def run_daily(mode: str, token: str) -> int:
 
         if check_health(["--min-cards", "1"]) != 0:
             raise RuntimeError("Edition remains unhealthy after recovery")
+        if mode != "manual" and not before_noon():
+            heartbeat.setdefault("stats", {})["failure_reason"] = "generation_crossed_noon_cutoff"
+            raise RuntimeError("Generation crossed the noon PKT publication cutoff")
         count = publish(db, token, heartbeat)
         LOG.info("Published %d cards", count)
     except Exception:
@@ -208,8 +217,8 @@ def run_daily(mode: str, token: str) -> int:
                 "last_run_at": datetime.now(timezone.utc).isoformat(),
                 "stats": {"publication_status": "failed"},
             }
-        record_failed_run(db, heartbeat)
-        write_heartbeat(heartbeat)
+        heartbeat.setdefault("last_successful_run_at", standing.get("last_successful_run_at"))
+        record_failure(db, heartbeat)
         return 1
     finally:
         signal.alarm(0)

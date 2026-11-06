@@ -42,6 +42,22 @@ it is the file a new session reads second.
   `/opt/homebrew/bin`.
 - Backend env: `backend/.env` (template in `backend/.env.example`).
 
+## Hosted schedule and publication deadline
+
+The Actions workflow wakes hourly at minute 17 UTC. `scripts/schedule_gate.py`
+uses actual Pakistan time before dependency installation: generation is allowed
+05:00–11:15 PKT, with 12:00–13:00 reserved for a deadline audit. Other ticks
+skip. Every scheduled attempt uses recovery mode; an already published daily
+edition is kept, and valid same-day drafts can be resumed. The noon audit skips
+a published edition or records a genuine missed-publication failure.
+
+The hourly schedule is a mitigation for GitHub delivering morning-only cron
+events six hours late, not a timing guarantee. Independent scheduling remains
+necessary for a guaranteed morning delivery target. `daily_run.py` rechecks
+the noon cutoff immediately before publication as well as at startup. Explicit
+manual dispatch is the operator override. Failure artifacts survive a hosted
+failure-recording outage and retain the last successful publication timestamp.
+
 ## Database — local SQLite (default)
 
 Local development defaults to SQLite. The hosted setup uses Supabase for shared storage, Render for the API, Vercel for Next.js and GitHub Actions for generation. See `docs/deployment.md`.

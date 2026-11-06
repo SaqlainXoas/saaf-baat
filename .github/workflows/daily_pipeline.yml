@@ -2,10 +2,10 @@ name: Publish morning brief
 on:
   workflow_dispatch: {}
   schedule:
-    # 05:37 and 07:37 PKT. The second run resumes persisted drafts when needed.
-    # GitHub schedules are best-effort, not an exact publication-time guarantee.
-    - cron: '37 0 * * *'
-    - cron: '37 2 * * *'
+    # Wake hourly, including overnight: GitHub has delivered morning-only
+    # events 6+ hours late. Gate by actual PKT time, not the event's cron hour.
+    # This adds retry opportunities, not a scheduler timing guarantee.
+    - cron: '17 * * * *'
 permissions:
   contents: read
 concurrency:
@@ -53,7 +53,11 @@ jobs:
       SAAF_SCHEDULE: ${{ github.event.schedule }}
     steps:
       - uses: actions/checkout@v4
+      - name: Gate generation by actual Pakistan time
+        id: gate
+        run: python3 scripts/schedule_gate.py
       - name: Check configuration
+        if: steps.gate.outputs.run == 'true'
         run: |
           python - <<'PY'
           import os
@@ -63,24 +67,21 @@ jobs:
               raise SystemExit('Add GitHub Actions secrets: ' + ', '.join(missing))
           PY
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
         with:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: backend/requirements-pipeline.lock
       - name: Install pipeline
+        if: steps.gate.outputs.run == 'true'
         run: |
           python -m pip install -r requirements-pipeline.lock
           python -m spacy download en_core_web_sm
       - name: Generate, recover and publish the edition
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            mode=manual
-          elif [ "$SAAF_SCHEDULE" = '37 2 * * *' ]; then
-            mode=backup
-          else
-            mode=primary
-          fi
-          python scripts/daily_run.py --mode "$mode"
+        if: steps.gate.outputs.run == 'true'
+        env:
+          SAAF_RUN_MODE: ${{ steps.gate.outputs.mode }}
+        run: python scripts/daily_run.py --mode "$SAAF_RUN_MODE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
